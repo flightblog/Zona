@@ -89,16 +89,38 @@ public enum TCXExporter {
             xml += "          </Trackpoint>\n"
         }
 
+        // <Creator> identifies the app that recorded the activity — the standard
+        // TCX slot Strava/TrainingPeaks read for "recorded with". It's abstract,
+        // so it needs a concrete xsi:type (Device_t). <Author> is the
+        // document-level equivalent (Application_t). Both name the app "Zona".
         xml += """
                 </Track>
               </Lap>
+              <Creator xsi:type="Device_t">
+                <Name>\(escape(appName))</Name>
+              </Creator>
             </Activity>
           </Activities>
+          <Author xsi:type="Application_t">
+            <Name>\(escape(appName))</Name>
+            <Build>
+              <Version>
+                <VersionMajor>0</VersionMajor>
+                <VersionMinor>1</VersionMinor>
+              </Version>
+            </Build>
+            <LangID>en</LangID>
+            <PartNumber>000-00000-00</PartNumber>
+          </Author>
         </TrainingCenterDatabase>
 
         """
         return xml
     }
+
+    /// Name written into the TCX Creator/Author elements (the "recorded with"
+    /// source app).
+    static let appName = "Zona"
 
     private static func format(_ v: Double) -> String {
         String(format: "%.3f", v)

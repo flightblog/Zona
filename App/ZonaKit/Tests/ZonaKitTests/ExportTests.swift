@@ -31,6 +31,16 @@ struct TCXExportTests {
         #expect(count == 3)
     }
 
+    @Test func includesZonaCreatorAndAuthor() {
+        let tcx = TCXExporter.makeTCX(start: start, samples: [sample(0, hr: 120)])
+        // The activity Creator (Strava "recorded with") and document Author both
+        // name the app, and the file still parses as valid XML.
+        #expect(tcx.contains("<Creator xsi:type=\"Device_t\">"))
+        #expect(tcx.contains("<Author xsi:type=\"Application_t\">"))
+        #expect(tcx.contains("<Name>Zona</Name>"))
+        #expect(XMLParser(data: Data(tcx.utf8)).parse())
+    }
+
     @Test func firstTrackpointTimeIsStart() {
         let tcx = TCXExporter.makeTCX(start: start, samples: [sample(0, hr: 120)])
         #expect(tcx.contains("<Time>2026-07-01T07:30:00Z</Time>"))
