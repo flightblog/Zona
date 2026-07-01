@@ -84,6 +84,11 @@ public extension RideRecording {
         return Int((Double(hrs.reduce(0, +)) / Double(hrs.count)).rounded())
     }
 
+    /// Peak heart rate across samples that reported HR (0 if none).
+    var maxHeartRate: Int {
+        samples.compactMap(\.heartRateBpm).max() ?? 0
+    }
+
     /// Coggan Normalized Power: 30 s rolling average → 4th-power mean → 4th root.
     /// Below 30 samples there isn't a full window, so we fall back to the mean.
     static func normalizedPower(_ powers: [Int]) -> Int {

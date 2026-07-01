@@ -101,4 +101,15 @@ struct HRRideSummaryTests {
         let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
         #expect(rec.averageHeartRate == 0)
     }
+
+    @Test func maxHeartRate() {
+        let rec = recording(hrs: [130, 155, 140])
+        #expect(rec.maxHeartRate == 155)
+    }
+
+    @Test func maxHeartRateZeroWhenNoHR() {
+        let samples = [RideSample(secondsFromStart: 0, powerW: 130)]
+        let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
+        #expect(rec.maxHeartRate == 0)
+    }
 }

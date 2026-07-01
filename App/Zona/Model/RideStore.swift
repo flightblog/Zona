@@ -30,6 +30,7 @@ final class Ride {
     /// `HRZone.rawValue`.
     var hrZoneRaw: Int = HRZone.z2Endurance.rawValue
     var avgHeartRate: Int = 0
+    var maxHeartRate: Int = 0
     var timeInHRZoneSec: Int = 0
 
     @Relationship(deleteRule: .cascade, inverse: \RideSampleModel.ride)
@@ -47,6 +48,7 @@ final class Ride {
          lthr: Int = 0,
          hrZoneRaw: Int = HRZone.z2Endurance.rawValue,
          avgHeartRate: Int = 0,
+         maxHeartRate: Int = 0,
          timeInHRZoneSec: Int = 0) {
         self.id = id
         self.date = date
@@ -60,6 +62,7 @@ final class Ride {
         self.lthr = lthr
         self.hrZoneRaw = hrZoneRaw
         self.avgHeartRate = avgHeartRate
+        self.maxHeartRate = maxHeartRate
         self.timeInHRZoneSec = timeInHRZoneSec
     }
 
@@ -119,6 +122,7 @@ extension Ride {
             lthr: lthr,
             hrZoneRaw: hrZone.rawValue,
             avgHeartRate: recording.averageHeartRate,
+            maxHeartRate: recording.maxHeartRate,
             timeInHRZoneSec: recording.timeInHRZone(hrZone, lthr: lthr)
         )
         ride.samples = recording.samples.map {

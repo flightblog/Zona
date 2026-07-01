@@ -17,6 +17,7 @@ struct RideSummaryView: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     Stat(label: "Duration", value: durationText)
                     Stat(label: "Avg HR", value: "\(ride.avgHeartRate) bpm")
+                    Stat(label: "Max HR", value: "\(ride.maxHeartRate) bpm")
                     Stat(label: "Avg power", value: "\(ride.avgPowerW) W")
                     Stat(label: "Normalized", value: "\(ride.normalizedPowerW) W")
                     Stat(label: "Max power", value: "\(ride.maxPowerW) W")
