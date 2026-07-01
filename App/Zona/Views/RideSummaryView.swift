@@ -7,6 +7,7 @@ import ZonaKit
 /// power-vs-time chart with the target zone band shaded.
 struct RideSummaryView: View {
     let ride: Ride
+    @State private var exportURL: URL?
 
     var body: some View {
         ScrollView {
@@ -34,6 +35,21 @@ struct RideSummaryView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .toolbar {
+            if let url = exportURL {
+                ToolbarItem {
+                    // Exports a .tcx the user can send to Strava (or Files /
+                    // AirDrop / mail). ShareLink works on iOS and macOS.
+                    ShareLink(item: url) {
+                        Label("Export", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
+        }
+        // Write the .tcx once when the summary opens, not on every re-render.
+        .task(id: ride.id) {
+            exportURL = try? ride.writeTCXTempFile()
+        }
     }
 
     private var durationText: String {
