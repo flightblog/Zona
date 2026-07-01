@@ -15,27 +15,46 @@ public final class TrainerController {
     /// If true, a ride can't start until an HR sensor is connected.
     public var requiresHeartRate: Bool = false
 
-    // NOT @ObservationIgnored: `SensorHub` is itself `@Observable`, and the
-    // computed `connection`/`metrics` read its stored properties. Leaving this
-    // observed lets SwiftUI register those nested reads as dependencies, so the
-    // UI re-renders exactly when the hub's state changes — not at arbitrary
-    // times (which caused the setup↔ride screen bounce).
-    private let hub: SensorHub
+    /// Live merged metrics — a REAL observed stored property, republished from
+    /// the hub via `onMetricsChange`. It must be stored (not a computed
+    /// pass-through to `hub.metrics`): SwiftUI observes what the view reads, and
+    /// the view reads `controller`, not `hub`. A computed pass-through registered
+    /// no dependency, so live values (power/HR/cadence/speed) never refreshed —
+    /// they updated only when an unrelated render happened to re-read them.
+    public private(set) var metrics = RideMetrics()
+
+    // The hub owns BLE + control; it's observed internally but the view goes
+    // through this controller, so we mirror its state into observed properties.
+    @ObservationIgnored private let hub: SensorHub
+
+    // Observed snapshots mirrored from the hub on every state change, so views
+    // reading through this controller re-render. (Views observe `controller`,
+    // not `hub`; a computed pass-through to `hub` registers no dependency, which
+    // is why live values were frozen until an unrelated render occurred.)
+    private var states: [SensorKind: SensorConnectionState] = [:]
+    private var mirroredTrainerReady = false
+    private var mirroredDesiredKinds: Set<SensorKind> = []
 
     public init(memory: SensorMemory = EphemeralSensorMemory()) {
         self.hub = SensorHub(memory: memory)
-        // Latch the ride as started as soon as the start conditions are met.
-        self.hub.onStateChange = { [weak self] in self?.updateLatch() }
+        // Republish hub changes as our own observed state so SwiftUI re-renders.
+        self.hub.onStateChange = { [weak self] in self?.syncState() }
+        self.hub.onMetricsChange = { [weak self] m in self?.metrics = m }
+    }
+
+    /// Copy hub state into observed storage and re-evaluate the ride latch.
+    private func syncState() {
+        states = hub.states
+        mirroredTrainerReady = hub.trainerReady
+        mirroredDesiredKinds = hub.desiredKinds
+        updateLatch()
     }
 
     // MARK: - Published, view-facing state (derived from the hub)
 
-    /// Live merged metrics across all connected sensors.
-    public var metrics: RideMetrics { hub.metrics }
-
-    /// Per-sensor connection state, for setup rows.
+    /// Per-sensor connection state, for setup rows. Reads observed `states`.
     public func sensorState(_ kind: SensorKind) -> SensorConnectionState {
-        hub.state(for: kind)
+        states[kind] ?? .disconnected
     }
 
     public var log: [String] { hub.log }
@@ -51,19 +70,19 @@ public final class TrainerController {
     /// Re-evaluate whether the ride has started. Call after any sensor state
     /// change. Idempotent; only ever flips the latch on (off happens in `stop`).
     public func updateLatch() {
-        guard !sessionLatched, hub.trainerReady else { return }
-        if requiresHeartRate && !hub.state(for: .heartRate).isConnected { return }
+        guard !sessionLatched, mirroredTrainerReady else { return }
+        if requiresHeartRate && !(states[.heartRate]?.isConnected ?? false) { return }
         sessionLatched = true
     }
 
-    /// Collapsed lifecycle state the top-level UI switches on. Maps the hub's
+    /// Collapsed lifecycle state the top-level UI switches on. Maps the mirrored
     /// per-sensor states into the existing `ConnectionState` the views use.
-    /// Pure read — no mutation.
+    /// Reads only observed storage so SwiftUI tracks it; no mutation.
     public var connection: ConnectionState {
-        let trainer = hub.state(for: .trainer)
+        let trainer = states[.trainer] ?? .disconnected
 
         // Nothing started yet.
-        if hub.desiredKinds.isEmpty { return .idle }
+        if mirroredDesiredKinds.isEmpty { return .idle }
 
         // Once a ride has started, stay ready through transient sensor drops.
         if sessionLatched {
@@ -72,7 +91,7 @@ public final class TrainerController {
 
         // Before the latch: waiting on the trainer's ERG handshake and, if
         // required, the HR strap.
-        if hub.trainerReady {
+        if mirroredTrainerReady {
             return .preparing   // ready conditions not fully met yet (e.g. HR)
         }
 
@@ -98,6 +117,10 @@ public final class TrainerController {
     public func stop() {
         sessionLatched = false
         hub.stop()
+        // Mirror the reset immediately so `connection` reports `.idle` without
+        // waiting for a callback.
+        syncState()
+        metrics = RideMetrics()
     }
 
     private func connectedName(_ state: SensorConnectionState) -> String {

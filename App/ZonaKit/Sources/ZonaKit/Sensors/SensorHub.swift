@@ -28,6 +28,9 @@ public final class SensorHub {
     /// Called (on the main actor) after any sensor state change, so an owner can
     /// react — e.g. `TrainerController` latching the ride as started.
     @ObservationIgnored public var onStateChange: (() -> Void)?
+    /// Called (on the main actor) after live metrics change, so an owner can
+    /// republish them as its own observed state for SwiftUI.
+    @ObservationIgnored public var onMetricsChange: ((RideMetrics) -> Void)?
 
     @ObservationIgnored private let memory: SensorMemory
     @ObservationIgnored private lazy var ble = MultiBLEManager(owner: self, memory: memory)
@@ -53,6 +56,7 @@ public final class SensorHub {
     public func setTargetPower(_ watts: Int) {
         guard trainerReady else { return }
         metrics.targetW = watts
+        onMetricsChange?(metrics)
         append("→ Set Target Power: \(watts) W")
         ble.writeToTrainer(FTMS.setTargetPowerCommand(watts: watts))
     }
@@ -95,6 +99,7 @@ public final class SensorHub {
         if let c = reading.cadenceRpm { metrics.cadenceRpm = c }
         if let s = reading.speedKph { metrics.speedKph = s }
         if let hr = reading.heartRateBpm { metrics.heartRateBpm = hr }
+        onMetricsChange?(metrics)
     }
 
     fileprivate func setTrainerReady() {
@@ -132,6 +137,8 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
     // Connected peripherals whose kind isn't known until GATT services are
     // discovered (device didn't advertise its service UUID).
     private var pendingByIdentifier: [UUID: CBPeripheral] = [:]
+    // Peripherals with an in-flight connect (watchdog armed, not yet discovered).
+    private var connectingIdentifiers: Set<UUID> = []
 
     init(owner: SensorHub, memory: SensorMemory) {
         self.owner = owner
@@ -168,6 +175,7 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             self.peripherals.removeAll()
             self.kindForPeripheral.removeAll()
             self.pendingByIdentifier.removeAll()
+            self.connectingIdentifiers.removeAll()
             self.trainerControlPoint = nil
         }
     }
@@ -187,16 +195,22 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
                 attach(known, as: kind)
                 let name = known.name ?? kind.displayName
                 toOwner { $0.setState(.connecting(name: name), for: kind) }
+                connectingIdentifiers.insert(known.identifier)
                 central.connect(known)
+                armConnectTimeout(known.identifier)
             }
         }
 
-        // Scan for the union of not-yet-connected kinds' services.
-        let servicesToScan = desired
-            .filter { peripherals[$0] == nil }
-            .map(\.serviceUUID)
-        if !servicesToScan.isEmpty {
-            central.scanForPeripherals(withServices: servicesToScan)
+        // Scan for any not-yet-connected kinds. We scan with `nil` services
+        // (all peripherals) rather than filtering by service UUID: the Garmin
+        // HRM 200 does not advertise its 0x180D service in the advertisement
+        // packet, so a service-filtered scan never surfaces it. We identify each
+        // discovered device by connecting and inspecting its GATT services (the
+        // pending path). Duplicate-advertisement floods are harmless — we guard
+        // against re-grabbing an in-flight device.
+        let anyMissing = desired.contains { peripherals[$0] == nil }
+        if anyMissing {
+            central.scanForPeripherals(withServices: nil)
         }
     }
 
@@ -204,6 +218,32 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
         peripheral.delegate = self
         peripherals[kind] = peripheral
         kindForPeripheral[peripheral.identifier] = kind
+    }
+
+    /// CoreBluetooth `connect(_:)` never times out. Arm a watchdog so a stalled
+    /// connection (e.g. a stale remembered peripheral that no longer responds)
+    /// is cancelled and retried via a fresh scan, instead of hanging forever at
+    /// "Connecting…". Cleared once the peripheral finishes discovery.
+    ///
+    /// Captures only the `UUID` (Sendable); the runs on `queue`, so we look the
+    /// peripheral back up from `peripherals`/`pendingByIdentifier` there.
+    private func armConnectTimeout(_ id: UUID) {
+        queue.asyncAfter(deadline: .now() + 8) { [weak self] in
+            guard let self, self.connectingIdentifiers.contains(id) else { return }
+            self.connectingIdentifiers.remove(id)
+
+            if let kind = self.kindForPeripheral[id], let p = self.peripherals[kind] {
+                self.central?.cancelPeripheralConnection(p)
+                self.peripherals[kind] = nil
+                self.kindForPeripheral[id] = nil
+                self.toOwner { $0.note("\(kind.displayName): connect timed out, rescanning") }
+            } else if let p = self.pendingByIdentifier[id] {
+                self.central?.cancelPeripheralConnection(p)
+                self.pendingByIdentifier[id] = nil
+                self.toOwner { $0.note("Sensor connect timed out, rescanning") }
+            }
+            self.rescanForMissing()
+        }
     }
 
     // MARK: CBCentralManagerDelegate
@@ -233,39 +273,53 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
         // GATT services in `didDiscoverServices`. (The earlier code REQUIRED the
         // UUID in the advertisement and silently dropped such devices — that's
         // why the HR strap sat "searching" forever.)
+        let id = peripheral.identifier
+        // Skip anything already connected, connecting, or pending.
+        guard !connectingIdentifiers.contains(id),
+              pendingByIdentifier[id] == nil,
+              !peripherals.values.contains(where: { $0.identifier == id }) else { return }
+
         let advertised = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
         let matchedKind = desired.first { peripherals[$0] == nil && advertised.contains($0.serviceUUID) }
 
-        // Avoid grabbing the same physical device twice while it's in flight.
-        guard pendingByIdentifier[peripheral.identifier] == nil else { return }
-
         if let kind = matchedKind {
+            // Advertised a desired service — connect and set the kind now.
             attach(peripheral, as: kind)
+            let name = peripheral.name ?? kind.displayName
+            toOwner { $0.setState(.connecting(name: name), for: kind) }
         } else {
-            // Kind unknown until services are discovered; hold it pending.
-            pendingByIdentifier[peripheral.identifier] = peripheral
+            // Scanning with nil surfaces every device. Only pursue ones whose
+            // NAME plausibly matches something we still want (Garmin/Wahoo/HR/
+            // power straps broadcast a recognizable name), so we don't dial up a
+            // neighbour's headphones. Identify the kind from GATT after connect.
+            guard let name = peripheral.name,
+                  nameLooksLikeDesiredSensor(name) else { return }
+            pendingByIdentifier[id] = peripheral
             peripheral.delegate = self
         }
-        let displayName = peripheral.name ?? "Sensor"
-        if let kind = matchedKind {
-            toOwner { $0.setState(.connecting(name: displayName), for: kind) }
-        }
+        connectingIdentifiers.insert(id)
         central.connect(peripheral)
-
-        // Stop scanning once every desired kind has at least a peripheral in
-        // hand. A scan left running alongside active connections is a known
-        // source of link instability (straps can drop mid-connect).
-        if desired.allSatisfy({ peripherals[$0] != nil }) { central.stopScan() }
+        armConnectTimeout(id)
     }
 
-    /// Rescan only for kinds we don't currently hold a peripheral for.
+    /// Heuristic name filter for the nil-service scan: does this device name look
+    /// like a trainer / HR strap / power meter we might want?
+    private func nameLooksLikeDesiredSensor(_ name: String) -> Bool {
+        let n = name.lowercased()
+        let hints = ["kickr", "wahoo", "hrm", "heart", "tickr", "polar", "garmin",
+                     "quarq", "sram", "power", "cadence", "whoop"]
+        return hints.contains { n.contains($0) }
+    }
+
+    /// Resume scanning if any desired kind is still missing. Uses a nil-service
+    /// scan (see `beginScan`) so non-advertising straps are still found.
     private func rescanForMissing() {
         guard let central, central.state == .poweredOn else { return }
-        let missing = desired.filter { peripherals[$0] == nil }.map(\.serviceUUID)
-        if missing.isEmpty {
+        let anyMissing = desired.contains { peripherals[$0] == nil }
+        if !anyMissing {
             central.stopScan()
         } else {
-            central.scanForPeripherals(withServices: missing)
+            central.scanForPeripherals(withServices: nil)
         }
     }
 
@@ -300,6 +354,7 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             return
         }
         kindForPeripheral[peripheral.identifier] = nil
+        connectingIdentifiers.remove(peripheral.identifier)
         if kind == .trainer { trainerControlPoint = nil }
 
         let reason = error?.localizedDescription
@@ -359,6 +414,8 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         guard let kind = kindForPeripheral[peripheral.identifier] else { return }
+        // Connection fully established — disarm the connect watchdog.
+        connectingIdentifiers.remove(peripheral.identifier)
 
         for char in service.characteristics ?? [] {
             if char.uuid == kind.measurementUUID {
@@ -372,6 +429,10 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
 
         let name = peripheral.name ?? kind.displayName
         toOwner { $0.setState(.connected(name: name), for: kind) }
+
+        // Stop the (unfiltered) scan only once every desired kind is actually
+        // connected — not merely in flight — so a slow strap isn't abandoned.
+        if desired.allSatisfy({ peripherals[$0] != nil }) { central?.stopScan() }
 
         // FTMS handshake — unchanged from the verified single-peripheral path.
         if kind == .trainer, let cp = trainerControlPoint {

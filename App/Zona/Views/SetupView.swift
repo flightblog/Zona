@@ -67,8 +67,32 @@ struct SetupView: View {
             } footer: {
                 ConnectionStatusText()
             }
+
+            DiagnosticsSection()
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Collapsible event log — surfaces the BLE connection/HR diagnostics so issues
+/// can be seen on-device instead of guessed at.
+private struct DiagnosticsSection: View {
+    @Environment(TrainerController.self) private var controller
+
+    var body: some View {
+        Section {
+            DisclosureGroup("Diagnostics") {
+                if controller.log.isEmpty {
+                    Text("No events yet.").foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(controller.log.suffix(40).enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+        }
     }
 }
 
