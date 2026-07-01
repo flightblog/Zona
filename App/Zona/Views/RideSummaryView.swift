@@ -1,0 +1,133 @@
+import Charts
+import SwiftData
+import SwiftUI
+import ZonaKit
+
+/// One ride's summary: headline time-in-zone, the key power stats, and a
+/// power-vs-time chart with the target zone band shaded.
+struct RideSummaryView: View {
+    let ride: Ride
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                TimeInZoneHeadline(ride: ride)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                    Stat(label: "Duration", value: durationText)
+                    Stat(label: "Avg HR", value: "\(ride.avgHeartRate) bpm")
+                    Stat(label: "Avg power", value: "\(ride.avgPowerW) W")
+                    Stat(label: "Normalized", value: "\(ride.normalizedPowerW) W")
+                    Stat(label: "Max power", value: "\(ride.maxPowerW) W")
+                    Stat(label: "Time in \(ride.zone.shortName) (power)",
+                         value: percent(ride.timeInZoneFraction))
+                }
+                .padding(.horizontal)
+
+                PowerChart(ride: ride)
+                    .frame(height: 220)
+                    .padding(.horizontal)
+            }
+            .padding(.vertical)
+        }
+        .navigationTitle(ride.date.formatted(date: .abbreviated, time: .shortened))
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+
+    private var durationText: String {
+        let s = ride.durationSec
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    private func percent(_ f: Double) -> String { "\(Int((f * 100).rounded()))%" }
+}
+
+/// Headline leads with time in the target HR zone — the metric that matters now
+/// that zones are HR-based.
+private struct TimeInZoneHeadline: View {
+    let ride: Ride
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("\(Int((ride.timeInHRZoneFraction * 100).rounded()))%")
+                .font(.system(size: 56, weight: .bold, design: .rounded))
+                .foregroundStyle(.green)
+            Text("time in \(ride.hrZone.shortName) heart-rate zone")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            Text("\(formatted(ride.timeInHRZoneSec)) of \(formatted(ride.durationSec))")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func formatted(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+private struct Stat: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value).font(.title2.weight(.semibold).monospacedDigit())
+            Text(label).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// Heart rate and power over time, with the target HR-zone band shaded. HR is
+/// the headline series (zones are HR-based); power is shown lighter for context.
+private struct PowerChart: View {
+    let ride: Ride
+
+    private var samples: [RideSampleModel] {
+        (ride.samples ?? []).sorted { $0.secondsFromStart < $1.secondsFromStart }
+    }
+
+    var body: some View {
+        let hrBand = HRZoneEngine(lthr: ride.lthr).bpmRange(for: ride.hrZone)
+
+        Chart {
+            RectangleMark(
+                yStart: .value("Low", hrBand.lowerBound),
+                yEnd: .value("High", hrBand.upperBound)
+            )
+            .foregroundStyle(.green.opacity(0.12))
+
+            ForEach(samples, id: \.secondsFromStart) { sample in
+                if let power = sample.powerW {
+                    LineMark(
+                        x: .value("Time", sample.secondsFromStart),
+                        y: .value("Value", power),
+                        series: .value("Series", "Power (W)")
+                    )
+                    .foregroundStyle(.blue.opacity(0.45))
+                    .interpolationMethod(.monotone)
+                }
+                if let hr = sample.heartRateBpm {
+                    LineMark(
+                        x: .value("Time", sample.secondsFromStart),
+                        y: .value("Value", hr),
+                        series: .value("Series", "Heart rate (bpm)")
+                    )
+                    .foregroundStyle(.red)
+                    .interpolationMethod(.monotone)
+                }
+            }
+        }
+        .chartForegroundStyleScale([
+            "Heart rate (bpm)": Color.red,
+            "Power (W)": Color.blue.opacity(0.45)
+        ])
+        .chartXAxisLabel("seconds")
+        .chartYAxisLabel("bpm / watts")
+    }
+}

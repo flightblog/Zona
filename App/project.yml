@@ -1,0 +1,52 @@
+name: Zona
+options:
+  bundleIdPrefix: org.flightblog.zona
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  ZonaKit:
+    path: ZonaKit
+
+targets:
+  Zona:
+    type: application
+    # Multiplatform: one target, both destinations.
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: Zona
+    dependencies:
+      - package: ZonaKit
+    info:
+      path: Zona/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Zona
+        UILaunchScreen: {}
+        # Required: without this string CoreBluetooth cannot request permission
+        # and the central manager reports .unauthorized.
+        NSBluetoothAlwaysUsageDescription: >-
+          Zona connects to your smart trainer and heart-rate monitor over
+          Bluetooth to hold you in your chosen zone and show live heart rate.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.flightblog.zona
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6.0"
+        # Only iPhone/iPad + Mac; keep it simple for the prototype.
+        TARGETED_DEVICE_FAMILY: "1,2"
+      configs:
+        debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+    # macOS needs the sandbox + bluetooth entitlement; iOS relies on the
+    # Info.plist usage string alone. XcodeGen owns this file — declare the keys
+    # here so they survive regeneration (the harmless iOS sandbox keys are
+    # ignored on iOS builds).
+    entitlements:
+      path: Zona/Resources/Zona.macOS.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.device.bluetooth: true
