@@ -2,10 +2,14 @@ import SwiftData
 import SwiftUI
 import ZonaKit
 
-/// Live ride: big power dial that turns green when you're holding the target
-/// zone, plus cadence/speed, and a stop button. When the view appears we push
-/// the computed ERG target to the trainer and start recording; on End ride we
-/// save the ride to SwiftData and show its summary.
+/// Live ride screen. BPM is the target the rider is chasing and watts is the
+/// lever (ERG) they pull to get there, so both get an equal, glanceable arc
+/// gauge side by side: each fills to show where the live value sits within its
+/// band and shows a color + word + arrow cue (PUSH / HOLD / EASE) so you know
+/// at a glance whether you're in target and which way to correct — without
+/// relying on color alone. Cadence/speed stay small below; End ride at the
+/// bottom. When the view appears we push the ERG target and start recording;
+/// on End ride we save the ride to SwiftData and show its summary.
 struct RideView: View {
     @Environment(TrainerController.self) private var controller
     @Environment(RideSettings.self) private var settings
@@ -14,24 +18,34 @@ struct RideView: View {
     @State private var recorder = RideRecorder()
     @State private var savedRide: Ride?
 
+    /// Watts are held by ERG, so "in target" is a tight window around the
+    /// setpoint rather than the full (wide) power-zone band.
+    private let wattTolerance = 8
+
     var body: some View {
         VStack(spacing: 24) {
             Text(elapsedText)
                 .font(.title3.monospacedDigit())
                 .foregroundStyle(.secondary)
 
-            PowerDial(
-                power: controller.metrics.powerW,
-                target: controller.metrics.targetW ?? settings.target,
-                inZone: isInZone
-            )
-
-            // HR is the zone target now — give it a prominent, color-coded readout.
-            HeartRateReadout(
-                bpm: controller.metrics.heartRateBpm,
-                targetBand: settings.targetHRBand,
-                targetZoneName: settings.hrZone.name
-            )
+            // Two equal gauges: BPM (the target) and Watts (the lever).
+            HStack(alignment: .top, spacing: 20) {
+                ZoneGauge(
+                    value: controller.metrics.heartRateBpm,
+                    band: settings.targetHRBand,
+                    label: "bpm",
+                    caption: settings.hrZone.name,
+                    icon: "heart.fill"
+                )
+                ZoneGauge(
+                    value: controller.metrics.powerW,
+                    band: wattBand,
+                    label: "watts",
+                    caption: "target \(wattTarget) W",
+                    icon: "bolt.fill"
+                )
+            }
+            .frame(maxWidth: .infinity)
 
             HStack(spacing: 32) {
                 Metric(title: "Cadence",
@@ -88,86 +102,107 @@ struct RideView: View {
         return String(format: "%02d:%02d", s / 60, s % 60)
     }
 
-    private var isInZone: Bool {
-        guard let power = controller.metrics.powerW else { return false }
-        let range = settings.engine.wattRange(for: settings.zone)
-        return range.contains(power)
+    private var wattTarget: Int { controller.metrics.targetW ?? settings.target }
+
+    private var wattBand: ClosedRange<Int> {
+        (wattTarget - wattTolerance)...(wattTarget + wattTolerance)
     }
 }
 
-/// Circular target dial. Ring fills toward the target; color signals in/out of
-/// zone so you can hold steady without reading numbers.
-private struct PowerDial: View {
-    let power: Int?
-    let target: Int
-    let inZone: Bool
+/// Where a live reading sits relative to its target band, and the correction it
+/// implies. Drives color, arrow, and word so the cue survives a quick glance
+/// and doesn't depend on color perception alone.
+private enum ZoneState {
+    case noData, below, inZone, above
 
-    private var fraction: Double {
-        guard let power, target > 0 else { return 0 }
-        return min(Double(power) / Double(target * 2), 1) // target sits at 50%
+    init(value: Int?, band: ClosedRange<Int>) {
+        guard let value else { self = .noData; return }
+        if value < band.lowerBound { self = .below }
+        else if value > band.upperBound { self = .above }
+        else { self = .inZone }
     }
 
-    private var tint: Color {
-        power == nil ? .gray : (inZone ? .green : .orange)
-    }
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(.quaternary, lineWidth: 18)
-            Circle()
-                .trim(from: 0, to: fraction)
-                .stroke(tint, style: StrokeStyle(lineWidth: 18, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.easeOut(duration: 0.3), value: fraction)
-
-            VStack(spacing: 2) {
-                Text(power.map { "\($0)" } ?? "—")
-                    .font(.system(size: 64, weight: .bold, design: .rounded).monospacedDigit())
-                    .contentTransition(.numericText())
-                Text("watts").font(.subheadline).foregroundStyle(.secondary)
-                Text("target \(target) W")
-                    .font(.footnote)
-                    .foregroundStyle(tint)
-                    .padding(.top, 4)
-            }
+    var tint: Color {
+        switch self {
+        case .noData: return .gray
+        case .below:  return .blue    // too easy
+        case .inZone: return .green
+        case .above:  return .orange  // too hard
         }
-        .frame(width: 240, height: 240)
+    }
+
+    /// Short verb + arrow telling the rider how to correct.
+    var cue: String {
+        switch self {
+        case .noData: return "—"
+        case .below:  return "↑ PUSH"
+        case .inZone: return "✓ HOLD"
+        case .above:  return "↓ EASE"
+        }
     }
 }
 
-/// Live heart-rate readout, color-coded by whether HR is in the target band.
-/// Since zones are HR-based, this is the rider's primary "am I in zone?" cue —
-/// power still holds via ERG, but HR is what defines the zone.
-private struct HeartRateReadout: View {
-    let bpm: Int?
-    let targetBand: ClosedRange<Int>
-    let targetZoneName: String
+/// One circular gauge: big number in the center, ring showing where the live
+/// value sits across the band (padded so you can see how far past either edge
+/// you are), and a color-coded state chip beneath. Used identically for BPM and
+/// watts so the two read as one system.
+private struct ZoneGauge: View {
+    let value: Int?
+    let band: ClosedRange<Int>
+    let label: String
+    let caption: String
+    let icon: String
 
-    private var inZone: Bool {
-        guard let bpm else { return false }
-        return targetBand.contains(bpm)
-    }
+    private var state: ZoneState { ZoneState(value: value, band: band) }
 
-    private var tint: Color {
-        guard let bpm else { return .gray }
-        if inZone { return .green }
-        // Below band = too easy (blue), above = too hard (orange).
-        return bpm < targetBand.lowerBound ? .blue : .orange
+    /// Map the value across the band with 40% padding on each side so the ring
+    /// isn't pinned to the edges the moment you're in zone — the band occupies
+    /// the middle ~55% of the arc, out-of-band readings push toward the ends.
+    private var fraction: Double {
+        guard let value else { return 0 }
+        let span = Double(max(band.upperBound - band.lowerBound, 1))
+        let pad = span * 0.4
+        let lo = Double(band.lowerBound) - pad
+        let hi = Double(band.upperBound) + pad
+        return min(max((Double(value) - lo) / (hi - lo), 0), 1)
     }
 
     var body: some View {
-        VStack(spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: "heart.fill").foregroundStyle(tint)
-                Text(bpm.map { "\($0)" } ?? "—")
-                    .font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
-                    .contentTransition(.numericText())
-                Text("bpm").font(.headline).foregroundStyle(.secondary)
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .stroke(.quaternary, lineWidth: 12)
+                Circle()
+                    .trim(from: 0, to: fraction)
+                    .stroke(state.tint, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.3), value: fraction)
+
+                VStack(spacing: 0) {
+                    Image(systemName: icon)
+                        .font(.callout)
+                        .foregroundStyle(state.tint)
+                    Text(value.map { "\($0)" } ?? "—")
+                        .font(.system(size: 52, weight: .bold, design: .rounded).monospacedDigit())
+                        .contentTransition(.numericText())
+                    Text(label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            Text("\(targetZoneName) · \(targetBand.lowerBound)–\(targetBand.upperBound) bpm")
-                .font(.footnote)
-                .foregroundStyle(tint)
+            .frame(width: 150, height: 150)
+
+            // State chip: color + word + arrow. Redundant cues on purpose.
+            Text(state.cue)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(state.tint)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(state.tint.opacity(0.15), in: Capsule())
+
+            Text("\(caption) · \(band.lowerBound)–\(band.upperBound)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -180,7 +215,7 @@ private struct Metric: View {
     var body: some View {
         VStack {
             Text(value)
-                .font(.title2.weight(.semibold).monospacedDigit())
+                .font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText())
             Text("\(title) · \(unit)")
                 .font(.caption)
