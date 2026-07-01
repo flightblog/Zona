@@ -16,8 +16,12 @@ next planned sources).
    color-coded HR readout shows whether you're landing in the target HR band
    (green in-zone, blue too easy, orange too hard). Power/cadence/speed also show.
 3. **Save & review** — on End ride the session is recorded to **SwiftData** and a
-   summary appears (time-in-HR-zone headline, avg HR, power stats, HR+power
+   summary appears (time-in-HR-zone headline, avg/max HR, power stats, HR+power
    chart). **History** lists past rides; swipe to delete.
+4. **Export** — the summary's **Export** button (⬆️ toolbar) shares the ride as a
+   `.tcx` file you can send to **Strava** (or Files / AirDrop / mail). No account
+   or OAuth. The file is branded with `<Creator>Zona</Creator>`. Indoor rides have
+   no GPS, so they import as virtual rides (HR/power/cadence graphs, no map).
 
 ### Zones: HR defines the target, power does the controlling
 
@@ -32,35 +36,39 @@ LTHR). No closed-loop HR→watts control — that's a possible future phase.
 App/
 ├── project.yml              # XcodeGen spec → Zona.xcodeproj (iOS + macOS).
 │                            #   Owns Info.plist + entitlements — see note below.
-├── ZonaKit/                 # Swift Package: verified core, no UI. 36 tests.
+├── ZonaKit/                 # Swift Package: verified core, no UI. 49 tests.
 │   ├── Sources/ZonaKit/
-│   │   ├── FTMS.swift              # FTMS GATT: op codes, encode/decode
+│   │   ├── FTMS.swift              # FTMS GATT: op codes, Indoor Bike Data decode
 │   │   ├── Zones.swift            # FTP → Coggan power zones
 │   │   ├── HeartRateZones.swift   # LTHR → HR zones (HRZone / HRZoneEngine)
 │   │   ├── RideModels.swift       # ConnectionState, RideMetrics
 │   │   ├── RideRecorder.swift     # 1 Hz sample capture during a ride
-│   │   ├── RideSummary.swift      # avg/NP/max power, time-in-(HR)zone
+│   │   ├── RideSummary.swift      # avg/NP/max power, avg/max HR, time-in-(HR)zone
 │   │   ├── TrainerController.swift # app-facing facade over SensorHub
-│   │   └── Sensors/
-│   │       ├── SensorKind.swift            # trainer / heartRate / powerMeter
-│   │       ├── HeartRateMeasurement.swift  # 0x2A37 decode
-│   │       ├── CyclingPowerMeasurement.swift # 0x2A63 decode (Quarq-ready)
-│   │       └── SensorHub.swift             # multi-peripheral BLE manager
-│   └── Tests/ZonaKitTests/  # ZonaKitTests.swift + SensorTests.swift
+│   │   ├── Sensors/
+│   │   │   ├── SensorKind.swift            # trainer / heartRate / powerMeter
+│   │   │   ├── HeartRateMeasurement.swift  # 0x2A37 decode
+│   │   │   ├── CyclingPowerMeasurement.swift # 0x2A63 decode (Quarq-ready)
+│   │   │   └── SensorHub.swift             # multi-peripheral BLE manager
+│   │   └── Export/
+│   │       └── TCXExporter.swift  # ride → TCX (TrainingCenterDatabase v2) string
+│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests
 └── Zona/                    # App target
     ├── ZonaApp.swift        # @main, RideSettings (FTP/zone/LTHR/HR zone), modelContainer
     ├── Model/
     │   ├── RideStore.swift          # SwiftData @Model: Ride, RideSampleModel
+    │   ├── RideExport.swift         # Ride → .tcx temp file for the Share sheet
     │   └── SensorMemoryStore.swift  # UserDefaults-backed SensorMemory
     ├── Views/
     │   ├── ContentView.swift    # setup ↔ ride router + History link
-    │   ├── SetupView.swift       # FTP, LTHR, zones, sensor rows, connect (HR-gated)
+    │   ├── SetupView.swift       # FTP, LTHR, zones, sensor rows, connect, Diagnostics
     │   ├── RideView.swift        # HR readout, power dial, record, End ride
-    │   ├── RideSummaryView.swift # per-ride summary + chart
+    │   ├── RideSummaryView.swift # per-ride summary + chart + Export (ShareLink)
     │   └── HistoryView.swift     # past rides list
     └── Resources/
         ├── Info.plist                # generated — NSBluetoothAlwaysUsageDescription
-        └── Zona.macOS.entitlements   # generated — sandbox + bluetooth
+        ├── Zona.macOS.entitlements   # generated — sandbox + bluetooth
+        └── Assets.xcassets           # AppIcon (iOS 1024 + macOS ladder)
 ```
 
 ## Build & run
@@ -93,7 +101,7 @@ xcodebuild -project Zona.xcodeproj -scheme Zona \
 
 ```sh
 cd App/ZonaKit
-swift test        # 36 tests: zone math, FTMS/HR/power decode, recorder, summaries
+swift test        # 49 tests: zones, FTMS/HR/power decode, recorder, summaries, TCX export
 ```
 
 `ZonaKit` is pure and fully unit-tested. The BLE connection logic in `SensorHub`
@@ -110,9 +118,15 @@ new plumbing.
 - **Auto-connect + remember.** The first sensor of each type is connected and its
   identifier persisted (`SensorMemoryStore`), so the same device reconnects next
   session.
-- **Robust discovery.** Devices are identified from their **actual GATT services**
-  after connecting, not just the advertisement packet — because some sensors
-  (Garmin straps, some trainers) omit their service UUID from the advertisement.
+- **Robust discovery.** The scan is **unfiltered** (`scanForPeripherals(services: nil)`)
+  and devices are identified from their **actual GATT services** after connecting,
+  not the advertisement — because some sensors (the Garmin HRM 200 among them)
+  don't advertise their service UUID at all, so a service-filtered scan never
+  surfaces them. A device-name heuristic keeps the unfiltered scan from dialing up
+  unrelated peripherals.
+- **Connect watchdog.** CoreBluetooth's `connect(_:)` never times out, so a stale
+  remembered peripheral would hang forever. An 8s watchdog cancels a stalled
+  connect and rescans.
 - **Auto-reconnect.** HR straps disconnect on idle to save battery; a dropped
   still-wanted sensor is transparently reconnected rather than abandoned.
 - **HR required to ride.** A ride won't start until both the trainer (in ERG) and
@@ -127,10 +141,12 @@ inside a private `MultiBLEManager` on a dedicated BLE queue that does all GATT
 I/O; only `Sendable` values (bytes, decoded structs, UUID strings, names) cross
 to the main actor. No `@preconcurrency` escape hatches.
 
-> Observation note: `TrainerController.hub` is **not** `@ObservationIgnored`.
-> `SensorHub` is `@Observable`, and the UI reads its state through the facade —
-> ignoring it breaks SwiftUI's dependency tracking (it caused a setup↔ride screen
-> flicker). Leave it observed.
+> Observation note: the UI observes `TrainerController`, not the `SensorHub`
+> behind it. So the controller holds **real observed stored properties**
+> (`metrics`, plus mirrored connection state) that are **republished from the hub**
+> via `onMetricsChange` / `onStateChange` callbacks. A computed pass-through to
+> `hub.metrics` registers no SwiftUI dependency and leaves live values frozen —
+> don't reintroduce one.
 
 ## Data & privacy
 
@@ -144,8 +160,9 @@ Wahoo Cloud API — see the roadmap for why.
 - **Quarq power meter** as the power source (decoder already built and tested).
 - **Whoop** as an HR source (should work over standard `0x180D`; verify on device).
 - Optional **iCloud/CloudKit** sync (model already compatible).
-- Share-sheet **`.fit`/`.tcx` export** — the low-cost path to Strava/TrainingPeaks
-  without the Wahoo Cloud API (which only adds onward-sync at the cost of app
-  registration/approval, OAuth, and FIT encoding).
+- A **device picker** (currently the scan is unfiltered + name-heuristic; see the
+  SensorHub note above).
+- Possible **direct Strava OAuth upload** (auto/one-tap; reuses the TCX encoder)
+  if the manual Share-sheet export proves too clunky.
 - Possible **closed-loop HR→watts** (auto-adjust ERG to hold an HR zone) and
   **HRV/R-R** capture (R-R is already parsed, just not stored).
