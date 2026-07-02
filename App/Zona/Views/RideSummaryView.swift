@@ -7,7 +7,9 @@ import ZonaKit
 /// power-vs-time chart with the target zone band shaded.
 struct RideSummaryView: View {
     let ride: Ride
+    @Environment(\.modelContext) private var modelContext
     @State private var exportURL: URL?
+    @State private var strava: StravaUploadModel?
 
     var body: some View {
         ScrollView {
@@ -42,6 +44,11 @@ struct RideSummaryView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
+            if let strava {
+                ToolbarItem {
+                    StravaButton(model: strava, ride: ride, context: modelContext)
+                }
+            }
             if let url = exportURL {
                 ToolbarItem {
                     // Exports a .tcx the user can send to Strava (or Files /
@@ -55,6 +62,7 @@ struct RideSummaryView: View {
         // Write the .tcx once when the summary opens, not on every re-render.
         .task(id: ride.id) {
             exportURL = try? ride.writeTCXTempFile()
+            if strava == nil { strava = StravaUploadModel(ride: ride) }
         }
     }
 
@@ -92,6 +100,48 @@ private struct TimeInZoneHeadline: View {
 
     private func formatted(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// Toolbar control for uploading the ride to Strava. Its label and action follow
+/// the upload state machine: connect-and-upload when idle, a spinner while
+/// working, "View on Strava" once uploaded (or a duplicate), and a retry with an
+/// error alert on failure. Hidden entirely when no Strava credentials are built
+/// in (`.unavailable`).
+private struct StravaButton: View {
+    @Bindable var model: StravaUploadModel
+    let ride: Ride
+    let context: ModelContext
+    @State private var showError = false
+
+    var body: some View {
+        Group {
+            switch model.state {
+            case .unavailable:
+                EmptyView()
+            case .idle, .failed:
+                Button { Task { await model.upload(ride: ride, context: context) } } label: {
+                    Label("Upload to Strava", systemImage: "arrow.up.circle")
+                }
+            case .authorizing, .uploading:
+                ProgressView()
+            case .uploaded, .duplicate:
+                Button { model.openOnStrava() } label: {
+                    Label("View on Strava", systemImage: "checkmark.circle.fill")
+                }
+            }
+        }
+        .onChange(of: isFailed) { _, failed in showError = failed }
+        .alert("Strava upload failed", isPresented: $showError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if case .failed(let message) = model.state { Text(message) }
+        }
+    }
+
+    private var isFailed: Bool {
+        if case .failed = model.state { return true }
+        return false
     }
 }
 

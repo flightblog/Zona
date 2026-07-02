@@ -72,5 +72,9 @@ fastlane/test_output
 App/Zona/Resources/Info.plist
 App/Zona/Resources/Zona.macOS.entitlements
 
+# Strava API secrets — each developer supplies their own (copy
+# Secrets.example.xcconfig → Secrets.xcconfig). Never commit real credentials.
+App/Zona/Config/Secrets.xcconfig
+
 # macOS
 .DS_Store

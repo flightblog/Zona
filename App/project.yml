@@ -6,6 +6,12 @@ options:
     macOS: "14.0"
   createIntermediateGroups: true
 
+# Explicit lowercase config names so per-config references (e.g. the target's
+# `configFiles`) match. Without this XcodeGen defaults to Debug/Release.
+configs:
+  debug: debug
+  release: release
+
 packages:
   ZonaKit:
     path: ZonaKit
@@ -29,6 +35,23 @@ targets:
         NSBluetoothAlwaysUsageDescription: >-
           Zona connects to your smart trainer and heart-rate monitor over
           Bluetooth to hold you in your chosen zone and show live heart rate.
+        # Custom URL scheme for the Strava OAuth callback (zona://strava-auth).
+        # Must match the redirect scheme in StravaOAuthConfig and the Strava API
+        # app's Authorization Callback Domain.
+        CFBundleURLTypes:
+          - CFBundleURLName: org.flightblog.zona.strava
+            CFBundleURLSchemes: [zona]
+        # Strava client id/secret, injected from the gitignored Secrets.xcconfig
+        # (see configFiles below). Empty when unconfigured on this machine, in
+        # which case the Strava upload button hides itself.
+        StravaClientID: $(STRAVA_CLIENT_ID)
+        StravaClientSecret: $(STRAVA_CLIENT_SECRET)
+    # Per-config xcconfig holding the Strava secrets. Gitignored — each developer
+    # supplies their own from their Strava API app. Copy Secrets.example.xcconfig
+    # to Zona/Config/Secrets.xcconfig and fill it in.
+    configFiles:
+      debug: Zona/Config/Secrets.xcconfig
+      release: Zona/Config/Secrets.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.flightblog.zona
@@ -52,3 +75,6 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.device.bluetooth: true
+        # Outbound HTTPS for the Strava upload. The sandboxed macOS build blocks
+        # all networking without this; iOS needs no equivalent.
+        com.apple.security.network.client: true
