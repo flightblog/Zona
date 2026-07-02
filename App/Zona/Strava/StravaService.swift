@@ -135,14 +135,22 @@ actor StravaService {
     }
 
     /// Build a `multipart/form-data` body with the TCX file + `data_type` field.
+    /// Also sets a fixed activity `name` and flags the upload as a `trainer`
+    /// activity — every Zona ride is an indoor trainer Zone 2 session.
     private func multipartBody(tcx: String, filename: String, dataType: String) -> (Data, String) {
         let boundary = "Boundary-\(UUID().uuidString)"
         var body = Data()
         func append(_ s: String) { body.append(Data(s.utf8)) }
 
-        append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"data_type\"\r\n\r\n")
-        append("\(dataType)\r\n")
+        func field(_ name: String, _ value: String) {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+            append("\(value)\r\n")
+        }
+
+        field("data_type", dataType)
+        field("name", "Zona - Z2")
+        field("trainer", "1")
 
         append("--\(boundary)\r\n")
         append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
