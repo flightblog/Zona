@@ -3,13 +3,13 @@ import SwiftUI
 import ZonaKit
 
 /// Live ride screen. BPM is the target the rider is chasing and watts is the
-/// lever (ERG) they pull to get there, so both get an equal, glanceable arc
-/// gauge side by side: each fills to show where the live value sits within its
-/// band and shows a color + word + arrow cue (PUSH / HOLD / EASE) so you know
-/// at a glance whether you're in target and which way to correct — without
-/// relying on color alone. Cadence/speed stay small below; End ride at the
-/// bottom. When the view appears we push the ERG target and start recording;
-/// on End ride we save the ride to SwiftData and show its summary.
+/// lever (ERG) they pull to get there; cadence is form. All three get an equal,
+/// glanceable arc gauge side by side: each fills to show where the live value
+/// sits within its band and shows a color + word + arrow cue (PUSH / HOLD /
+/// EASE) so you know at a glance whether you're in target and which way to
+/// correct — without relying on color alone. Speed stays small below; End ride
+/// at the bottom. When the view appears we push the ERG target and start
+/// recording; on End ride we save the ride to SwiftData and show its summary.
 struct RideView: View {
     @Environment(TrainerController.self) private var controller
     @Environment(RideSettings.self) private var settings
@@ -32,12 +32,15 @@ struct RideView: View {
             // Reading `context.date` is what makes SwiftUI re-render each tick.
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(elapsedText(asOf: context.date))
-                    .font(.title3.monospacedDigit())
+                    .font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
 
-            // Two equal gauges: BPM (the target) and Watts (the lever).
-            HStack(alignment: .top, spacing: 20) {
+            // Three equal gauges: BPM (the target), Watts (the lever), and
+            // Cadence (form). Each fills to show where the live value sits in its
+            // band. Cadence has no app-managed target, so it uses a fixed
+            // endurance-comfortable band.
+            HStack(alignment: .top, spacing: 10) {
                 ZoneGauge(
                     value: controller.metrics.heartRateBpm,
                     band: settings.targetHRBand,
@@ -52,13 +55,17 @@ struct RideView: View {
                     caption: settings.hrHoldEnabled ? "target \(wattTarget) W · AUTO" : "target \(wattTarget) W",
                     icon: "bolt.fill"
                 )
+                ZoneGauge(
+                    value: controller.metrics.cadenceRpm,
+                    band: cadenceBand,
+                    label: "rpm",
+                    caption: "cadence",
+                    icon: "arrow.trianglehead.clockwise"
+                )
             }
             .frame(maxWidth: .infinity)
 
             HStack(spacing: 32) {
-                Metric(title: "Cadence",
-                       value: controller.metrics.cadenceRpm.map { "\($0)" } ?? "—",
-                       unit: "rpm")
                 Metric(title: "Speed",
                        value: controller.metrics.speedKph.map { String(format: "%.1f", $0) } ?? "—",
                        unit: "km/h")
@@ -155,6 +162,11 @@ struct RideView: View {
     private var wattBand: ClosedRange<Int> {
         (wattTarget - wattTolerance)...(wattTarget + wattTolerance)
     }
+
+    /// Cadence isn't a target the app holds, so there's no configured setting for
+    /// it — this is a fixed endurance-comfortable window (~80–100 rpm) so the dial
+    /// gives the same in-zone/push/ease cue as BPM and Watts.
+    private var cadenceBand: ClosedRange<Int> { 80...100 }
 }
 
 /// Where a live reading sits relative to its target band, and the correction it
@@ -192,8 +204,9 @@ private enum ZoneState {
 
 /// One circular gauge: big number in the center, ring showing where the live
 /// value sits across the band (padded so you can see how far past either edge
-/// you are), and a color-coded state chip beneath. Used identically for BPM and
-/// watts so the two read as one system.
+/// you are), and a color-coded state chip beneath. Used identically for BPM,
+/// watts, and cadence so the three read as one system. The ring sizes itself to
+/// the column it's given so three fit across a phone; text scales to match.
 private struct ZoneGauge: View {
     let value: Int?
     let band: ClosedRange<Int>
@@ -222,23 +235,29 @@ private struct ZoneGauge: View {
                     .stroke(.quaternary, lineWidth: 12)
                 Circle()
                     .trim(from: 0, to: fraction)
-                    .stroke(state.tint, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                    .stroke(state.tint, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.3), value: fraction)
 
                 VStack(spacing: 0) {
                     Image(systemName: icon)
-                        .font(.callout)
+                        .font(.body)
                         .foregroundStyle(state.tint)
                     Text(value.map { "\($0)" } ?? "—")
-                        .font(.system(size: 52, weight: .bold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
                         .contentTransition(.numericText())
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
                     Text(label)
-                        .font(.caption)
+                        .font(.body)
                         .foregroundStyle(.secondary)
                 }
+                .padding(8)
             }
-            .frame(width: 150, height: 150)
+            // Square, capped so the ring stays compact on wide (iPad/Mac)
+            // layouts instead of ballooning; still shrinks to fit a phone.
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: 150)
 
             // State chip: color + word + arrow. Redundant cues on purpose.
             Text(state.cue)
@@ -249,9 +268,12 @@ private struct ZoneGauge: View {
                 .background(state.tint.opacity(0.15), in: Capsule())
 
             Text("\(caption) · \(band.lowerBound)–\(band.upperBound)")
-                .font(.caption2)
+                .font(.body)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -286,7 +308,7 @@ private struct TargetAdjuster: View {
             Button { onAdjust(current - 5) } label: {
                 Image(systemName: "minus.circle.fill")
             }
-            Text("Adjust target").font(.callout).foregroundStyle(.secondary)
+            Text("Adjust target").font(.headline).foregroundStyle(.secondary)
             Button { onAdjust(current + 5) } label: {
                 Image(systemName: "plus.circle.fill")
             }
