@@ -44,7 +44,7 @@ struct SetupView: View {
                 }
             }
 
-            Section("Heart rate") {
+            Section {
                 Stepper(value: $settings.lthr, in: 100...220, step: 1) {
                     LabeledContent("LTHR", value: "\(settings.lthr) bpm")
                 }
@@ -55,6 +55,12 @@ struct SetupView: View {
                 }
                 let band = settings.targetHRBand
                 LabeledContent("Target band", value: "\(band.lowerBound)–\(band.upperBound) bpm")
+
+                Toggle("Auto-hold HR zone", isOn: $settings.hrHoldEnabled)
+            } header: {
+                Text("Heart rate")
+            } footer: {
+                Text("Auto-hold: Zona adjusts the trainer's watts during the ride to keep your heart rate in the target zone — easing off if it drifts high, nudging up if it's low. Off: watts stay fixed and you adjust them yourself.")
             }
 
             Section("Sensors") {

@@ -51,6 +51,13 @@ final class RideSettings {
         didSet { UserDefaults.standard.set(hrZone.rawValue, forKey: "hrZone") }
     }
 
+    /// When true, the ride screen closes the loop: it nudges the ERG watt target
+    /// to hold HR in `hrZone`. Default false — the app stays open-loop unless the
+    /// rider opts in. See `HRHoldController`.
+    var hrHoldEnabled: Bool {
+        didSet { UserDefaults.standard.set(hrHoldEnabled, forKey: "hrHoldEnabled") }
+    }
+
     init() {
         let storedFTP = UserDefaults.standard.integer(forKey: "ftp")
         ftp = storedFTP == 0 ? 200 : storedFTP
@@ -62,6 +69,7 @@ final class RideSettings {
         lthr = storedLTHR == 0 ? 160 : storedLTHR
         let storedHRZone = UserDefaults.standard.integer(forKey: "hrZone")
         hrZone = HRZone(rawValue: storedHRZone) ?? .z2Endurance
+        hrHoldEnabled = UserDefaults.standard.bool(forKey: "hrHoldEnabled")  // default false
     }
 
     var engine: ZoneEngine { ZoneEngine(ftp: ftp) }

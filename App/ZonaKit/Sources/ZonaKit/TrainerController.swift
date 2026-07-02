@@ -65,6 +65,9 @@ public final class TrainerController {
 
     public var log: [String] { hub.log }
 
+    /// Append a line to the ride event log (e.g. an auto-hold explanation).
+    public func note(_ line: String) { hub.note(line) }
+
     /// Latches true once a ride's start conditions are first met, and stays true
     /// until `stop()`. Without this, a mid-ride HR strap flap (they disconnect
     /// on idle) would drop `connection` out of `.ready` and eject the rider back
