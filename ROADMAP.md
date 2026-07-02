@@ -3,7 +3,8 @@
 Possible new features, grouped by value and by how much of the plumbing already
 exists. Zona today holds a Kickr Core 2 at a steady ERG wattage while you aim for
 a target HR zone, records the ride to SwiftData, computes summaries
-(avg/NP/max power, time-in-zone, distance, RMSSD), and exports TCX. Several of the
+(avg/NP/max power, time-in-zone, distance, RMSSD), exports TCX, and uploads
+directly to Strava. Several of the
 items below build on infrastructure that already exists but isn't yet surfaced
 (the Quarq power decoder, persisted R-R intervals, closed-loop HR-hold behind a
 toggle, a CloudKit-ready data model).
@@ -46,12 +47,11 @@ toggle, a CloudKit-ready data model).
 - **iCloud / CloudKit sync.** The SwiftData model was deliberately built
   CloudKit-ready (all defaults, no `.unique`, optional relationships), so rides
   can follow you across iPhone/iPad/Mac with no migration.
-- **Direct Strava OAuth upload.** Reuses the existing TCX encoder; replaces the
-  manual Share-sheet step with one-tap upload.
 - **WHOOP Cloud API (recovery / readiness).** Post-hoc daily Recovery score,
-  resting HR, HRV (`hrv_rmssd_milli`), sleep. Net-new (OAuth + Keychain +
-  URLSession — no networking exists yet) and daily-summary only, not live data.
-  Best framed as "should I go hard or keep it Z2 today?" guidance on setup.
+  resting HR, HRV (`hrv_rmssd_milli`), sleep. The OAuth + Keychain (`TokenStore`)
+  + URLSession plumbing now exists from the Strava upload and can be reused;
+  this is daily-summary only, not live data. Best framed as "should I go hard or
+  keep it Z2 today?" guidance on setup.
 - **HRV-guided target suggestions.** Combine the HRV chart + WHOOP recovery to
   suggest an FTP% or zone for the session based on today's readiness.
 
@@ -62,8 +62,6 @@ toggle, a CloudKit-ready data model).
 - **Live Activity / Dynamic Island.** Ride timer, current HR/zone on the lock
   screen.
 - **Screen-on / idle management.** Keep the display awake while riding.
-- **Multiple rider profiles.** Separate FTP/LTHR/history per person sharing the
-  trainer.
 - **FTP / LTHR test protocols.** Guided ramp or 20-min tests to set the two
   numbers the whole app depends on, instead of typing them in.
 
