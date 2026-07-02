@@ -181,4 +181,54 @@ struct RideSummaryTests {
         #expect(rec.summary().timeInZoneSeconds == 3)
         #expect(abs(rec.timeInZoneFraction - 0.6) < 0.0001)
     }
+
+    // MARK: Distance (speed integration)
+
+    private func ride(speeds kph: [Double?], seconds: [Int]? = nil) -> RideRecording {
+        let secs = seconds ?? Array(0..<kph.count)
+        let samples = zip(secs, kph).map { RideSample(secondsFromStart: $0, speedKph: $1) }
+        return RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
+    }
+
+    @Test func distanceIntegratesSteadySpeed() {
+        // 36 km/h = 10 m/s. Three samples at 0,1,2s → two 1-second gaps →
+        // 10 m + 10 m = 20 m. The last sample has no next interval.
+        let rec = ride(speeds: [36, 36, 36])
+        #expect(abs(rec.distanceMeters - 20) < 1e-6)
+        #expect(abs(rec.summary().distanceMeters - 20) < 1e-6)
+    }
+
+    @Test func distanceUsesActualGapAcrossDropouts() {
+        // A dropped second: samples at 0 and 2 (gap = 2s) at 18 km/h = 5 m/s →
+        // 5 × 2 = 10 m. Proves we integrate the real gap, not a fixed 1 Hz.
+        let rec = ride(speeds: [18, 18], seconds: [0, 2])
+        #expect(abs(rec.distanceMeters - 10) < 1e-6)
+    }
+
+    @Test func distanceSkipsIntervalsWithNoSpeed() {
+        // Middle sample reports no speed → its interval contributes 0.
+        // gaps: [0→1] 10 m/s ×1 = 10, [1→2] nil = 0. Total 10 m.
+        let rec = ride(speeds: [36, nil, 36])
+        #expect(abs(rec.distanceMeters - 10) < 1e-6)
+    }
+
+    @Test func distanceZeroWhenNoSpeedSamples() {
+        // Power/HR-only ride (no trainer speed) → 0, same as before.
+        let samples = (0..<10).map { RideSample(secondsFromStart: $0, powerW: 150) }
+        let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
+        #expect(rec.distanceMeters == 0)
+        #expect(rec.summary().distanceMeters == 0)
+    }
+
+    @Test func cumulativeDistanceIsMonotonicRunningTotal() {
+        // 10 m/s across 0,1,2,3s → running totals 10,20,30,30 (last has no next).
+        let rec = ride(speeds: [36, 36, 36, 36])
+        let cum = rec.cumulativeDistanceMeters()
+        #expect(cum.count == 4)
+        #expect(abs(cum[0] - 10) < 1e-6)
+        #expect(abs(cum[1] - 20) < 1e-6)
+        #expect(abs(cum[2] - 30) < 1e-6)
+        #expect(abs(cum[3] - 30) < 1e-6)
+        #expect(abs((cum.last ?? 0) - rec.distanceMeters) < 1e-6)
+    }
 }

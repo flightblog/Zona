@@ -9,17 +9,24 @@ public struct RideSummary: Sendable, Equatable {
     public let normalizedPowerW: Int
     /// Seconds spent with instantaneous power inside the target zone's band.
     public let timeInZoneSeconds: Int
+    /// Total distance in metres, integrated from the trainer's reported speed.
+    /// This is *simulated* (the trainer's power→speed model on a virtual flat),
+    /// not GPS — the same figure Zwift/Wahoo show for an indoor ride. 0 if no
+    /// sample reported speed.
+    public let distanceMeters: Double
 
     public init(durationSeconds: Int,
                 averagePowerW: Int,
                 maxPowerW: Int,
                 normalizedPowerW: Int,
-                timeInZoneSeconds: Int) {
+                timeInZoneSeconds: Int,
+                distanceMeters: Double = 0) {
         self.durationSeconds = durationSeconds
         self.averagePowerW = averagePowerW
         self.maxPowerW = maxPowerW
         self.normalizedPowerW = normalizedPowerW
         self.timeInZoneSeconds = timeInZoneSeconds
+        self.distanceMeters = distanceMeters
     }
 }
 
@@ -48,8 +55,47 @@ public extension RideRecording {
             averagePowerW: avg,
             maxPowerW: maxP,
             normalizedPowerW: np,
-            timeInZoneSeconds: inZone
+            timeInZoneSeconds: inZone,
+            distanceMeters: distanceMeters
         )
+    }
+
+    /// Total ride distance in metres, integrated from reported speed. Each
+    /// sample's speed is held over the gap to the *next* sample (step
+    /// integration — trainers report speed stepwise, and gaps from dropped
+    /// seconds shouldn't be filled by interpolation). The final sample has no
+    /// "next", so it contributes nothing (a ≤1 s tail, negligible). Samples with
+    /// no speed contribute 0 for their interval.
+    var distanceMeters: Double {
+        let ordered = samples.sorted { $0.secondsFromStart < $1.secondsFromStart }
+        var metres = 0.0
+        for i in 0..<ordered.count {
+            guard i + 1 < ordered.count else { break }
+            guard let kph = ordered[i].speedKph else { continue }
+            let dt = ordered[i + 1].secondsFromStart - ordered[i].secondsFromStart
+            guard dt > 0 else { continue }
+            metres += (kph / 3.6) * Double(dt)   // (m/s) × s
+        }
+        return metres
+    }
+
+    /// Running cumulative distance in metres at each sample, aligned to
+    /// `samples` sorted by time — for exporters that stamp per-trackpoint
+    /// distance (e.g. TCX). Element `i` is the distance covered up to and
+    /// including sample `i`'s interval.
+    func cumulativeDistanceMeters() -> [Double] {
+        let ordered = samples.sorted { $0.secondsFromStart < $1.secondsFromStart }
+        var running = 0.0
+        var out: [Double] = []
+        out.reserveCapacity(ordered.count)
+        for i in 0..<ordered.count {
+            if i + 1 < ordered.count, let kph = ordered[i].speedKph {
+                let dt = ordered[i + 1].secondsFromStart - ordered[i].secondsFromStart
+                if dt > 0 { running += (kph / 3.6) * Double(dt) }
+            }
+            out.append(running)
+        }
+        return out
     }
 
     /// Seconds where instantaneous power fell inside `zone`'s band. Defaults to
