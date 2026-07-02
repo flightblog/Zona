@@ -35,16 +35,24 @@ public struct RideMetrics: Equatable, Sendable {
     /// The ERG watt target currently commanded (nil before a ride starts).
     public var targetW: Int?
 
+    /// R-R intervals (seconds) from the most recent HR notification, if any.
+    /// **Transient, not sticky:** the hub publishes these once with the reading
+    /// that carried them and then clears them, so a given beat set is recorded in
+    /// exactly one second's sample and never re-counted on a later metrics change.
+    public var rrIntervalsSec: [Double]?
+
     public init(powerW: Int? = nil,
                 cadenceRpm: Int? = nil,
                 speedKph: Double? = nil,
                 heartRateBpm: Int? = nil,
-                targetW: Int? = nil) {
+                targetW: Int? = nil,
+                rrIntervalsSec: [Double]? = nil) {
         self.powerW = powerW
         self.cadenceRpm = cadenceRpm
         self.speedKph = speedKph
         self.heartRateBpm = heartRateBpm
         self.targetW = targetW
+        self.rrIntervalsSec = rrIntervalsSec
     }
 
     /// Signed deviation of live power from target (negative = under target).

@@ -34,6 +34,11 @@ final class Ride {
     var avgHeartRate: Int = 0
     var maxHeartRate: Int = 0
     var timeInHRZoneSec: Int = 0
+    /// Heart-rate variability (RMSSD, ms) for the ride, or nil when the strap
+    /// reported too few R-R beats (or none — e.g. a sensor that omits R-R). nil,
+    /// not 0, so the summary can show "—" instead of a fabricated value.
+    /// Optional keeps it CloudKit-safe (no default needed, migrates old rides).
+    var hrvRMSSDms: Int?
 
     @Relationship(deleteRule: .cascade, inverse: \RideSampleModel.ride)
     var samples: [RideSampleModel]? = []
@@ -52,7 +57,8 @@ final class Ride {
          hrZoneRaw: Int = HRZone.z2Endurance.rawValue,
          avgHeartRate: Int = 0,
          maxHeartRate: Int = 0,
-         timeInHRZoneSec: Int = 0) {
+         timeInHRZoneSec: Int = 0,
+         hrvRMSSDms: Int? = nil) {
         self.id = id
         self.date = date
         self.ftp = ftp
@@ -68,6 +74,7 @@ final class Ride {
         self.avgHeartRate = avgHeartRate
         self.maxHeartRate = maxHeartRate
         self.timeInHRZoneSec = timeInHRZoneSec
+        self.hrvRMSSDms = hrvRMSSDms
     }
 
     var zone: PowerZone { PowerZone(rawValue: zoneRaw) ?? .z2Endurance }
@@ -91,6 +98,12 @@ final class RideSampleModel {
     var cadenceRpm: Int?
     var speedKph: Double?
     var heartRateBpm: Int?
+    /// Raw R-R (beat-to-beat) intervals in seconds captured during this second,
+    /// kept so HRV can be recomputed later (a different filter, SDNN, an HRV
+    /// chart) without re-riding. nil when the strap reported no R-R this second.
+    /// SwiftData stores the scalar array as an archived attribute; optional keeps
+    /// it CloudKit-safe and lightweight-migrates existing rides.
+    var rrIntervalsSec: [Double]?
 
     var ride: Ride?
 
@@ -98,12 +111,14 @@ final class RideSampleModel {
          powerW: Int? = nil,
          cadenceRpm: Int? = nil,
          speedKph: Double? = nil,
-         heartRateBpm: Int? = nil) {
+         heartRateBpm: Int? = nil,
+         rrIntervalsSec: [Double]? = nil) {
         self.secondsFromStart = secondsFromStart
         self.powerW = powerW
         self.cadenceRpm = cadenceRpm
         self.speedKph = speedKph
         self.heartRateBpm = heartRateBpm
+        self.rrIntervalsSec = rrIntervalsSec
     }
 }
 
@@ -128,7 +143,8 @@ extension Ride {
             hrZoneRaw: hrZone.rawValue,
             avgHeartRate: recording.averageHeartRate,
             maxHeartRate: recording.maxHeartRate,
-            timeInHRZoneSec: recording.timeInHRZone(hrZone, lthr: lthr)
+            timeInHRZoneSec: recording.timeInHRZone(hrZone, lthr: lthr),
+            hrvRMSSDms: summary.hrvRMSSDms
         )
         ride.samples = recording.samples.map {
             RideSampleModel(
@@ -136,7 +152,8 @@ extension Ride {
                 powerW: $0.powerW,
                 cadenceRpm: $0.cadenceRpm,
                 speedKph: $0.speedKph,
-                heartRateBpm: $0.heartRateBpm
+                heartRateBpm: $0.heartRateBpm,
+                rrIntervalsSec: $0.rrIntervalsSec
             )
         }
         return ride

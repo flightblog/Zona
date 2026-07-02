@@ -67,15 +67,22 @@ public struct SensorReading: Sendable, Equatable {
     public var cadenceRpm: Int?
     public var speedKph: Double?
     public var heartRateBpm: Int?
+    /// R-R (beat-to-beat) intervals in seconds from this HR notification, if the
+    /// strap reports them (many do; the trainer never will). Feeds HRV. Bursty —
+    /// a single packet can carry several — so unlike the other fields these are
+    /// *appended* per second by the recorder, not last-write-wins.
+    public var rrIntervalsSec: [Double]?
 
     public init(powerW: Int? = nil,
                 cadenceRpm: Int? = nil,
                 speedKph: Double? = nil,
-                heartRateBpm: Int? = nil) {
+                heartRateBpm: Int? = nil,
+                rrIntervalsSec: [Double]? = nil) {
         self.powerW = powerW
         self.cadenceRpm = cadenceRpm
         self.speedKph = speedKph
         self.heartRateBpm = heartRateBpm
+        self.rrIntervalsSec = rrIntervalsSec
     }
 }
 

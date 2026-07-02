@@ -136,6 +136,24 @@ struct RideRecorderTests {
         rec.ingest(RideMetrics(powerW: 100), at: t0 + .seconds(4) + .milliseconds(500))
         #expect(rec.elapsedSeconds == 5)  // seconds 0…4 → 5 elapsed
     }
+
+    /// R-R intervals accumulate within a second (multiple HR notifications, each
+    /// carrying beats) rather than overwriting like the scalar fields do.
+    @Test func rrIntervalsAppendWithinSecond() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        rec.ingest(RideMetrics(heartRateBpm: 75, rrIntervalsSec: [0.80]),
+                   at: t0 + .milliseconds(100))
+        rec.ingest(RideMetrics(heartRateBpm: 76, rrIntervalsSec: [0.81, 0.79]),
+                   at: t0 + .milliseconds(600))
+        // A later reading with no R-R must not clear what was accumulated.
+        rec.ingest(RideMetrics(powerW: 130), at: t0 + .milliseconds(900))
+
+        let recording = rec.finish()
+        #expect(recording.samples.count == 1)
+        #expect(recording.samples[0].rrIntervalsSec == [0.80, 0.81, 0.79])
+    }
 }
 
 @Suite("Ride summary")

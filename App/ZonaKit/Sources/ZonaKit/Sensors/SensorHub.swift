@@ -154,7 +154,12 @@ public final class SensorHub {
         if let c = reading.cadenceRpm { metrics.cadenceRpm = c }
         if let s = reading.speedKph { metrics.speedKph = s }
         if let hr = reading.heartRateBpm { metrics.heartRateBpm = hr }
+        // R-R is bursty and must not stick across seconds: attach it only for the
+        // publish that carried it, then clear it so a later reading (e.g. the next
+        // Indoor Bike Data with no R-R) doesn't re-record the same beats.
+        metrics.rrIntervalsSec = reading.rrIntervalsSec
         onMetricsChange?(metrics)
+        metrics.rrIntervalsSec = nil
     }
 
     fileprivate func setTrainerReady() {
@@ -667,7 +672,8 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
 
         case (.heartRate, _):
             guard let hr = HeartRateMeasurement(data) else { return }
-            let reading = SensorReading(heartRateBpm: hr.heartRateBpm)
+            let reading = SensorReading(heartRateBpm: hr.heartRateBpm,
+                                        rrIntervalsSec: hr.rrIntervals.isEmpty ? nil : hr.rrIntervals)
             toOwner { $0.apply(reading) }
 
         case (.powerMeter, _):
