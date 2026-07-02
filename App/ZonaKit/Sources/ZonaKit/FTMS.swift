@@ -23,6 +23,22 @@ public enum FTMS {
     public static var controlPointUUID: CBUUID { CBUUID(string: UUIDs.controlPoint) }
     public static var machineStatusUUID: CBUUID { CBUUID(string: UUIDs.machineStatus) }
 
+    /// Human-readable list of a characteristic's GATT properties, for diagnostics.
+    /// The FTMS control point (2AD9) must expose `.write` and `.indicate`; a Kickr
+    /// that omits either would leave Request Control forever "awaiting indication".
+    public static func describe(_ p: CBCharacteristicProperties) -> String {
+        var names: [String] = []
+        if p.contains(.broadcast) { names.append("broadcast") }
+        if p.contains(.read) { names.append("read") }
+        if p.contains(.writeWithoutResponse) { names.append("writeNoResp") }
+        if p.contains(.write) { names.append("write") }
+        if p.contains(.notify) { names.append("notify") }
+        if p.contains(.indicate) { names.append("indicate") }
+        if p.contains(.authenticatedSignedWrites) { names.append("signedWrite") }
+        if p.contains(.extendedProperties) { names.append("extended") }
+        return names.isEmpty ? "none" : names.joined(separator: "+")
+    }
+
     /// Control Point op codes (first byte of a write to 0x2AD9).
     public enum OpCode: UInt8 {
         case requestControl = 0x00

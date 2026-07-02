@@ -566,6 +566,15 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             kindForPeripheral[peripheral.identifier] = kind
             toOwner { $0.setState(.scanning, for: kind) }
             central?.connect(peripheral)   // fires again when it re-advertises
+            // Re-arm the connect watchdog: CoreBluetooth's connect() never times
+            // out, and this reconnect can stall just like the initial one (the
+            // Kickr's "connection timed out unexpectedly" drop). Without this a
+            // stalled trainer reconnect hangs the ride at "Preparing" forever —
+            // the trainer is nominally connected but its FTMS handshake, which
+            // runs off characteristic discovery, never completes and nothing
+            // cancels-and-retries. On timeout `armConnectTimeout` cancels + rescans.
+            connectingIdentifiers.insert(peripheral.identifier)
+            armConnectTimeout(peripheral.identifier)
             rescanForMissing()             // also catch it via a fresh scan
         } else {
             peripherals[kind] = nil
@@ -619,11 +628,31 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             kind = resolved
         }
 
-        guard let kind,
-              let service = services.first(where: { $0.uuid == kind.serviceUUID }) else { return }
-        // Trainer needs its control point too; others just the measurement char.
+        if let error {
+            let msg = error.localizedDescription
+            toOwner { $0.note("Service discovery error: \(msg)") }
+        }
+        let deviceName = peripheral.name ?? "device"
+        guard let kind else {
+            toOwner { $0.note("Discovered services but kind unresolved for \(deviceName)") }
+            return
+        }
+        guard let service = services.first(where: { $0.uuid == kind.serviceUUID }) else {
+            let found = services.map { $0.uuid.uuidString }.joined(separator: ",")
+            toOwner { $0.note("\(kind.displayName): service \(kind.serviceUUIDString) not among [\(found)]") }
+            return
+        }
+        // Trainer needs its control point AND the Fitness Machine Status char
+        // (0x2ADA): the Kickr Core 2 firmware won't return control-point
+        // indications unless the client is subscribed to machine status. The
+        // verified single-sensor prototype subscribed to it; the multi-sensor
+        // rewrite dropped it, which is why Request Control got acked but never
+        // answered. Others just need the measurement char.
         var chars = [kind.measurementUUID]
-        if kind == .trainer { chars.append(FTMS.controlPointUUID) }
+        if kind == .trainer {
+            chars.append(FTMS.controlPointUUID)
+            chars.append(FTMS.machineStatusUUID)
+        }
         peripheral.discoverCharacteristics(chars, for: service)
     }
 
@@ -632,12 +661,28 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
         // Connection fully established — disarm the connect watchdog.
         connectingIdentifiers.remove(peripheral.identifier)
 
+        if let error {
+            let msg = error.localizedDescription
+            toOwner { $0.note("\(kind.displayName): characteristic discovery error: \(msg)") }
+        }
+
+        let found = (service.characteristics ?? []).map { $0.uuid.uuidString }
         for char in service.characteristics ?? [] {
             if char.uuid == kind.measurementUUID {
                 peripheral.setNotifyValue(true, for: char)
             }
             if kind == .trainer, char.uuid == FTMS.controlPointUUID {
                 trainerControlPoint = char
+                peripheral.setNotifyValue(true, for: char)
+                // Log the control point's GATT properties: it must expose
+                // .write + .indicate, and a Kickr missing either would leave
+                // Request Control forever "awaiting indication".
+                let props = FTMS.describe(char.properties)
+                toOwner { $0.note("Control point 2AD9 props: \(props)") }
+            }
+            // The Kickr requires an active Fitness Machine Status subscription
+            // before it will answer control-point commands (see didDiscoverServices).
+            if kind == .trainer, char.uuid == FTMS.machineStatusUUID {
                 peripheral.setNotifyValue(true, for: char)
             }
         }
@@ -649,10 +694,31 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
         // connected — not merely in flight — so a slow strap isn't abandoned.
         if desired.allSatisfy({ peripherals[$0] != nil }) { central?.stopScan() }
 
-        // FTMS handshake — unchanged from the verified single-peripheral path.
-        if kind == .trainer, let cp = trainerControlPoint {
-            peripheral.writeValue(FTMS.requestControlCommand(), for: cp, type: .withResponse)
+        // FTMS handshake: write Request Control immediately after subscribing,
+        // in THIS callback — byte-for-byte identical to the verified single-sensor
+        // prototype (Prototype/WahooFTMSPrototype). Do NOT defer this to
+        // didUpdateNotificationStateFor: that callback fires once per subscribed
+        // characteristic (we subscribe to three), so deferring risks sending
+        // Request Control before the machine-status subscription is active, which
+        // the Kickr requires. The prototype issues all three setNotifyValue calls
+        // then writes — restoring exactly that.
+        if kind == .trainer {
+            if let cp = trainerControlPoint {
+                toOwner { $0.note("→ Request Control (handshake start)") }
+                peripheral.writeValue(FTMS.requestControlCommand(), for: cp, type: .withResponse)
+            } else {
+                toOwner { $0.note("⚠️ Trainer control point 2AD9 not found; chars=[\(found.joined(separator: ","))]") }
+            }
         }
+    }
+
+    /// Surfaces a failed control-point write (`.withResponse`): a silent write
+    /// failure — rather than a missing indication — would otherwise look like a
+    /// stuck handshake.
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard characteristic.uuid == FTMS.controlPointUUID, let error else { return }
+        let msg = error.localizedDescription
+        toOwner { $0.note("⚠️ Control-point write failed: \(msg)") }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -688,9 +754,14 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
 
     /// The FTMS request-control → start → ready chain, identical to the original.
     private func handleTrainerControlResponse(_ data: Data, peripheral: CBPeripheral) {
-        guard let resp = FTMS.parseControlResponse(data) else { return }
+        guard let resp = FTMS.parseControlResponse(data) else {
+            toOwner { $0.note("Trainer: unparsable control response \(Array(data))") }
+            return
+        }
         let requested = resp.requested
         let succeeded = resp.result.isSuccess
+        let summary = "op 0x\(String(requested, radix: 16)) → \(succeeded ? "OK" : "FAIL(\(resp.result))")"
+        toOwner { $0.note("Trainer response: \(summary)") }
 
         if succeeded, let cp = trainerControlPoint {
             if requested == FTMS.OpCode.requestControl.rawValue {
