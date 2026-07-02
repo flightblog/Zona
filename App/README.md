@@ -18,10 +18,17 @@ next planned sources).
 3. **Save & review** — on End ride the session is recorded to **SwiftData** and a
    summary appears (time-in-HR-zone headline, avg/max HR, power stats, HR+power
    chart). **History** lists past rides; swipe to delete.
-4. **Export** — the summary's **Export** button (⬆️ toolbar) shares the ride as a
-   `.tcx` file you can send to **Strava** (or Files / AirDrop / mail). No account
-   or OAuth. The file is branded with `<Creator>Zona</Creator>`. Indoor rides have
-   no GPS, so they import as virtual rides (HR/power/cadence graphs, no map).
+4. **Send to Strava** — two options in the summary toolbar:
+   - **Upload to Strava** — one tap uploads the ride directly (OAuth, no files).
+     First use opens a Strava consent screen; after that it's automatic. The button
+     then becomes **View on Strava**, and the ride won't be uploaded twice.
+     Requires a Strava API app to be configured (see *Strava upload setup* below);
+     the button is hidden when it isn't.
+   - **Export** (⬆️) — shares the ride as a `.tcx` file to Strava, Files, AirDrop,
+     or mail, with no account. Both paths brand the file with `<Creator>Zona</Creator>`.
+
+   Indoor rides have no GPS, so they import as virtual rides (HR/power/cadence
+   graphs, no map).
 
 ### Zones: HR defines the target, power does the controlling
 
@@ -36,7 +43,7 @@ LTHR). No closed-loop HR→watts control — that's a possible future phase.
 App/
 ├── project.yml              # XcodeGen spec → Zona.xcodeproj (iOS + macOS).
 │                            #   Owns Info.plist + entitlements — see note below.
-├── ZonaKit/                 # Swift Package: verified core, no UI. 49 tests.
+├── ZonaKit/                 # Swift Package: verified core, no UI. 104 tests.
 │   ├── Sources/ZonaKit/
 │   │   ├── FTMS.swift              # FTMS GATT: op codes, Indoor Bike Data decode
 │   │   ├── Zones.swift            # FTP → Coggan power zones
@@ -50,24 +57,37 @@ App/
 │   │   │   ├── HeartRateMeasurement.swift  # 0x2A37 decode
 │   │   │   ├── CyclingPowerMeasurement.swift # 0x2A63 decode (Quarq-ready)
 │   │   │   └── SensorHub.swift             # multi-peripheral BLE manager
-│   │   └── Export/
-│   │       └── TCXExporter.swift  # ride → TCX (TrainingCenterDatabase v2) string
-│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests
+│   │   ├── Export/
+│   │   │   └── TCXExporter.swift  # ride → TCX (TrainingCenterDatabase v2) string
+│   │   └── Strava/               # pure OAuth/upload logic (no networking)
+│   │       ├── StravaOAuth.swift   # authorize URL, callback parse, token bodies
+│   │       ├── StravaToken.swift   # token decode + expiry
+│   │       ├── StravaUpload.swift  # upload-status decode + poll state machine
+│   │       └── TokenStore.swift    # token persistence seam (mirrors SensorMemory)
+│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests
 └── Zona/                    # App target
     ├── ZonaApp.swift        # @main, RideSettings (FTP/zone/LTHR/HR zone), modelContainer
     ├── Model/
     │   ├── RideStore.swift          # SwiftData @Model: Ride, RideSampleModel
     │   ├── RideExport.swift         # Ride → .tcx temp file for the Share sheet
     │   └── SensorMemoryStore.swift  # UserDefaults-backed SensorMemory
+    ├── Strava/                      # app-side I/O glue for Strava upload
+    │   ├── StravaService.swift      # URLSession: exchange, refresh, upload + poll
+    │   ├── StravaAuthenticator.swift # ASWebAuthenticationSession OAuth login
+    │   ├── KeychainTokenStore.swift # Keychain-backed TokenStore
+    │   ├── StravaSecrets.swift      # client id/secret from Info.plist
+    │   └── StravaUploadModel.swift  # @Observable upload view-model
+    ├── Config/
+    │   └── Secrets.example.xcconfig # template → gitignored Secrets.xcconfig
     ├── Views/
     │   ├── ContentView.swift    # setup ↔ ride router + History link
     │   ├── SetupView.swift       # FTP, LTHR, zones, sensor rows, connect, Diagnostics
     │   ├── RideView.swift        # HR readout, power dial, record, End ride
-    │   ├── RideSummaryView.swift # per-ride summary + chart + Export (ShareLink)
+    │   ├── RideSummaryView.swift # per-ride summary + chart + Strava upload / Export
     │   └── HistoryView.swift     # past rides list
     └── Resources/
-        ├── Info.plist                # generated — NSBluetoothAlwaysUsageDescription
-        ├── Zona.macOS.entitlements   # generated — sandbox + bluetooth
+        ├── Info.plist                # generated — BLE usage, URL scheme, Strava keys
+        ├── Zona.macOS.entitlements   # generated — sandbox + bluetooth + network
         └── Assets.xcassets           # AppIcon (iOS 1024 + macOS ladder)
 ```
 
@@ -97,11 +117,36 @@ xcodebuild -project Zona.xcodeproj -scheme Zona \
   -destination 'platform=iOS Simulator,name=iPhone 15 Pro' build
 ```
 
+## Strava upload setup
+
+The **Upload to Strava** button needs a Strava API app's credentials. Without
+them the button simply hides (the `.tcx` Share export still works).
+
+1. Create an API application at <https://www.strava.com/settings/api>. Set its
+   **Authorization Callback Domain** to exactly `strava-auth` (no scheme, no
+   slashes) — this matches the app's `zona://strava-auth` OAuth redirect.
+2. Copy `Zona/Config/Secrets.example.xcconfig` to `Zona/Config/Secrets.xcconfig`
+   and fill in your **Client ID** and **Client Secret**:
+   ```
+   STRAVA_CLIENT_ID = 12345
+   STRAVA_CLIENT_SECRET = your_secret
+   ```
+   `Secrets.xcconfig` is **gitignored** — credentials never get committed.
+3. Run `xcodegen generate` and rebuild. The values are injected into Info.plist;
+   the app requests its own upload token via OAuth on first use (you never paste
+   access/refresh tokens — those are captured by the login flow and stored in the
+   Keychain).
+
+> **Security note.** Strava's token endpoint has no PKCE, so the client secret is
+> baked into the built binary and is extractable. That's acceptable for a
+> personal, single-user build but blocks unmodified public distribution. A
+> server-side token-exchange proxy would be the fix.
+
 ## Verifying the core
 
 ```sh
 cd App/ZonaKit
-swift test        # 49 tests: zones, FTMS/HR/power decode, recorder, summaries, TCX export
+swift test        # 104 tests: zones, FTMS/HR/power decode, recorder, summaries, TCX export, Strava OAuth/upload
 ```
 
 `ZonaKit` is pure and fully unit-tested. The BLE connection logic in `SensorHub`
@@ -152,7 +197,9 @@ to the main actor. No `@preconcurrency` escape hatches.
 
 Rides are stored **locally** with SwiftData (on-device only). The model is
 CloudKit-ready (all properties defaulted, no `.unique`, optional relationships)
-so iCloud sync can be enabled later with no migration. Zona does **not** use the
+so iCloud sync can be enabled later with no migration. The only outbound
+networking is the **optional** Strava upload — nothing leaves the device unless
+you tap Upload; OAuth tokens are kept in the Keychain. Zona does **not** use the
 Wahoo Cloud API — see the roadmap for why.
 
 ## Roadmap
@@ -162,7 +209,5 @@ Wahoo Cloud API — see the roadmap for why.
 - Optional **iCloud/CloudKit** sync (model already compatible).
 - A **device picker** (currently the scan is unfiltered + name-heuristic; see the
   SensorHub note above).
-- Possible **direct Strava OAuth upload** (auto/one-tap; reuses the TCX encoder)
-  if the manual Share-sheet export proves too clunky.
 - Possible **closed-loop HR→watts** (auto-adjust ERG to hold an HR zone) and
   **HRV/R-R** capture (R-R is already parsed, just not stored).

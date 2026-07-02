@@ -29,7 +29,7 @@ The Xcode project and its Info.plist/entitlements are **generated** from
 `xcodegen generate` after cloning.
 
 ```sh
-cd App/ZonaKit && swift test   # 49 tests: zones, BLE decoders, recorder, summaries, TCX export
+cd App/ZonaKit && swift test   # 104 tests: zones, BLE decoders, recorder, summaries, TCX export, Strava upload
 ```
 
 ## What it does
@@ -37,7 +37,8 @@ cd App/ZonaKit && swift test   # 49 tests: zones, BLE decoders, recorder, summar
 The trainer holds a steady **power** setpoint via FTMS ERG (from your FTP), while
 **heart rate** (from your LTHR) defines and displays the zone you're aiming for —
 a stable design that avoids chasing a laggy HR signal with the trainer. Rides are
-stored locally with SwiftData (CloudKit-ready for later sync) and can be exported
-as a `.tcx` file to **Strava** or anywhere else via the Share sheet.
+stored locally with SwiftData (CloudKit-ready for later sync). Finished rides can
+go to **Strava** two ways: a one-tap **Upload to Strava** button (OAuth, no
+files), or a `.tcx` **Share-sheet export** to Strava or anywhere else.
 
 Built collaboratively with Claude Code.
