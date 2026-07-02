@@ -62,6 +62,15 @@ public final class RideRecorder {
 
     public init() {}
 
+    /// Whole seconds elapsed since `start(...)`, measured from the monotonic
+    /// start instant. Unlike `elapsedSeconds` (which only advances when metrics
+    /// arrive via `ingest`), this reflects real time on demand, so a UI timer can
+    /// tick from a periodic clock even while the trainer is silent.
+    public func elapsed(at instant: ContinuousClock.Instant = ContinuousClock.now) -> Int {
+        guard isRecording else { return elapsedSeconds }
+        return max(0, Int(startInstant.duration(to: instant) / .seconds(1)))
+    }
+
     public func start(ftp: Int, zone: PowerZone, now: Date = Date(),
                       clock: ContinuousClock.Instant = ContinuousClock.now) {
         self.ftp = ftp

@@ -24,9 +24,14 @@ struct RideView: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            Text(elapsedText)
-                .font(.title3.monospacedDigit())
-                .foregroundStyle(.secondary)
+            // Tick once a second off a periodic clock so the timer advances on
+            // its own, independent of whether new trainer metrics have arrived.
+            // Reading `context.date` is what makes SwiftUI re-render each tick.
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(elapsedText(asOf: context.date))
+                    .font(.title3.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
 
             // Two equal gauges: BPM (the target) and Watts (the lever).
             HStack(alignment: .top, spacing: 20) {
@@ -97,8 +102,11 @@ struct RideView: View {
         savedRide = ride
     }
 
-    private var elapsedText: String {
-        let s = recorder.elapsedSeconds
+    /// Elapsed ride time as mm:ss. `asOf` is the enclosing `TimelineView`'s
+    /// periodic tick — passing it in ties the recompute to the clock, so the
+    /// timer keeps counting even when metrics are static.
+    private func elapsedText(asOf _: Date) -> String {
+        let s = recorder.isRecording ? recorder.elapsed() : recorder.elapsedSeconds
         return String(format: "%02d:%02d", s / 60, s % 60)
     }
 
