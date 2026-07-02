@@ -15,6 +15,10 @@ struct SensorMemoryStore: SensorMemory {
         "sensor.remembered.\(kind.rawValue)"
     }
 
+    private func preferredKey(for kind: SensorKind) -> String {
+        "sensor.preferred.\(kind.rawValue)"
+    }
+
     func rememberedIdentifier(for kind: SensorKind) -> UUID? {
         guard let s = defaults.string(forKey: key(for: kind)) else { return nil }
         return UUID(uuidString: s)
@@ -22,5 +26,18 @@ struct SensorMemoryStore: SensorMemory {
 
     func remember(_ identifier: UUID, for kind: SensorKind) {
         defaults.set(identifier.uuidString, forKey: key(for: kind))
+    }
+
+    func preferredIdentifier(for kind: SensorKind) -> UUID? {
+        guard let s = defaults.string(forKey: preferredKey(for: kind)) else { return nil }
+        return UUID(uuidString: s)
+    }
+
+    func setPreferred(_ identifier: UUID?, for kind: SensorKind) {
+        if let identifier {
+            defaults.set(identifier.uuidString, forKey: preferredKey(for: kind))
+        } else {
+            defaults.removeObject(forKey: preferredKey(for: kind))
+        }
     }
 }
