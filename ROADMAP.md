@@ -1,0 +1,76 @@
+# Zona — Roadmap
+
+Possible new features, grouped by value and by how much of the plumbing already
+exists. Zona today holds a Kickr Core 2 at a steady ERG wattage while you aim for
+a target HR zone, records the ride to SwiftData, computes summaries
+(avg/NP/max power, time-in-zone, distance, RMSSD), and exports TCX. Several of the
+items below build on infrastructure that already exists but isn't yet surfaced
+(the Quarq power decoder, persisted R-R intervals, closed-loop HR-hold behind a
+toggle, a CloudKit-ready data model).
+
+## Tier 1 — Highest value, plumbing largely exists
+
+- **Structured workouts / interval sessions.** A workout builder (or preset
+  library: 2×20 sweet-spot, Z2 endurance blocks, warmup→steady→cooldown ramps)
+  that drives the ERG target automatically over time — turning Zona from "hold one
+  number" into a training tool. The `setTargetPower` lever, `RideRecorder`, and
+  time base already exist; this is mostly a workout model + a scheduler ticking
+  targets, reusing the same `.task` loop that drives HR-hold.
+- **Workout import/export (.zwo / .erg / .mrc).** Import standard workout files so
+  sessions don't all have to be authored in-app. Reuses the XML-handling patterns
+  proven in `TCXExporter`.
+- **HRV time-series chart + SDNN.** Raw per-second R-R is already persisted
+  (`RideSampleModel.rrIntervalsSec`) precisely so this can be added without
+  re-riding. Add `HRV.sdnn` alongside the existing `rmssd`, plus an HRV-over-the-
+  ride chart in `RideSummaryView` (already uses Swift Charts). Pure and testable.
+- **Trends / history dashboard.** `HistoryView` is a flat list today. A trends
+  screen — weekly time-in-zone, RMSSD trend, distance/duration totals, a simple
+  Z2-discipline view — is high-value and entirely local (all data is in SwiftData).
+
+## Tier 2 — Rounds out the ride experience
+
+- **Quarq/SRAM as a selectable power source.** The `CyclingPowerMeasurement`
+  decoder, `powerMeter` SensorKind, and preferred-device picker already exist and
+  are dormant-but-ready. Surface it as a display/record source (true leg power
+  alongside the ERG-held trainer power, L/R balance).
+- **Audio / haptic zone cues.** Optional voice or haptic feedback ("push," "ease,"
+  "back in zone") so you can ride heads-down without watching the gauges.
+- **Auto-pause / coasting detection.** When you stop pedaling (watts=0) the timer
+  keeps running; detect a coast/stop and auto-pause the recorder to clean up
+  summaries and time-in-zone math.
+- **Live ride charts.** A scrolling HR/power trace during the ride (not just the
+  post-ride summary), to see drift and trend, not only the instantaneous gauge.
+
+## Tier 3 — Connectivity & sync (known deferred items)
+
+- **iCloud / CloudKit sync.** The SwiftData model was deliberately built
+  CloudKit-ready (all defaults, no `.unique`, optional relationships), so rides
+  can follow you across iPhone/iPad/Mac with no migration.
+- **Direct Strava OAuth upload.** Reuses the existing TCX encoder; replaces the
+  manual Share-sheet step with one-tap upload.
+- **WHOOP Cloud API (recovery / readiness).** Post-hoc daily Recovery score,
+  resting HR, HRV (`hrv_rmssd_milli`), sleep. Net-new (OAuth + Keychain +
+  URLSession — no networking exists yet) and daily-summary only, not live data.
+  Best framed as "should I go hard or keep it Z2 today?" guidance on setup.
+- **HRV-guided target suggestions.** Combine the HRV chart + WHOOP recovery to
+  suggest an FTP% or zone for the session based on today's readiness.
+
+## Tier 4 — Platform polish
+
+- **Apple Watch companion.** Live HR from the watch as an HR source and/or a
+  glanceable ride controller.
+- **Live Activity / Dynamic Island.** Ride timer, current HR/zone on the lock
+  screen.
+- **Screen-on / idle management.** Keep the display awake while riding.
+- **Multiple rider profiles.** Separate FTP/LTHR/history per person sharing the
+  trainer.
+- **FTP / LTHR test protocols.** Guided ramp or 20-min tests to set the two
+  numbers the whole app depends on, instead of typing them in.
+
+## Suggested next steps
+
+- **Structured workouts** is the biggest capability jump and reuses infrastructure
+  already trusted.
+- **HRV chart + SDNN** is the cheapest high-value win — the raw data is already
+  stored.
+- **Quarq display** is the lowest-risk way to exercise dormant code.
