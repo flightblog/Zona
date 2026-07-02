@@ -91,4 +91,33 @@ struct TCXExportTests {
         let lastIdx = tcx.range(of: "<Value>3</Value>")!.lowerBound
         #expect(firstIdx < lastIdx)   // sample 0 rendered before sample 2
     }
+
+    @Test func lapDistanceIntegratesSpeed() {
+        // 36 km/h = 10 m/s across 0,1,2s → two 1s gaps → 20.000 m lap total.
+        let tcx = TCXExporter.makeTCX(start: start, samples: [
+            sample(0, kph: 36), sample(1, kph: 36), sample(2, kph: 36)
+        ])
+        #expect(tcx.contains("<DistanceMeters>20.000</DistanceMeters>"))
+        #expect(XMLParser(data: Data(tcx.utf8)).parse())
+    }
+
+    @Test func trackpointsCarryCumulativeDistance() {
+        // Running totals 10, 20, 20 (last sample has no next interval).
+        let tcx = TCXExporter.makeTCX(start: start, samples: [
+            sample(0, kph: 36), sample(1, kph: 36), sample(2, kph: 36)
+        ])
+        #expect(tcx.contains("<DistanceMeters>10.000</DistanceMeters>"))
+        // The lap total (also 20.000) and the last two trackpoints coincide.
+        let occurrences = tcx.components(separatedBy: "<DistanceMeters>20.000</DistanceMeters>").count - 1
+        #expect(occurrences >= 2)   // lap total + at least one trackpoint
+    }
+
+    @Test func noDistanceWhenNoSpeed() {
+        // Power/HR-only ride → lap distance 0, no per-trackpoint DistanceMeters.
+        let tcx = TCXExporter.makeTCX(start: start, samples: [sample(0, hr: 120, w: 150), sample(1, hr: 121, w: 151)])
+        #expect(tcx.contains("<DistanceMeters>0.000</DistanceMeters>"))   // lap total
+        // Only the single lap-level element; none inside Trackpoints.
+        let count = tcx.components(separatedBy: "<DistanceMeters>").count - 1
+        #expect(count == 1)
+    }
 }

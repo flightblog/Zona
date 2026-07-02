@@ -24,6 +24,8 @@ final class Ride {
     var normalizedPowerW: Int = 0
     var maxPowerW: Int = 0
     var timeInZoneSec: Int = 0
+    /// Simulated distance in metres (trainer speed integrated; not GPS).
+    var distanceMeters: Double = 0
 
     // Heart-rate summary. Zones are HR-based (LTHR), so these are the headline.
     var lthr: Int = 0
@@ -45,6 +47,7 @@ final class Ride {
          normalizedPowerW: Int = 0,
          maxPowerW: Int = 0,
          timeInZoneSec: Int = 0,
+         distanceMeters: Double = 0,
          lthr: Int = 0,
          hrZoneRaw: Int = HRZone.z2Endurance.rawValue,
          avgHeartRate: Int = 0,
@@ -59,6 +62,7 @@ final class Ride {
         self.normalizedPowerW = normalizedPowerW
         self.maxPowerW = maxPowerW
         self.timeInZoneSec = timeInZoneSec
+        self.distanceMeters = distanceMeters
         self.lthr = lthr
         self.hrZoneRaw = hrZoneRaw
         self.avgHeartRate = avgHeartRate
@@ -119,6 +123,7 @@ extension Ride {
             normalizedPowerW: summary.normalizedPowerW,
             maxPowerW: summary.maxPowerW,
             timeInZoneSec: summary.timeInZoneSeconds,
+            distanceMeters: summary.distanceMeters,
             lthr: lthr,
             hrZoneRaw: hrZone.rawValue,
             avgHeartRate: recording.averageHeartRate,

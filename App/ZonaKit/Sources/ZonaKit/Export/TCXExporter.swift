@@ -41,6 +41,21 @@ public enum TCXExporter {
         let startId = iso.string(from: start)
         let totalSeconds = ordered.last.map { $0.secondsFromStart + 1 } ?? 0
 
+        // Running distance (metres) at each trackpoint, integrated from speed:
+        // each sample's speed is held over the gap to the next (step
+        // integration). Matches RideRecording.cumulativeDistanceMeters(); kept
+        // local so the exporter stays dependency-free.
+        var cumulative = [Double](repeating: 0, count: ordered.count)
+        var running = 0.0
+        for i in ordered.indices {
+            if i + 1 < ordered.count, let kph = ordered[i].speedKph {
+                let dt = ordered[i + 1].secondsFromStart - ordered[i].secondsFromStart
+                if dt > 0 { running += (kph / 3.6) * Double(dt) }
+            }
+            cumulative[i] = running
+        }
+        let totalDistance = cumulative.last ?? 0
+
         var xml = """
         <?xml version="1.0" encoding="UTF-8"?>
         <TrainingCenterDatabase \
@@ -56,7 +71,7 @@ public enum TCXExporter {
               <Id>\(startId)</Id>
               <Lap StartTime="\(startId)">
                 <TotalTimeSeconds>\(totalSeconds)</TotalTimeSeconds>
-                <DistanceMeters>0</DistanceMeters>
+                <DistanceMeters>\(format(totalDistance))</DistanceMeters>
                 <Calories>0</Calories>
                 <Intensity>Active</Intensity>
                 <TriggerMethod>Manual</TriggerMethod>
@@ -64,10 +79,15 @@ public enum TCXExporter {
 
         """
 
-        for sample in ordered {
+        for (i, sample) in ordered.enumerated() {
             let time = iso.string(from: start.addingTimeInterval(TimeInterval(sample.secondsFromStart)))
             xml += "          <Trackpoint>\n"
             xml += "            <Time>\(time)</Time>\n"
+            // Cumulative distance to this point. Only emitted once the ride has
+            // actually covered ground, so power/HR-only rides omit it (0 stays 0).
+            if totalDistance > 0 {
+                xml += "            <DistanceMeters>\(format(cumulative[i]))</DistanceMeters>\n"
+            }
             if let hr = sample.heartRateBpm {
                 xml += "            <HeartRateBpm><Value>\(hr)</Value></HeartRateBpm>\n"
             }

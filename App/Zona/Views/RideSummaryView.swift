@@ -16,6 +16,7 @@ struct RideSummaryView: View {
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     Stat(label: "Duration", value: durationText)
+                    Stat(label: "Distance", value: distanceText)
                     Stat(label: "Avg HR", value: "\(ride.avgHeartRate) bpm")
                     Stat(label: "Max HR", value: "\(ride.maxHeartRate) bpm")
                     Stat(label: "Avg power", value: "\(ride.avgPowerW) W")
@@ -56,6 +57,11 @@ struct RideSummaryView: View {
     private var durationText: String {
         let s = ride.durationSec
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    /// Simulated ride distance (trainer speed integrated), in km.
+    private var distanceText: String {
+        String(format: "%.1f km", ride.distanceMeters / 1000)
     }
 
     private func percent(_ f: Double) -> String { "\(Int((f * 100).rounded()))%" }
