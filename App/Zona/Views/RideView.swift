@@ -241,7 +241,7 @@ private struct ZoneGauge: View {
 
                 VStack(spacing: 0) {
                     Image(systemName: icon)
-                        .font(.callout)
+                        .font(.body)
                         .foregroundStyle(state.tint)
                     Text(value.map { "\($0)" } ?? "—")
                         .font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
@@ -249,7 +249,7 @@ private struct ZoneGauge: View {
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
                     Text(label)
-                        .font(.caption)
+                        .font(.body)
                         .foregroundStyle(.secondary)
                 }
                 .padding(8)
@@ -268,7 +268,7 @@ private struct ZoneGauge: View {
                 .background(state.tint.opacity(0.15), in: Capsule())
 
             Text("\(caption) · \(band.lowerBound)–\(band.upperBound)")
-                .font(.caption2)
+                .font(.body)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -308,7 +308,7 @@ private struct TargetAdjuster: View {
             Button { onAdjust(current - 5) } label: {
                 Image(systemName: "minus.circle.fill")
             }
-            Text("Adjust target").font(.callout).foregroundStyle(.secondary)
+            Text("Adjust target").font(.headline).foregroundStyle(.secondary)
             Button { onAdjust(current + 5) } label: {
                 Image(systemName: "plus.circle.fill")
             }
