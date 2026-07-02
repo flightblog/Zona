@@ -36,6 +36,56 @@ struct HeartRateMeasurementTests {
     }
 }
 
+/// In-memory `SensorMemory` for tests: records preferred/remembered per kind.
+final class FakeSensorMemory: SensorMemory, @unchecked Sendable {
+    var remembered: [SensorKind: UUID] = [:]
+    var preferred: [SensorKind: UUID] = [:]
+
+    func rememberedIdentifier(for kind: SensorKind) -> UUID? { remembered[kind] }
+    func remember(_ identifier: UUID, for kind: SensorKind) { remembered[kind] = identifier }
+    func preferredIdentifier(for kind: SensorKind) -> UUID? { preferred[kind] }
+    func setPreferred(_ identifier: UUID?, for kind: SensorKind) { preferred[kind] = identifier }
+}
+
+@Suite("Preferred device gating")
+struct PreferredGatingTests {
+    let whoop = UUID()
+    let garmin = UUID()
+
+    @Test func attachesAnyWhenNoPreference() {
+        // No pin: first-to-connect — any candidate qualifies (original behavior).
+        #expect(shouldAttach(candidate: whoop, forKind: .heartRate, preferred: nil))
+        #expect(shouldAttach(candidate: garmin, forKind: .heartRate, preferred: nil))
+    }
+
+    @Test func attachesOnlyPreferredWhenPinned() {
+        // Pinned WHOOP: the Garmin strap must be ignored for the HR slot.
+        #expect(shouldAttach(candidate: whoop, forKind: .heartRate, preferred: whoop))
+        #expect(!shouldAttach(candidate: garmin, forKind: .heartRate, preferred: whoop))
+    }
+
+    @Test func memoryRoundTripsAndClears() {
+        let mem = FakeSensorMemory()
+        #expect(mem.preferredIdentifier(for: .heartRate) == nil)
+        mem.setPreferred(whoop, for: .heartRate)
+        #expect(mem.preferredIdentifier(for: .heartRate) == whoop)
+        // Clearing restores first-to-connect.
+        mem.setPreferred(nil, for: .heartRate)
+        #expect(mem.preferredIdentifier(for: .heartRate) == nil)
+    }
+
+    @Test func preferredIsIndependentOfRemembered() {
+        // Preferred (explicit choice) and remembered (last connected) are
+        // separate; pinning one kind's device doesn't affect another kind.
+        let mem = FakeSensorMemory()
+        mem.remember(garmin, for: .heartRate)
+        mem.setPreferred(whoop, for: .heartRate)
+        #expect(mem.rememberedIdentifier(for: .heartRate) == garmin)
+        #expect(mem.preferredIdentifier(for: .heartRate) == whoop)
+        #expect(mem.preferredIdentifier(for: .trainer) == nil)
+    }
+}
+
 @Suite("Cycling power decode")
 struct CyclingPowerMeasurementTests {
     @Test func decodesInstantaneousPower() {

@@ -96,21 +96,43 @@ private struct DiagnosticsSection: View {
     }
 }
 
-/// A live connection-status row for one sensor kind.
+/// A live connection-status row for one sensor kind. Tapping it opens a picker
+/// to choose which physical device to use for this kind (useful when you own
+/// more than one — e.g. a Garmin strap and a WHOOP band both broadcasting HR).
 private struct SensorRow: View {
     @Environment(TrainerController.self) private var controller
     let kind: SensorKind
+    @State private var showingPicker = false
 
     var body: some View {
         let state = controller.sensorState(kind)
-        HStack {
-            Image(systemName: icon)
-                .foregroundStyle(state.isConnected ? .green : .secondary)
-            Text(kind.displayName)
-            Spacer()
-            Text(statusText(state))
-                .font(.subheadline)
-                .foregroundStyle(state.isConnected ? .green : .secondary)
+        let pinned = controller.preferredIdentifier(for: kind) != nil
+        Button {
+            showingPicker = true
+        } label: {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundStyle(state.isConnected ? .green : .secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(kind.displayName)
+                    if pinned {
+                        Label("Pinned device", systemImage: "pin.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Text(statusText(state))
+                    .font(.subheadline)
+                    .foregroundStyle(state.isConnected ? .green : .secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .tint(.primary)
+        .sheet(isPresented: $showingPicker) {
+            DevicePickerSheet(kind: kind)
         }
     }
 
@@ -128,6 +150,83 @@ private struct SensorRow: View {
         case .scanning:             return "Searching…"
         case .connecting(let name): return "Connecting \(name)…"
         case .connected(let name):  return name
+        }
+    }
+}
+
+/// Browse-and-pin sheet: scans for devices of one kind and lets the rider pick
+/// which to use. Generic over `SensorKind`, so it serves HR, trainer, or power.
+private struct DevicePickerSheet: View {
+    @Environment(TrainerController.self) private var controller
+    @Environment(\.dismiss) private var dismiss
+    let kind: SensorKind
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button {
+                        controller.setPreferred(nil, for: kind)
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Text("Use whatever connects first")
+                            Spacer()
+                            if controller.preferredIdentifier(for: kind) == nil {
+                                Image(systemName: "checkmark").foregroundStyle(.tint)
+                            }
+                        }
+                    }
+                    .tint(.primary)
+                } footer: {
+                    Text("Pin a specific device to always use it for \(kind.displayName.lowercased()), even if another is nearby.")
+                }
+
+                Section("Nearby") {
+                    if controller.discovered.isEmpty {
+                        HStack {
+                            ProgressView().controlSize(.small)
+                            Text("Searching…").foregroundStyle(.secondary)
+                        }
+                    } else {
+                        ForEach(controller.discovered) { device in
+                            Button {
+                                controller.setPreferred(device.id, for: kind)
+                                dismiss()
+                            } label: {
+                                HStack {
+                                    Text(device.name)
+                                    Spacer()
+                                    if let rssi = device.rssi, rssi != 0 {
+                                        Text("\(rssi) dBm")
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if controller.preferredIdentifier(for: kind) == device.id {
+                                        Image(systemName: "checkmark").foregroundStyle(.tint)
+                                    }
+                                }
+                            }
+                            .tint(.primary)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("\(kind.displayName) device")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .task {
+            controller.startBrowsing(kind)
+        }
+        .onDisappear {
+            controller.stopBrowsing()
         }
     }
 }

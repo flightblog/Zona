@@ -47,6 +47,19 @@ public enum SensorKind: String, CaseIterable, Sendable, Identifiable {
     }
 }
 
+/// Should the hub attach `candidate` as the connected device for `kind`?
+///
+/// Pure decision, factored out of the CoreBluetooth delegate so it's unit-tested
+/// without a live central. The rule: if the user pinned a preferred device for
+/// this kind, only that exact device qualifies; otherwise any candidate does
+/// (first-to-connect, the original behavior).
+public func shouldAttach(candidate: UUID,
+                         forKind kind: SensorKind,
+                         preferred: UUID?) -> Bool {
+    guard let preferred else { return true }
+    return candidate == preferred
+}
+
 /// A source-agnostic decoded update. Any sensor produces one of these; the hub
 /// folds the non-nil fields into the live `RideMetrics`.
 public struct SensorReading: Sendable, Equatable {
@@ -80,13 +93,44 @@ public enum SensorConnectionState: Equatable, Sendable {
     }
 }
 
-/// Persistence seam for "remember the exact device we paired." ZonaKit stays
-/// storage-agnostic; the app supplies a UserDefaults-backed implementation.
+/// A sensor surfaced by a browse (discovery) scan but NOT yet committed to a
+/// connection. This is what the "pick your device" list renders. `id` is the
+/// CoreBluetooth peripheral identifier — stable per device on this machine, and
+/// what gets persisted as the preferred choice.
+public struct DiscoveredSensor: Sendable, Equatable, Identifiable {
+    public let id: UUID
+    public let name: String
+    public let kind: SensorKind
+    /// Advertised signal strength, if known (higher = closer).
+    public var rssi: Int?
+
+    public init(id: UUID, name: String, kind: SensorKind, rssi: Int? = nil) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.rssi = rssi
+    }
+}
+
+/// Persistence seam for remembering which physical device to use per kind.
+/// ZonaKit stays storage-agnostic; the app supplies a UserDefaults-backed impl.
+///
+/// Two distinct notions, deliberately separate:
+/// - **preferred** — an *explicit user choice* ("use THIS strap"). When set, the
+///   hub connects only this device for the kind and ignores other candidates.
+/// - **remembered** — the last device that actually connected, for silent
+///   auto-reconnect. Preferred always wins over remembered when both exist.
 public protocol SensorMemory: Sendable {
     /// The last peripheral identifier auto-connected for `kind`, if any.
     func rememberedIdentifier(for kind: SensorKind) -> UUID?
-    /// Record `identifier` as the preferred device for `kind`.
+    /// Record `identifier` as the last-connected device for `kind`.
     func remember(_ identifier: UUID, for kind: SensorKind)
+
+    /// The user's explicitly chosen device for `kind`, if they pinned one.
+    func preferredIdentifier(for kind: SensorKind) -> UUID?
+    /// Pin `identifier` as the preferred device for `kind` (nil clears it,
+    /// restoring first-to-connect behavior).
+    func setPreferred(_ identifier: UUID?, for kind: SensorKind)
 }
 
 /// A no-op memory (used by previews/tests that don't care about persistence).
@@ -94,4 +138,6 @@ public struct EphemeralSensorMemory: SensorMemory {
     public init() {}
     public func rememberedIdentifier(for kind: SensorKind) -> UUID? { nil }
     public func remember(_ identifier: UUID, for kind: SensorKind) {}
+    public func preferredIdentifier(for kind: SensorKind) -> UUID? { nil }
+    public func setPreferred(_ identifier: UUID?, for kind: SensorKind) {}
 }

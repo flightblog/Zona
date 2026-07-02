@@ -23,6 +23,11 @@ public final class TrainerController {
     /// they updated only when an unrelated render happened to re-read them.
     public private(set) var metrics = RideMetrics()
 
+    /// Devices found by an active browse scan (see `startBrowsing`), mirrored
+    /// from the hub for the same reason `metrics` is: the view observes the
+    /// controller, not the hub. Empty unless browsing.
+    public private(set) var discovered: [DiscoveredSensor] = []
+
     // The hub owns BLE + control; it's observed internally but the view goes
     // through this controller, so we mirror its state into observed properties.
     @ObservationIgnored private let hub: SensorHub
@@ -40,6 +45,7 @@ public final class TrainerController {
         // Republish hub changes as our own observed state so SwiftUI re-renders.
         self.hub.onStateChange = { [weak self] in self?.syncState() }
         self.hub.onMetricsChange = { [weak self] m in self?.metrics = m }
+        self.hub.onDiscoveryChange = { [weak self] d in self?.discovered = d }
     }
 
     /// Copy hub state into observed storage and re-evaluate the ride latch.
@@ -113,6 +119,27 @@ public final class TrainerController {
     }
 
     public func setTargetPower(_ watts: Int) { hub.setTargetPower(watts) }
+
+    // MARK: - Device browsing & preferred selection
+
+    /// Begin a discovery scan for `kind`, populating `discovered`. Use from the
+    /// setup screen to let the rider pick a preferred device; call
+    /// `stopBrowsing()` when the picker closes.
+    public func startBrowsing(_ kind: SensorKind) { hub.startBrowsing(kind) }
+
+    /// Stop the browse scan and clear `discovered`.
+    public func stopBrowsing() { hub.stopBrowsing() }
+
+    /// The rider's pinned device for `kind`, if any.
+    public func preferredIdentifier(for kind: SensorKind) -> UUID? {
+        hub.preferredIdentifier(for: kind)
+    }
+
+    /// Pin (or clear, with nil) the preferred device for `kind`. When set, only
+    /// that device is used for the kind; others are ignored.
+    public func setPreferred(_ identifier: UUID?, for kind: SensorKind) {
+        hub.setPreferred(identifier, for: kind)
+    }
 
     public func stop() {
         sessionLatched = false
