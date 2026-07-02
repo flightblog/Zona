@@ -40,6 +40,14 @@ final class Ride {
     /// Optional keeps it CloudKit-safe (no default needed, migrates old rides).
     var hrvRMSSDms: Int?
 
+    /// Strava activity id once this ride has been uploaded, else nil. Optional
+    /// (no default) keeps it CloudKit-safe and lightweight-migrates old rides
+    /// (same pattern as `hrvRMSSDms`). Powers the "View on Strava" link and the
+    /// re-upload guard — a ride with a non-nil id is never uploaded again.
+    var stravaActivityId: Int64?
+    /// When the upload to Strava succeeded (nil = never uploaded).
+    var stravaUploadedAt: Date?
+
     @Relationship(deleteRule: .cascade, inverse: \RideSampleModel.ride)
     var samples: [RideSampleModel]? = []
 
@@ -58,7 +66,9 @@ final class Ride {
          avgHeartRate: Int = 0,
          maxHeartRate: Int = 0,
          timeInHRZoneSec: Int = 0,
-         hrvRMSSDms: Int? = nil) {
+         hrvRMSSDms: Int? = nil,
+         stravaActivityId: Int64? = nil,
+         stravaUploadedAt: Date? = nil) {
         self.id = id
         self.date = date
         self.ftp = ftp
@@ -75,6 +85,8 @@ final class Ride {
         self.maxHeartRate = maxHeartRate
         self.timeInHRZoneSec = timeInHRZoneSec
         self.hrvRMSSDms = hrvRMSSDms
+        self.stravaActivityId = stravaActivityId
+        self.stravaUploadedAt = stravaUploadedAt
     }
 
     var zone: PowerZone { PowerZone(rawValue: zoneRaw) ?? .z2Endurance }
