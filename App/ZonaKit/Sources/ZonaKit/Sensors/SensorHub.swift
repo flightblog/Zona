@@ -163,7 +163,9 @@ public final class SensorHub {
         onStateChange?()
     }
 
-    fileprivate func note(_ line: String) { append(line) }
+    /// Append a line to the ride event log. `fileprivate` callers (BLE shim) and
+    /// the app (e.g. auto-hold explanations via `TrainerController.note`) share it.
+    public func note(_ line: String) { append(line) }
 
     private func append(_ line: String) {
         log.append(line)
