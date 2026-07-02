@@ -162,4 +162,25 @@ struct HRRideSummaryTests {
         let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
         #expect(rec.maxHeartRate == 0)
     }
+
+    @Test func hrvSummaryConcatenatesPerSecondIntervals() {
+        // Spread 30 alternating R-R intervals across 15 seconds (2 beats each),
+        // matching how the recorder buckets them. The summary flattens them in
+        // time order → RMSSD 40 ms (constant 40 ms successive difference).
+        let samples = (0..<15).map {
+            RideSample(secondsFromStart: $0, heartRateBpm: 73,
+                       rrIntervalsSec: [0.800, 0.840])
+        }
+        let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
+        #expect(rec.hrvRMSSDms == 40)
+        #expect(rec.summary().hrvRMSSDms == 40)
+    }
+
+    @Test func hrvSummaryNilWhenNoRR() {
+        // HR present but no strap R-R (e.g. a sensor that omits it) → nil, so the
+        // UI shows "—" rather than a fabricated 0.
+        let rec = recording(hrs: [130, 140, 150])
+        #expect(rec.hrvRMSSDms == nil)
+        #expect(rec.summary().hrvRMSSDms == nil)
+    }
 }

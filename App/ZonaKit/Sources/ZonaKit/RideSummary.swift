@@ -14,19 +14,25 @@ public struct RideSummary: Sendable, Equatable {
     /// not GPS — the same figure Zwift/Wahoo show for an indoor ride. 0 if no
     /// sample reported speed.
     public let distanceMeters: Double
+    /// Heart-rate variability (RMSSD) in milliseconds over the ride's R-R
+    /// intervals, or nil when the strap reported too few beats (or none). See
+    /// `HRV.rmssd`. nil is surfaced as "—", never a misleading 0.
+    public let hrvRMSSDms: Int?
 
     public init(durationSeconds: Int,
                 averagePowerW: Int,
                 maxPowerW: Int,
                 normalizedPowerW: Int,
                 timeInZoneSeconds: Int,
-                distanceMeters: Double = 0) {
+                distanceMeters: Double = 0,
+                hrvRMSSDms: Int? = nil) {
         self.durationSeconds = durationSeconds
         self.averagePowerW = averagePowerW
         self.maxPowerW = maxPowerW
         self.normalizedPowerW = normalizedPowerW
         self.timeInZoneSeconds = timeInZoneSeconds
         self.distanceMeters = distanceMeters
+        self.hrvRMSSDms = hrvRMSSDms
     }
 }
 
@@ -56,8 +62,20 @@ public extension RideRecording {
             maxPowerW: maxP,
             normalizedPowerW: np,
             timeInZoneSeconds: inZone,
-            distanceMeters: distanceMeters
+            distanceMeters: distanceMeters,
+            hrvRMSSDms: hrvRMSSDms
         )
+    }
+
+    /// Ride-level HRV (RMSSD, ms) over every captured R-R interval, or nil when
+    /// the strap reported too few beats. Concatenates each second's accumulated
+    /// intervals in time order and defers to `HRV.rmssd` for the math/filtering.
+    var hrvRMSSDms: Int? {
+        let rr = samples
+            .sorted { $0.secondsFromStart < $1.secondsFromStart }
+            .compactMap(\.rrIntervalsSec)
+            .flatMap { $0 }
+        return HRV.rmssd(intervalsSec: rr)
     }
 
     /// Total ride distance in metres, integrated from reported speed. Each

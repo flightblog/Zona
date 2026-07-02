@@ -10,17 +10,24 @@ public struct RideSample: Sendable, Equatable {
     public var cadenceRpm: Int?
     public var speedKph: Double?
     public var heartRateBpm: Int?
+    /// Every R-R interval (seconds) captured during this second — *accumulated*
+    /// across the second's HR notifications (a second can hold 1–3 beats), unlike
+    /// the last-write-wins scalar fields. nil when the strap reports no R-R. Feeds
+    /// per-ride HRV (`HRV.rmssd` over the whole ride's concatenated intervals).
+    public var rrIntervalsSec: [Double]?
 
     public init(secondsFromStart: Int,
                 powerW: Int? = nil,
                 cadenceRpm: Int? = nil,
                 speedKph: Double? = nil,
-                heartRateBpm: Int? = nil) {
+                heartRateBpm: Int? = nil,
+                rrIntervalsSec: [Double]? = nil) {
         self.secondsFromStart = secondsFromStart
         self.powerW = powerW
         self.cadenceRpm = cadenceRpm
         self.speedKph = speedKph
         self.heartRateBpm = heartRateBpm
+        self.rrIntervalsSec = rrIntervalsSec
     }
 }
 
@@ -94,6 +101,11 @@ public final class RideRecorder {
         if let c = metrics.cadenceRpm { sample.cadenceRpm = c }
         if let s = metrics.speedKph { sample.speedKph = s }
         if let hr = metrics.heartRateBpm { sample.heartRateBpm = hr }
+        // R-R accumulates within the second (multiple notifications, several beats
+        // each) rather than overwriting — every interval matters for HRV.
+        if let rr = metrics.rrIntervalsSec, !rr.isEmpty {
+            sample.rrIntervalsSec = (sample.rrIntervalsSec ?? []) + rr
+        }
         samplesBySecond[second] = sample
 
         elapsedSeconds = max(elapsedSeconds, second + 1)

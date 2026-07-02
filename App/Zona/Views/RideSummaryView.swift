@@ -19,6 +19,10 @@ struct RideSummaryView: View {
                     Stat(label: "Distance", value: distanceText)
                     Stat(label: "Avg HR", value: "\(ride.avgHeartRate) bpm")
                     Stat(label: "Max HR", value: "\(ride.maxHeartRate) bpm")
+                    // HRV (RMSSD) — "—" when the strap reported too few R-R
+                    // beats (or none), never a fabricated 0.
+                    Stat(label: "HRV (RMSSD)",
+                         value: ride.hrvRMSSDms.map { "\($0) ms" } ?? "—")
                     Stat(label: "Avg power", value: "\(ride.avgPowerW) W")
                     Stat(label: "Normalized", value: "\(ride.normalizedPowerW) W")
                     Stat(label: "Max power", value: "\(ride.maxPowerW) W")
