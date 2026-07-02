@@ -28,8 +28,8 @@ struct RideSummaryView: View {
                     Stat(label: "Avg power", value: "\(ride.avgPowerW) W")
                     Stat(label: "Normalized", value: "\(ride.normalizedPowerW) W")
                     Stat(label: "Max power", value: "\(ride.maxPowerW) W")
-                    Stat(label: "Time in \(ride.zone.shortName) (power)",
-                         value: percent(ride.timeInZoneFraction))
+                    Stat(label: "Total Time in \(ride.zone.shortName) (power)",
+                         value: minutesSeconds(ride.timeInZoneSec))
                 }
                 .padding(.horizontal)
 
@@ -76,7 +76,9 @@ struct RideSummaryView: View {
         String(format: "%.1f km", ride.distanceMeters / 1000)
     }
 
-    private func percent(_ f: Double) -> String { "\(Int((f * 100).rounded()))%" }
+    private func minutesSeconds(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
 }
 
 /// Headline leads with time in the target HR zone — the metric that matters now
