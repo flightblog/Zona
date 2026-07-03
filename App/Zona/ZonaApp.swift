@@ -14,14 +14,52 @@ struct ZonaApp: App {
     }()
     @State private var settings = RideSettings()
 
+    /// Shared SwiftData store, backed by the user's private CloudKit database so
+    /// rides follow them across iPhone/iPad/Mac. The model was built
+    /// CloudKit-ready (all defaults, no `.unique`, optional relationships), so no
+    /// migration is needed. Requires the iCloud (CloudKit) + Push Notifications
+    /// capabilities on the App ID and the matching entitlements — see
+    /// Zona.macOS.entitlements.
+    private let modelContainer: ModelContainer = {
+        let schema = Schema([Ride.self, RideSampleModel.self])
+
+        // Point the store at an explicit URL in Application Support, and make sure
+        // that directory EXISTS before opening. On a freshly installed app,
+        // `Application Support` isn't created yet; if SwiftData tries to create
+        // `default.store` there first, the create fails (the sandbox denies
+        // writing a file into a missing parent) and Core Data falls into a
+        // synchronous recovery path that creates the directory and retries — a
+        // recovery that blocked the main thread for ~30 s on first launch,
+        // freezing the setup screen until it finished. Creating the directory up
+        // front skips the failed attempt and its slow recovery entirely.
+        //
+        // (The previous `.modelContainer(for:)` created its own location for us;
+        // moving to an explicit CloudKit configuration made the directory ours to
+        // guarantee. Keep SwiftData's default `default.store` filename so a store
+        // already written at this location is reused, not orphaned.)
+        let appSupport = URL.applicationSupportDirectory
+        try? FileManager.default.createDirectory(
+            at: appSupport, withIntermediateDirectories: true)
+        let storeURL = appSupport.appending(path: "default.store")
+
+        let config = ModelConfiguration(
+            schema: schema,
+            url: storeURL,
+            cloudKitDatabase: .private("iCloud.org.flightblog.zona"))
+        do {
+            return try ModelContainer(for: schema, configurations: config)
+        } catch {
+            fatalError("Failed to create ModelContainer: \(error)")
+        }
+    }()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(controller)
                 .environment(settings)
         }
-        // On-device store for now; the model is CloudKit-ready when we want sync.
-        .modelContainer(for: [Ride.self, RideSampleModel.self])
+        .modelContainer(modelContainer)
         #if os(macOS)
         .defaultSize(width: 480, height: 640)
         #endif
