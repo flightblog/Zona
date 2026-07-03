@@ -43,17 +43,24 @@ targets:
         NSBluetoothAlwaysUsageDescription: >-
           Zona connects to your smart trainer and heart-rate monitor over
           Bluetooth to hold you in your chosen zone and show live heart rate.
-        # Custom URL scheme for the Strava OAuth callback (zona://strava-auth).
-        # Must match the redirect scheme in StravaOAuthConfig and the Strava API
-        # app's Authorization Callback Domain.
+        # Custom URL schemes for the OAuth callbacks: zona://strava-auth and
+        # zona://whoop-auth. Both use the shared `zona` scheme (distinct hosts);
+        # each must match its integration's redirect config and the provider app's
+        # registered redirect URI.
         CFBundleURLTypes:
           - CFBundleURLName: org.flightblog.zona.strava
+            CFBundleURLSchemes: [zona]
+          - CFBundleURLName: org.flightblog.zona.whoop
             CFBundleURLSchemes: [zona]
         # Strava client id/secret, injected from the gitignored Secrets.xcconfig
         # (see configFiles below). Empty when unconfigured on this machine, in
         # which case the Strava upload button hides itself.
         StravaClientID: $(STRAVA_CLIENT_ID)
         StravaClientSecret: $(STRAVA_CLIENT_SECRET)
+        # WHOOP client id/secret, same injection. Empty when unconfigured, in
+        # which case the WHOOP section on the setup screen hides itself.
+        WhoopClientID: $(WHOOP_CLIENT_ID)
+        WhoopClientSecret: $(WHOOP_CLIENT_SECRET)
     # Per-config xcconfig holding the Strava secrets. Gitignored — each developer
     # supplies their own from their Strava API app. Copy Secrets.example.xcconfig
     # to Zona/Config/Secrets.xcconfig and fill it in.

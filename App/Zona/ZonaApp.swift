@@ -96,6 +96,22 @@ final class RideSettings {
         didSet { UserDefaults.standard.set(hrHoldEnabled, forKey: "hrHoldEnabled") }
     }
 
+    // WHOOP source-of-truth zones. WHOOP defines HR zones from max HR + resting
+    // HR via Heart Rate Reserve; when connected we store those two numbers and
+    // (optionally) use the resulting HRR bands instead of the manual LTHR bands.
+    // 0 means "not fetched" (see `whoopMaxHR`/`whoopRestingHR` accessors below).
+    private var whoopMaxHRRaw: Int {
+        didSet { UserDefaults.standard.set(whoopMaxHRRaw, forKey: "whoopMaxHR") }
+    }
+    private var whoopRestingHRRaw: Int {
+        didSet { UserDefaults.standard.set(whoopRestingHRRaw, forKey: "whoopRestingHR") }
+    }
+    /// When true (and WHOOP inputs are present), the ride target uses WHOOP's HRR
+    /// zones; otherwise it uses the manual LTHR zones. Default false.
+    var useWhoopZones: Bool {
+        didSet { UserDefaults.standard.set(useWhoopZones, forKey: "useWhoopZones") }
+    }
+
     /// Light/dark appearance. `.system` follows the OS setting; the others force
     /// the app one way regardless. Applied via `.preferredColorScheme` at the
     /// root of the view tree.
@@ -115,6 +131,9 @@ final class RideSettings {
         let storedHRZone = UserDefaults.standard.integer(forKey: "hrZone")
         hrZone = HRZone(rawValue: storedHRZone) ?? .z2Endurance
         hrHoldEnabled = UserDefaults.standard.bool(forKey: "hrHoldEnabled")  // default false
+        whoopMaxHRRaw = UserDefaults.standard.integer(forKey: "whoopMaxHR")        // 0 = unset
+        whoopRestingHRRaw = UserDefaults.standard.integer(forKey: "whoopRestingHR") // 0 = unset
+        useWhoopZones = UserDefaults.standard.bool(forKey: "useWhoopZones")  // default false
         let storedAppearance = UserDefaults.standard.integer(forKey: "appearance")
         appearance = Appearance(rawValue: storedAppearance) ?? .system  // default .system
     }
@@ -122,8 +141,53 @@ final class RideSettings {
     var engine: ZoneEngine { ZoneEngine(ftp: ftp) }
     var target: Int { engine.steadyTarget(for: zone, position: bandPosition) }
 
+    // MARK: HR zones (LTHR fallback vs WHOOP source-of-truth)
+
+    /// Max HR fetched from WHOOP, or nil if never fetched.
+    var whoopMaxHR: Int? { whoopMaxHRRaw > 0 ? whoopMaxHRRaw : nil }
+    /// Resting HR fetched from WHOOP, or nil if never fetched.
+    var whoopRestingHR: Int? { whoopRestingHRRaw > 0 ? whoopRestingHRRaw : nil }
+
+    /// The HRR (WHOOP) zone engine, non-nil only once both inputs are present.
+    var hrrEngine: HRRZoneEngine? {
+        guard let maxHR = whoopMaxHR, let restingHR = whoopRestingHR, maxHR > restingHR else {
+            return nil
+        }
+        return HRRZoneEngine(maxHR: maxHR, restingHR: restingHR)
+    }
+
+    /// True when the ride target is driven by WHOOP's zones right now (opted in
+    /// *and* inputs available). Drives the SetupView labelling and the LTHR
+    /// stepper's read-only state.
+    var usingWhoopZones: Bool { useWhoopZones && hrrEngine != nil }
+
     var hrEngine: HRZoneEngine { HRZoneEngine(lthr: lthr) }
-    var targetHRBand: ClosedRange<Int> { hrEngine.bpmRange(for: hrZone) }
+
+    /// The target HR band for the selected zone. Prefers WHOOP's HRR bands when
+    /// active, else the manual LTHR bands. `hrZone`'s raw value (1–5) maps 1:1
+    /// onto `HRRZone`, so the same picker selection carries across both models.
+    var targetHRBand: ClosedRange<Int> {
+        if let hrr = hrrEngine, useWhoopZones,
+           let hrrZone = HRRZone(rawValue: hrZone.rawValue) {
+            return hrr.bpmRange(for: hrrZone)
+        }
+        return hrEngine.bpmRange(for: hrZone)
+    }
+
+    /// Store the two inputs WHOOP derives its zones from and switch the app onto
+    /// them. Called by `WhoopModel` after a successful fetch.
+    func applyWhoopZones(maxHR: Int, restingHR: Int) {
+        whoopMaxHRRaw = maxHR
+        whoopRestingHRRaw = restingHR
+        useWhoopZones = true
+    }
+
+    /// Forget the WHOOP inputs and revert to manual LTHR zones ("Disconnect").
+    func clearWhoopZones() {
+        whoopMaxHRRaw = 0
+        whoopRestingHRRaw = 0
+        useWhoopZones = false
+    }
 }
 
 /// App appearance choice. Raw values are persisted, so keep them stable.

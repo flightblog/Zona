@@ -29,16 +29,18 @@ The Xcode project and its Info.plist/entitlements are **generated** from
 `xcodegen generate` after cloning.
 
 ```sh
-cd App/ZonaKit && swift test   # 104 tests: zones, BLE decoders, recorder, summaries, TCX export, Strava upload
+cd App/ZonaKit && swift test   # 134 tests: zones, BLE decoders, recorder, summaries, TCX export, Strava + WHOOP
 ```
 
 ## What it does
 
 The trainer holds a steady **power** setpoint via FTMS ERG (from your FTP), while
-**heart rate** (from your LTHR) defines and displays the zone you're aiming for —
-a stable design that avoids chasing a laggy HR signal with the trainer. Rides are
-stored locally with SwiftData (CloudKit-ready for later sync). Finished rides can
-go to **Strava** two ways: a one-tap **Upload to Strava** button (OAuth, no
-files), or a `.tcx` **Share-sheet export** to Strava or anywhere else.
+**heart rate** defines and displays the zone you're aiming for — a stable design
+that avoids chasing a laggy HR signal with the trainer. HR zones come from your
+LTHR by default, or **connect WHOOP** to use its zones as your source of truth
+(Zona reconstructs WHOOP's boundaries from your max/resting HR). Rides are stored
+locally with SwiftData (CloudKit-ready for later sync). Finished rides can go to
+**Strava** two ways: a one-tap **Upload to Strava** button (OAuth, no files), or a
+`.tcx` **Share-sheet export** to Strava or anywhere else.
 
 Built collaboratively with Claude Code.
