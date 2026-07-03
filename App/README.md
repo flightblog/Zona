@@ -220,6 +220,23 @@ swift test        # 142 tests: zones, FTMS/HR/power decode, recorder, summaries,
 `ZonaKit` is pure and fully unit-tested. The BLE connection logic in `SensorHub`
 is exercised against real hardware rather than unit tests.
 
+### Previewing Markdown rendering
+
+This repo is **private**, so you can't sanity-check how a README edit will look by
+opening the raw file on github.com. To render Markdown exactly as GitHub would —
+useful when an edit uses a tricky construct like a fenced code block nested inside a
+`>` blockquote — pipe it through GitHub's own renderer:
+
+```sh
+gh api -X POST /markdown -f mode=gfm -f text="$(cat App/README.md)" > /tmp/readme.html
+open /tmp/readme.html
+```
+
+When scripting a structural check against that HTML, note GitHub wraps code blocks in
+`<div class="highlight">…<pre>`, so a naive "is `<pre>` directly inside the
+`<blockquote>`?" test gives a false negative — inspect the actual HTML region rather
+than substring-matching.
+
 ## Sensors & connection behavior
 
 `SensorHub` manages several independent BLE sensors over one `CBCentralManager`,
