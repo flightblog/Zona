@@ -37,12 +37,22 @@ public struct RideRecording: Sendable, Equatable {
     public let ftp: Int
     public let zone: PowerZone
     public let startedAt: Date
+    /// Wall-clock ride length in whole seconds, from `start(...)` to `finish()`,
+    /// measured on a monotonic clock. This is the ride's *duration* — distinct
+    /// from `samples.count`, which is only the number of seconds that captured
+    /// data. They diverge when seconds pass without a fresh metrics sample (a
+    /// dropped FTMS notification, or a steady stretch where the app didn't
+    /// re-ingest), so duration must come from here, not from counting samples.
+    /// 0 for recordings built by hand (tests) — callers fall back to sample count.
+    public let durationSeconds: Int
     public let samples: [RideSample]
 
-    public init(ftp: Int, zone: PowerZone, startedAt: Date, samples: [RideSample]) {
+    public init(ftp: Int, zone: PowerZone, startedAt: Date, samples: [RideSample],
+                durationSeconds: Int = 0) {
         self.ftp = ftp
         self.zone = zone
         self.startedAt = startedAt
+        self.durationSeconds = durationSeconds
         self.samples = samples
     }
 }
@@ -111,11 +121,16 @@ public final class RideRecorder {
         elapsedSeconds = max(elapsedSeconds, second + 1)
     }
 
-    /// Stop recording and return the immutable recording.
+    /// Stop recording and return the immutable recording. Duration is the
+    /// wall-clock elapsed time captured just before we flip `isRecording` off
+    /// (after that, `elapsed()` returns the frozen `elapsedSeconds`).
     @discardableResult
-    public func finish() -> RideRecording {
+    public func finish(at instant: ContinuousClock.Instant = ContinuousClock.now) -> RideRecording {
+        let duration = elapsed(at: instant)
         isRecording = false
+        elapsedSeconds = duration
         let ordered = samplesBySecond.values.sorted { $0.secondsFromStart < $1.secondsFromStart }
-        return RideRecording(ftp: ftp, zone: zone, startedAt: startedAt, samples: ordered)
+        return RideRecording(ftp: ftp, zone: zone, startedAt: startedAt,
+                             samples: ordered, durationSeconds: duration)
     }
 }
