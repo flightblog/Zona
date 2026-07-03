@@ -78,3 +78,13 @@ targets:
         # Outbound HTTPS for the Strava upload. The sandboxed macOS build blocks
         # all networking without this; iOS needs no equivalent.
         com.apple.security.network.client: true
+        # iCloud/CloudKit sync of the SwiftData store (rides follow the user
+        # across iPhone/iPad/Mac). Requires the iCloud + Push Notifications
+        # capabilities enabled on the App ID and a CloudKit container named
+        # iCloud.org.flightblog.zona in the Apple Developer portal. The container
+        # scope is declared in code (ZonaApp.modelContainer). aps-environment is
+        # CloudKit's silent-push change-notification channel; XcodeGen/Xcode
+        # flips it to `production` for release/archive builds.
+        com.apple.developer.icloud-services: [CloudKit]
+        com.apple.developer.icloud-container-identifiers: [iCloud.org.flightblog.zona]
+        aps-environment: development

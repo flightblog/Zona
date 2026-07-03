@@ -14,14 +14,32 @@ struct ZonaApp: App {
     }()
     @State private var settings = RideSettings()
 
+    /// Shared SwiftData store, backed by the user's private CloudKit database so
+    /// rides follow them across iPhone/iPad/Mac. The model was built
+    /// CloudKit-ready (all defaults, no `.unique`, optional relationships), so no
+    /// migration is needed. Requires the iCloud (CloudKit) + Push Notifications
+    /// capabilities on the App ID and the matching entitlements — see
+    /// Zona.macOS.entitlements.
+    private let modelContainer: ModelContainer = {
+        let schema = Schema([Ride.self, RideSampleModel.self])
+        let config = ModelConfiguration(
+            schema: schema,
+            cloudKitDatabase: .private("iCloud.org.flightblog.zona")
+        )
+        do {
+            return try ModelContainer(for: schema, configurations: config)
+        } catch {
+            fatalError("Failed to create ModelContainer: \(error)")
+        }
+    }()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(controller)
                 .environment(settings)
         }
-        // On-device store for now; the model is CloudKit-ready when we want sync.
-        .modelContainer(for: [Ride.self, RideSampleModel.self])
+        .modelContainer(modelContainer)
         #if os(macOS)
         .defaultSize(width: 480, height: 640)
         #endif
