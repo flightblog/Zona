@@ -6,6 +6,7 @@ import ZonaKit
 struct SetupView: View {
     @Environment(TrainerController.self) private var controller
     @Environment(RideSettings.self) private var settings
+    @State private var whoop = WhoopModel()
 
     var body: some View {
         @Bindable var settings = settings
@@ -45,8 +46,16 @@ struct SetupView: View {
             }
 
             Section {
-                Stepper(value: $settings.lthr, in: 100...220, step: 1) {
-                    LabeledContent("LTHR", value: "\(settings.lthr) bpm")
+                if settings.usingWhoopZones {
+                    // WHOOP is the source of truth: show its inputs read-only.
+                    LabeledContent("Zone source", value: "WHOOP")
+                    if let maxHR = settings.whoopMaxHR, let restingHR = settings.whoopRestingHR {
+                        LabeledContent("Max / resting HR", value: "\(maxHR) / \(restingHR) bpm")
+                    }
+                } else {
+                    Stepper(value: $settings.lthr, in: 100...220, step: 1) {
+                        LabeledContent("LTHR", value: "\(settings.lthr) bpm")
+                    }
                 }
                 Picker("Target HR zone", selection: $settings.hrZone) {
                     ForEach([HRZone.z1Recovery, .z2Endurance, .z3Tempo], id: \.self) { z in
@@ -61,6 +70,10 @@ struct SetupView: View {
                 Text("Heart rate")
             } footer: {
                 Text("Auto-hold: Zona adjusts the trainer's watts during the ride to keep your heart rate in the target zone — easing off if it drifts high, nudging up if it's low. Off: watts stay fixed and you adjust them yourself.")
+            }
+
+            if whoop.isConfigured {
+                WhoopSection(whoop: whoop)
             }
 
             Section("Sensors") {
@@ -88,6 +101,66 @@ struct SetupView: View {
             DiagnosticsSection()
         }
         .formStyle(.grouped)
+        .task { await whoop.syncConnectionState() }
+    }
+}
+
+/// WHOOP connection + zone-source section. When connected, WHOOP's max/resting HR
+/// drive the ride's HR zones (via HRR) instead of the manual LTHR. Only shown when
+/// a client id/secret is configured on this build (`whoop.isConfigured`).
+private struct WhoopSection: View {
+    @Environment(RideSettings.self) private var settings
+    let whoop: WhoopModel
+
+    var body: some View {
+        Section {
+            switch whoop.state {
+            case .connected, .refreshing:
+                if let engine = settings.hrrEngine {
+                    ForEach([HRRZone.z1, .z2, .z3], id: \.self) { z in
+                        let band = engine.bpmRange(for: z)
+                        LabeledContent(z.name, value: "\(band.lowerBound)–\(band.upperBound) bpm")
+                    }
+                }
+                Button {
+                    Task { await whoop.refresh(settings: settings) }
+                } label: {
+                    labelWithSpinner("Refresh zones", busy: whoop.state == .refreshing)
+                }
+                .disabled(whoop.state == .refreshing)
+                Button("Disconnect WHOOP", role: .destructive) {
+                    Task { await whoop.disconnect(settings: settings) }
+                }
+
+            case .authorizing:
+                labelWithSpinner("Connecting to WHOOP…", busy: true)
+
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                connectButton
+
+            default: // .disconnected / .unavailable (section hidden when unavailable)
+                connectButton
+            }
+        } header: {
+            Text("WHOOP")
+        } footer: {
+            Text("Connect WHOOP to use its heart-rate zones as your source of truth. Zona reads your max and resting heart rate and matches WHOOP's zone boundaries exactly.")
+        }
+    }
+
+    private var connectButton: some View {
+        Button("Connect WHOOP") {
+            Task { await whoop.connectAndRefresh(settings: settings) }
+        }
+    }
+
+    private func labelWithSpinner(_ title: String, busy: Bool) -> some View {
+        HStack {
+            if busy { ProgressView().controlSize(.small) }
+            Text(title)
+        }
     }
 }
 
