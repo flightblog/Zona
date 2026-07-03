@@ -88,13 +88,13 @@ private struct TimeInZoneHeadline: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text("\(Int((ride.timeInHRZoneFraction * 100).rounded()))%")
+            Text(formatted(ride.timeInHRZoneSec))
                 .font(.system(size: 56, weight: .bold, design: .rounded))
                 .foregroundStyle(.green)
             Text("time in \(ride.hrZone.shortName) heart-rate zone")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text("\(formatted(ride.timeInHRZoneSec)) of \(formatted(ride.durationSec))")
+            Text("\(Int((ride.timeInHRZoneFraction * 100).rounded()))% of \(formatted(ride.durationSec))")
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
         }
