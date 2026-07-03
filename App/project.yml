@@ -30,6 +30,14 @@ targets:
       properties:
         CFBundleDisplayName: Zona
         UILaunchScreen: {}
+        # CloudKit change-notification wake-up. SwiftData's CloudKit mirroring
+        # uses silent pushes (aps-environment, in the entitlements) to learn a
+        # peer device changed the store; without this background mode iOS won't
+        # deliver those pushes, so remote rides only appear on next foreground.
+        # Pairs with the iCloud entitlement keys below. Requires the paid Apple
+        # Developer Program (personal teams can't provision iCloud/Push).
+        UIBackgroundModes:
+          - remote-notification
         # Required: without this string CoreBluetooth cannot request permission
         # and the central manager reports .unauthorized.
         NSBluetoothAlwaysUsageDescription: >-

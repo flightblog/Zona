@@ -22,10 +22,30 @@ struct ZonaApp: App {
     /// Zona.macOS.entitlements.
     private let modelContainer: ModelContainer = {
         let schema = Schema([Ride.self, RideSampleModel.self])
+
+        // Point the store at an explicit URL in Application Support, and make sure
+        // that directory EXISTS before opening. On a freshly installed app,
+        // `Application Support` isn't created yet; if SwiftData tries to create
+        // `default.store` there first, the create fails (the sandbox denies
+        // writing a file into a missing parent) and Core Data falls into a
+        // synchronous recovery path that creates the directory and retries — a
+        // recovery that blocked the main thread for ~30 s on first launch,
+        // freezing the setup screen until it finished. Creating the directory up
+        // front skips the failed attempt and its slow recovery entirely.
+        //
+        // (The previous `.modelContainer(for:)` created its own location for us;
+        // moving to an explicit CloudKit configuration made the directory ours to
+        // guarantee. Keep SwiftData's default `default.store` filename so a store
+        // already written at this location is reused, not orphaned.)
+        let appSupport = URL.applicationSupportDirectory
+        try? FileManager.default.createDirectory(
+            at: appSupport, withIntermediateDirectories: true)
+        let storeURL = appSupport.appending(path: "default.store")
+
         let config = ModelConfiguration(
             schema: schema,
-            cloudKitDatabase: .private("iCloud.org.flightblog.zona")
-        )
+            url: storeURL,
+            cloudKitDatabase: .private("iCloud.org.flightblog.zona"))
         do {
             return try ModelContainer(for: schema, configurations: config)
         } catch {
