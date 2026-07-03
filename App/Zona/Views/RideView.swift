@@ -97,14 +97,19 @@ struct RideView: View {
         .onChange(of: controller.metrics) { _, newMetrics in
             recorder.ingest(newMetrics)
         }
-        // Closed-loop HR-hold: tick once a second and let the controller nudge the
-        // ERG target to keep HR in zone. Only active when the rider opted in; the
-        // open-loop path above is untouched. The `.task` runs for the view's life
-        // and is cancelled on End ride.
+        // One 1 Hz tick drives two things:
+        //  1. Gap-free recording: re-ingest the current metrics every second so a
+        //     steady stretch (identical metrics → `.onChange` doesn't fire) still
+        //     produces a sample. Without this, `samples.count` under-counts and the
+        //     summary's duration/time-in-zone fall short of real elapsed time.
+        //  2. Closed-loop HR-hold: let the controller nudge the ERG target to keep
+        //     HR in zone. Only active when the rider opted in.
+        // The `.task` runs for the view's life and is cancelled on End ride.
         .task {
             let clock = ContinuousClock()
             while !Task.isCancelled {
                 try? await clock.sleep(for: .seconds(1))
+                recorder.ingest(controller.metrics)
                 hrHoldTick()
             }
         }

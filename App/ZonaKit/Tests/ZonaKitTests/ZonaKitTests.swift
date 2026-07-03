@@ -137,6 +137,21 @@ struct RideRecorderTests {
         #expect(rec.elapsedSeconds == 5)  // seconds 0…4 → 5 elapsed
     }
 
+    /// Duration is wall-clock elapsed, not sample count: a steady ride where
+    /// only two seconds happened to capture a fresh sample but 60 s of real time
+    /// passed must report 60 s, so the summary matches the live timer.
+    @Test func finishStampsWallClockDuration() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        rec.ingest(RideMetrics(powerW: 100), at: t0 + .milliseconds(500))
+        rec.ingest(RideMetrics(powerW: 100), at: t0 + .seconds(5))
+        let recording = rec.finish(at: t0 + .seconds(60))
+        #expect(recording.samples.count == 2)          // only two distinct seconds sampled
+        #expect(recording.durationSeconds == 60)       // but a full minute elapsed
+        #expect(recording.summary().durationSeconds == 60)
+    }
+
     /// R-R intervals accumulate within a second (multiple HR notifications, each
     /// carrying beats) rather than overwriting like the scalar fields do.
     @Test func rrIntervalsAppendWithinSecond() {

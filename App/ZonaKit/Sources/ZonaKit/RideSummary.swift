@@ -50,7 +50,10 @@ public extension RideRecording {
         let engine = ZoneEngine(ftp: ftp)
         let band = engine.wattRange(for: zone)
 
-        let duration = samples.count
+        // Wall-clock ride length, not sample count — the two diverge when a
+        // second passes without a fresh sample. Recordings built by hand (tests)
+        // carry no duration, so fall back to counting samples for those.
+        let duration = durationSeconds > 0 ? durationSeconds : samples.count
         let avg = powers.isEmpty ? 0 : Int((Double(powers.reduce(0, +)) / Double(powers.count)).rounded())
         let maxP = powers.max() ?? 0
         let np = Self.normalizedPower(powers)
