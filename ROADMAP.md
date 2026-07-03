@@ -3,11 +3,11 @@
 Possible new features, grouped by value and by how much of the plumbing already
 exists. Zona today holds a Kickr Core 2 at a steady ERG wattage while you aim for
 a target HR zone, records the ride to SwiftData, computes summaries
-(avg/NP/max power, time-in-zone, distance, RMSSD), exports TCX, and uploads
-directly to Strava. Several of the
+(avg/NP/max power, time-in-zone, distance, RMSSD), exports TCX, uploads
+directly to Strava, and syncs across devices via iCloud/CloudKit. Several of the
 items below build on infrastructure that already exists but isn't yet surfaced
 (the Quarq power decoder, persisted R-R intervals, closed-loop HR-hold behind a
-toggle, a CloudKit-ready data model).
+toggle).
 
 ## Tier 1 — Highest value, plumbing largely exists
 
@@ -44,14 +44,14 @@ toggle, a CloudKit-ready data model).
 
 ## Tier 3 — Connectivity & sync (known deferred items)
 
-- **iCloud / CloudKit sync.** _In progress (PR #12)._ The SwiftData model was
-  deliberately built CloudKit-ready (all defaults, no `.unique`, optional
-  relationships), so rides can follow you across iPhone/iPad/Mac with no
-  migration. The container is now wired to the private CloudKit database and the
-  entitlements are declared in `project.yml`; remaining work is enabling the
-  iCloud + Push Notifications capabilities and creating the
-  `iCloud.org.flightblog.zona` container in the Apple Developer portal, then
-  verifying sync on-device.
+- **iCloud / CloudKit sync.** ✅ _Shipped (PR #12); verified on device._ Rides
+  follow you across iPhone/iPad/Mac via the private CloudKit database, with no
+  migration — the SwiftData model was deliberately built CloudKit-ready (all
+  defaults, no `.unique`, optional relationships). The container is wired to
+  `iCloud.org.flightblog.zona`, the iCloud + Push Notifications capabilities and
+  entitlements (incl. the `remote-notification` background mode) are in place,
+  and the store is opened under `Application Support` (created up front) to avoid
+  a first-launch Core Data recovery stall.
 - **WHOOP Cloud API (recovery / readiness).** Post-hoc daily Recovery score,
   resting HR, HRV (`hrv_rmssd_milli`), sleep. The OAuth + Keychain (`TokenStore`)
   + URLSession plumbing now exists from the Strava upload and can be reused;
