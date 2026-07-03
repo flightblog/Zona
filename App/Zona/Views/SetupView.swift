@@ -74,6 +74,17 @@ struct SetupView: View {
                 ConnectionStatusText()
             }
 
+            Section("Appearance") {
+                Picker("Theme", selection: $settings.appearance) {
+                    ForEach(Appearance.allCases) { option in
+                        Text(option.name).tag(option)
+                    }
+                }
+                #if os(iOS)
+                .pickerStyle(.segmented)
+                #endif
+            }
+
             DiagnosticsSection()
         }
         .formStyle(.grouped)

@@ -96,6 +96,13 @@ final class RideSettings {
         didSet { UserDefaults.standard.set(hrHoldEnabled, forKey: "hrHoldEnabled") }
     }
 
+    /// Light/dark appearance. `.system` follows the OS setting; the others force
+    /// the app one way regardless. Applied via `.preferredColorScheme` at the
+    /// root of the view tree.
+    var appearance: Appearance {
+        didSet { UserDefaults.standard.set(appearance.rawValue, forKey: "appearance") }
+    }
+
     init() {
         let storedFTP = UserDefaults.standard.integer(forKey: "ftp")
         ftp = storedFTP == 0 ? 200 : storedFTP
@@ -108,6 +115,8 @@ final class RideSettings {
         let storedHRZone = UserDefaults.standard.integer(forKey: "hrZone")
         hrZone = HRZone(rawValue: storedHRZone) ?? .z2Endurance
         hrHoldEnabled = UserDefaults.standard.bool(forKey: "hrHoldEnabled")  // default false
+        let storedAppearance = UserDefaults.standard.integer(forKey: "appearance")
+        appearance = Appearance(rawValue: storedAppearance) ?? .system  // default .system
     }
 
     var engine: ZoneEngine { ZoneEngine(ftp: ftp) }
@@ -115,4 +124,30 @@ final class RideSettings {
 
     var hrEngine: HRZoneEngine { HRZoneEngine(lthr: lthr) }
     var targetHRBand: ClosedRange<Int> { hrEngine.bpmRange(for: hrZone) }
+}
+
+/// App appearance choice. Raw values are persisted, so keep them stable.
+enum Appearance: Int, CaseIterable, Identifiable {
+    case system = 0
+    case light = 1
+    case dark = 2
+
+    var id: Int { rawValue }
+
+    var name: String {
+        switch self {
+        case .system: return "System"
+        case .light:  return "Light"
+        case .dark:   return "Dark"
+        }
+    }
+
+    /// The scheme to force, or `nil` for `.system` (follow the OS).
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light:  return .light
+        case .dark:   return .dark
+        }
+    }
 }

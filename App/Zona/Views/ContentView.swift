@@ -4,6 +4,7 @@ import ZonaKit
 /// Top-level router: setup screen until we're riding, then the live ride view.
 struct ContentView: View {
     @Environment(TrainerController.self) private var controller
+    @Environment(RideSettings.self) private var settings
 
     var body: some View {
         NavigationStack {
@@ -32,6 +33,7 @@ struct ContentView: View {
                 }
             }
         }
+        .preferredColorScheme(settings.appearance.colorScheme)
     }
 }
 
