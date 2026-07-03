@@ -1,0 +1,5 @@
+# GitHub Pages config for the docs/ site (privacy policy for WHOOP/Strava API
+# registration). Minimal theme so the Markdown renders as a readable page.
+title: Zona
+description: Steady heart-rate-zone indoor riding for iOS and macOS.
+theme: jekyll-theme-minimal
