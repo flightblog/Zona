@@ -19,7 +19,7 @@ public enum HRZone: Int, CaseIterable, Sendable, Identifiable {
         case .z2Endurance: return "Z2 Endurance"
         case .z3Tempo:     return "Z3 Tempo"
         case .z4Threshold: return "Z4 Threshold"
-        case .z5VO2Max:    return "Z5 VO2 Max"
+        case .z5VO2Max:    return "Z5 Max"
         }
     }
 
