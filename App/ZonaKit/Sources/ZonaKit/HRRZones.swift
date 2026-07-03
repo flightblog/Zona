@@ -20,7 +20,7 @@ public enum HRRZone: Int, CaseIterable, Sendable, Identifiable {
     public var name: String {
         switch self {
         case .z1: return "Z1 Recovery"
-        case .z2: return "Z2 Aerobic"
+        case .z2: return "Z2 Endurance"
         case .z3: return "Z3 Tempo"
         case .z4: return "Z4 Threshold"
         case .z5: return "Z5 Max"

@@ -16,11 +16,11 @@ enum PowerZone: Int, CaseIterable {
 
     var name: String {
         switch self {
-        case .z1Recovery:      return "Z1 Active Recovery"
+        case .z1Recovery:      return "Z1 Recovery"
         case .z2Endurance:     return "Z2 Endurance"
         case .z3Tempo:         return "Z3 Tempo"
         case .z4Threshold:     return "Z4 Threshold"
-        case .z5VO2Max:        return "Z5 VO2 Max"
+        case .z5VO2Max:        return "Z5 Max"
         case .z6Anaerobic:     return "Z6 Anaerobic"
         case .z7Neuromuscular: return "Z7 Neuromuscular"
         }
