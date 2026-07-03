@@ -52,13 +52,19 @@ toggle).
   entitlements (incl. the `remote-notification` background mode) are in place,
   and the store is opened under `Application Support` (created up front) to avoid
   a first-launch Core Data recovery stall.
-- **WHOOP Cloud API (recovery / readiness).** Post-hoc daily Recovery score,
-  resting HR, HRV (`hrv_rmssd_milli`), sleep. The OAuth + Keychain (`TokenStore`)
-  + URLSession plumbing now exists from the Strava upload and can be reused;
-  this is daily-summary only, not live data. Best framed as "should I go hard or
-  keep it Z2 today?" guidance on setup.
-- **HRV-guided target suggestions.** Combine the HRV chart + WHOOP recovery to
-  suggest an FTP% or zone for the session based on today's readiness.
+- **WHOOP Cloud API (HR zones + recovery / readiness).** ✅ _Shipped (PR #15 zones,
+  PR #16 readiness); verified on device._ Connect WHOOP on the setup screen to use
+  its heart-rate zones as your source of truth — Zona reads your max + resting HR
+  (`read:body_measurement` + `read:recovery`) and reconstructs WHOOP's HRR zone
+  boundaries exactly, with the manual LTHR model as the fallback. The same section
+  shows today's Recovery % / HRV / resting HR plus an advisory "go hard or keep it
+  Z2?" zone suggestion (advisory only — it never changes your settings). Per-device
+  OAuth, tokens in the Keychain, cloned from the Strava plumbing. Requires a WHOOP
+  dev app (redirect `zona://whoop-auth`) and the privacy policy at
+  <https://flightblog.github.io/Zona/privacy-policy>.
+- **HRV-guided target suggestions.** Combine the stored ride R-R / HRV history with
+  the WHOOP recovery readiness (now available) to suggest an FTP% or zone for the
+  session — a richer, auto-applied version of the current advisory.
 
 ## Tier 4 — Platform polish
 
