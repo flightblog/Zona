@@ -44,9 +44,14 @@ toggle, a CloudKit-ready data model).
 
 ## Tier 3 — Connectivity & sync (known deferred items)
 
-- **iCloud / CloudKit sync.** The SwiftData model was deliberately built
-  CloudKit-ready (all defaults, no `.unique`, optional relationships), so rides
-  can follow you across iPhone/iPad/Mac with no migration.
+- **iCloud / CloudKit sync.** _In progress (PR #12)._ The SwiftData model was
+  deliberately built CloudKit-ready (all defaults, no `.unique`, optional
+  relationships), so rides can follow you across iPhone/iPad/Mac with no
+  migration. The container is now wired to the private CloudKit database and the
+  entitlements are declared in `project.yml`; remaining work is enabling the
+  iCloud + Push Notifications capabilities and creating the
+  `iCloud.org.flightblog.zona` container in the Apple Developer portal, then
+  verifying sync on-device.
 - **WHOOP Cloud API (recovery / readiness).** Post-hoc daily Recovery score,
   resting HR, HRV (`hrv_rmssd_milli`), sleep. The OAuth + Keychain (`TokenStore`)
   + URLSession plumbing now exists from the Strava upload and can be reused;
