@@ -45,7 +45,7 @@ LTHR). No closed-loop HR→watts control — that's a possible future phase.
 App/
 ├── project.yml              # XcodeGen spec → Zona.xcodeproj (iOS + macOS).
 │                            #   Owns Info.plist + entitlements — see note below.
-├── ZonaKit/                 # Swift Package: verified core, no UI. 134 tests.
+├── ZonaKit/                 # Swift Package: verified core, no UI. 142 tests.
 │   ├── Sources/ZonaKit/
 │   │   ├── FTMS.swift              # FTMS GATT: op codes, Indoor Bike Data decode
 │   │   ├── Zones.swift            # FTP → Coggan power zones
@@ -168,7 +168,10 @@ heart rate** (body measurement) and **resting heart rate** (recovery), from whic
 WHOOP builds its zones using **Heart Rate Reserve** (`bpm = restingHR +
 fraction × (maxHR − restingHR)`, fixed 40/60/70/80/90/100% bands). Zona
 reconstructs those exact boundaries and uses them as the ride target when
-connected, falling back to the manual LTHR zones otherwise.
+connected, falling back to the manual LTHR zones otherwise. Once connected, the
+section also shows today's **Recovery %, HRV, and resting HR** with a one-line
+advisory zone suggestion ("go hard or keep it Z2?") — advisory only; it never
+changes your settings.
 
 1. Create an app at <https://developer.whoop.com>. Set its **redirect URI** to
    exactly `zona://whoop-auth` (matches the app's OAuth redirect), and grant the
@@ -185,7 +188,8 @@ connected, falling back to the manual LTHR zones otherwise.
    to complete the OAuth login (tokens are captured by the flow and stored in the
    Keychain — you never paste them), then the WHOOP section shows your zone bands.
    Cross-check them against the WHOOP app for the same max/resting HR — they should
-   match. Use **Refresh zones** to re-pull after WHOOP updates your numbers.
+   match. Use **Refresh** to re-pull zones and recovery after WHOOP updates them
+   (it also auto-loads on launch when you're already connected).
 
 > Auth is **per-device** (like Strava): tokens live in this device's Keychain and
 > don't iCloud-sync, so connect WHOOP separately on each device. The same
@@ -195,7 +199,7 @@ connected, falling back to the manual LTHR zones otherwise.
 
 ```sh
 cd App/ZonaKit
-swift test        # 134 tests: zones, FTMS/HR/power decode, recorder, summaries, TCX export, Strava + WHOOP OAuth
+swift test        # 142 tests: zones, FTMS/HR/power decode, recorder, summaries, TCX export, Strava + WHOOP OAuth
 ```
 
 `ZonaKit` is pure and fully unit-tested. The BLE connection logic in `SensorHub`
