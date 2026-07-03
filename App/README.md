@@ -132,6 +132,21 @@ xcodebuild -project Zona.xcodeproj -scheme Zona \
   -destination 'platform=iOS Simulator,name=iPhone 15 Pro' build
 ```
 
+> **The app must be signed to *run*, not just build.** Zona opens a
+> CloudKit-mirrored SwiftData store at launch, so it needs a provisioning profile
+> granting the `iCloud.org.flightblog.zona` container. An **unsigned** build (e.g.
+> `CODE_SIGNING_ALLOWED=NO`) still *builds*, but **crashes on launch** —
+> `EXC_BREAKPOINT` in CloudKit `-[PFCloudKitContainerProvider containerWithIdentifier:]`
+> during store setup, before any window draws. This is an entitlements gate, not an
+> app bug. To run from the command line, sign with your team, e.g.:
+> ```sh
+> xcodebuild -project Zona.xcodeproj -scheme Zona -destination 'platform=macOS' \
+>   -configuration Debug DEVELOPMENT_TEAM=<YOUR_TEAM_ID> \
+>   CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates build
+> ```
+> then `open <DerivedData>/Build/Products/Debug/Zona.app`. (Running from Xcode with
+> a signing team set does this for you.)
+
 ## Strava upload setup
 
 The **Upload to Strava** button needs a Strava API app's credentials. Without
