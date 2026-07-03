@@ -40,7 +40,7 @@ struct RideView: View {
             // Cadence (form). Each fills to show where the live value sits in its
             // band. Cadence has no app-managed target, so it uses a fixed
             // endurance-comfortable band.
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
                 ZoneGauge(
                     value: controller.metrics.heartRateBpm,
                     band: settings.targetHRBand,
@@ -232,10 +232,10 @@ private struct ZoneGauge: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .stroke(.quaternary, lineWidth: 12)
+                    .stroke(.quaternary, lineWidth: 10)
                 Circle()
                     .trim(from: 0, to: fraction)
-                    .stroke(state.tint, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .stroke(state.tint, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.3), value: fraction)
 
@@ -244,7 +244,7 @@ private struct ZoneGauge: View {
                         .font(.body)
                         .foregroundStyle(state.tint)
                     Text(value.map { "\($0)" } ?? "—")
-                        .font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 40, weight: .bold, design: .rounded).monospacedDigit())
                         .contentTransition(.numericText())
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
@@ -256,8 +256,11 @@ private struct ZoneGauge: View {
             }
             // Square, capped so the ring stays compact on wide (iPad/Mac)
             // layouts instead of ballooning; still shrinks to fit a phone.
+            // The inset keeps a gap between adjacent rings so the stroke edges
+            // never touch when three sit across a narrow phone.
             .aspectRatio(1, contentMode: .fit)
-            .frame(maxWidth: 150)
+            .frame(maxWidth: 120)
+            .padding(.horizontal, 4)
 
             // State chip: color + word + arrow. Redundant cues on purpose.
             Text(state.cue)
