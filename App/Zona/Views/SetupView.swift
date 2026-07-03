@@ -101,7 +101,7 @@ struct SetupView: View {
             DiagnosticsSection()
         }
         .formStyle(.grouped)
-        .task { await whoop.syncConnectionState() }
+        .task { await whoop.syncOnAppear(settings: settings) }
     }
 }
 

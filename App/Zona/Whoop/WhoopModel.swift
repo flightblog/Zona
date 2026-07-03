@@ -34,7 +34,7 @@ final class WhoopModel {
         if let config {
             self.service = WhoopService(config: config, tokens: KeychainWhoopTokenStore())
             // We can't touch the actor's `isConnected` synchronously here; start
-            // `.disconnected` and let `.task { await syncConnectionState() }`
+            // `.disconnected` and let `.task { await syncOnAppear(settings:) }`
             // upgrade it to `.connected` if tokens already exist.
             self.state = .disconnected
         } else {
@@ -51,14 +51,34 @@ final class WhoopModel {
         recovery.flatMap(WhoopReadiness.init(from:))
     }
 
-    /// Reconcile the visible state with what's actually in the Keychain. Call from
-    /// the view's `.task`; safe to call repeatedly.
-    func syncConnectionState() async {
+    /// Reconcile the visible state with what's actually in the Keychain, and if we
+    /// come up already connected, load today's zones + recovery so a returning user
+    /// sees fresh data without tapping Refresh. Call from the view's `.task`; safe
+    /// to call repeatedly (the fetch only runs once, guarded on `recovery == nil`).
+    func syncOnAppear(settings: RideSettings) async {
         guard let service else { return }
         // Don't stomp a transient state (authorizing/refreshing/failed) mid-flow.
         switch state {
         case .disconnected, .connected:
-            state = await service.isConnected ? .connected : .disconnected
+            if await service.isConnected {
+                // Already connected from a previous session — auto-load once so
+                // today's recovery is populated on launch (guarded on `recovery ==
+                // nil` so it doesn't re-fetch every time the view reappears; the
+                // Refresh button handles manual re-fetches). Do it quietly: unlike
+                // Refresh, a failure here (offline, etc.) must NOT pop an error on
+                // appear — just stay connected and let the user retry.
+                if recovery == nil {
+                    state = .refreshing
+                    do {
+                        try await fetchZonesAndRecovery(into: settings, service: service)
+                    } catch {
+                        // Swallow — no error banner on launch.
+                    }
+                }
+                state = .connected
+            } else {
+                state = .disconnected
+            }
         default:
             break
         }
