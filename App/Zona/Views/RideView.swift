@@ -17,6 +17,8 @@ struct RideView: View {
 
     @State private var recorder = RideRecorder()
     @State private var savedRide: Ride?
+    /// Drives the "End ride?" confirmation so a stray tap can't discard a ride.
+    @State private var confirmingEnd = false
     /// Closed-loop HR→watts controller. Only consulted when `hrHoldEnabled`;
     /// mutable across ticks so it remembers its cooldown/breakout timers.
     @State private var hrHold = HRHoldController()
@@ -75,12 +77,18 @@ struct RideView: View {
 
             Spacer()
 
-            Button(role: .destructive, action: endRide) {
+            Button(role: .destructive) { confirmingEnd = true } label: {
                 Text("End ride").frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
         }
         .padding()
+        .alert("End ride?", isPresented: $confirmingEnd) {
+            Button("End ride", role: .destructive, action: endRide)
+            Button("Keep riding", role: .cancel) {}
+        } message: {
+            Text("This stops recording and saves your ride.")
+        }
         .onAppear {
             // Enter ERG at the configured steady target and start recording.
             controller.setTargetPower(settings.target)
