@@ -101,7 +101,7 @@ struct SetupView: View {
             DiagnosticsSection()
         }
         .formStyle(.grouped)
-        .task { await whoop.syncConnectionState() }
+        .task { await whoop.syncOnAppear(settings: settings) }
     }
 }
 
@@ -116,6 +116,9 @@ private struct WhoopSection: View {
         Section {
             switch whoop.state {
             case .connected, .refreshing:
+                if let recovery = whoop.recovery {
+                    WhoopReadinessRow(recovery: recovery, readiness: whoop.readiness)
+                }
                 if let engine = settings.hrrEngine {
                     ForEach([HRRZone.z1, .z2, .z3], id: \.self) { z in
                         let band = engine.bpmRange(for: z)
@@ -125,7 +128,7 @@ private struct WhoopSection: View {
                 Button {
                     Task { await whoop.refresh(settings: settings) }
                 } label: {
-                    labelWithSpinner("Refresh zones", busy: whoop.state == .refreshing)
+                    labelWithSpinner("Refresh", busy: whoop.state == .refreshing)
                 }
                 .disabled(whoop.state == .refreshing)
                 Button("Disconnect WHOOP", role: .destructive) {
@@ -146,7 +149,7 @@ private struct WhoopSection: View {
         } header: {
             Text("WHOOP")
         } footer: {
-            Text("Connect WHOOP to use its heart-rate zones as your source of truth. Zona reads your max and resting heart rate and matches WHOOP's zone boundaries exactly.")
+            Text("Connect WHOOP to use its heart-rate zones as your source of truth. Zona reads your max and resting heart rate and matches WHOOP's zone boundaries exactly, and shows today's recovery as a suggestion — it never changes your settings for you.")
         }
     }
 
@@ -160,6 +163,56 @@ private struct WhoopSection: View {
         HStack {
             if busy { ProgressView().controlSize(.small) }
             Text(title)
+        }
+    }
+}
+
+/// Today's WHOOP readiness: recovery %, HRV, and resting HR, plus an advisory
+/// one-line zone suggestion. Purely informational — it never changes settings.
+private struct WhoopReadinessRow: View {
+    let recovery: WhoopRecovery
+    let readiness: WhoopReadiness?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Recovery", systemImage: "heart.circle.fill")
+                    .foregroundStyle(bandColor)
+                Spacer()
+                Text(recovery.recoveryScore.map { "\($0)%" } ?? "—")
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(bandColor)
+            }
+            HStack(spacing: 16) {
+                stat("HRV", recovery.hrvMs.map { "\($0) ms" })
+                stat("Resting HR", recovery.restingHR.map { "\($0) bpm" })
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if let readiness {
+                Text(readiness.message)
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func stat(_ label: String, _ value: String?) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+            Text(value ?? "—").monospacedDigit().foregroundStyle(.primary)
+        }
+    }
+
+    /// WHOOP's own green / yellow / red recovery colors.
+    private var bandColor: Color {
+        switch readiness?.band {
+        case .green:  return .green
+        case .yellow: return .yellow
+        case .red:    return .red
+        case nil:     return .secondary
         }
     }
 }

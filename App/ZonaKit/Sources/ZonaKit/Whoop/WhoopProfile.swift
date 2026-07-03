@@ -35,6 +35,29 @@ public struct WhoopRecoveryRecord: Codable, Sendable, Equatable {
     public let score: WhoopRecoveryScore?
 }
 
+/// A single day's WHOOP recovery, in the units the UI shows: recovery percentage
+/// (0–100), HRV in milliseconds (RMSSD), and resting HR in bpm. Any field can be
+/// absent if WHOOP hasn't scored it. Derived from a `WhoopRecoveryScore` so the
+/// wire shape stays confined to the DTO.
+public struct WhoopRecovery: Sendable, Equatable {
+    public let recoveryScore: Int?
+    public let hrvMs: Int?
+    public let restingHR: Int?
+
+    public init(recoveryScore: Int?, hrvMs: Int?, restingHR: Int?) {
+        self.recoveryScore = recoveryScore
+        self.hrvMs = hrvMs
+        self.restingHR = restingHR
+    }
+
+    /// Build from a WHOOP score, rounding the wire doubles to whole units.
+    public init(from score: WhoopRecoveryScore) {
+        self.recoveryScore = score.recoveryScore.map { Int($0.rounded()) }
+        self.hrvMs = score.hrvRmssdMilli.map { Int($0.rounded()) }
+        self.restingHR = score.restingHeartRate.map { Int($0.rounded()) }
+    }
+}
+
 /// The paginated envelope WHOOP wraps collection endpoints in. Records for
 /// `GET /v2/recovery` are sorted by sleep start descending, so `records.first` is
 /// the most recent recovery.
@@ -50,9 +73,16 @@ public struct WhoopRecoveryPage: Codable, Sendable, Equatable {
     /// Resting HR (bpm) from the most recent scored recovery, or nil if none of
     /// the returned records has a score yet.
     public var latestRestingHR: Int? {
+        latestRecovery?.restingHR
+    }
+
+    /// The most recent scored recovery (score/HRV/resting HR together), or nil if
+    /// none of the returned records has a score yet. Records are newest-first, so
+    /// this is the first one carrying a score.
+    public var latestRecovery: WhoopRecovery? {
         for record in records {
-            if let rhr = record.score?.restingHeartRate {
-                return Int(rhr.rounded())
+            if let score = record.score {
+                return WhoopRecovery(from: score)
             }
         }
         return nil

@@ -144,4 +144,64 @@ struct WhoopDTOTests {
             from: Data(#"{"records":[{"score":null}]}"#.utf8))
         #expect(page.latestRestingHR == nil)
     }
+
+    @Test func latestRecoverySurfacesAllRoundedFields() throws {
+        let json = """
+        {"records":[
+          {"score":{"recovery_score":66.4,"resting_heart_rate":48.6,"hrv_rmssd_milli":42.5}}
+        ]}
+        """
+        let page = try JSONDecoder().decode(WhoopRecoveryPage.self, from: Data(json.utf8))
+        let rec = page.latestRecovery
+        #expect(rec?.recoveryScore == 66)
+        #expect(rec?.restingHR == 49)
+        #expect(rec?.hrvMs == 43)
+    }
+
+    @Test func latestRecoveryNilWhenUnscored() throws {
+        let page = try JSONDecoder().decode(
+            WhoopRecoveryPage.self,
+            from: Data(#"{"records":[{"score":null}]}"#.utf8))
+        #expect(page.latestRecovery == nil)
+    }
+}
+
+@Suite("WHOOP readiness")
+struct WhoopReadinessTests {
+    @Test func bandThresholdsMatchWhoopColors() {
+        #expect(WhoopRecoveryBand(recoveryScore: 90) == .green)
+        #expect(WhoopRecoveryBand(recoveryScore: 67) == .green)   // green floor
+        #expect(WhoopRecoveryBand(recoveryScore: 66) == .yellow)
+        #expect(WhoopRecoveryBand(recoveryScore: 34) == .yellow)  // yellow floor
+        #expect(WhoopRecoveryBand(recoveryScore: 33) == .red)
+        #expect(WhoopRecoveryBand(recoveryScore: 0) == .red)
+    }
+
+    @Test func greenSuggestsTempoCeiling() {
+        let r = WhoopReadiness(recoveryScore: 80)
+        #expect(r?.band == .green)
+        #expect(r?.suggestedCeiling == .z3)
+    }
+
+    @Test func yellowSuggestsZ2() {
+        let r = WhoopReadiness(recoveryScore: 50)
+        #expect(r?.band == .yellow)
+        #expect(r?.suggestedCeiling == .z2)
+    }
+
+    @Test func redSuggestsRecoverySpin() {
+        let r = WhoopReadiness(recoveryScore: 20)
+        #expect(r?.band == .red)
+        #expect(r?.suggestedCeiling == .z1)
+        #expect(r?.message.isEmpty == false)
+    }
+
+    @Test func nilScoreYieldsNoAdvice() {
+        #expect(WhoopReadiness(recoveryScore: nil) == nil)
+    }
+
+    @Test func buildsFromRecoverySnapshot() {
+        let rec = WhoopRecovery(recoveryScore: 75, hrvMs: 55, restingHR: 47)
+        #expect(WhoopReadiness(from: rec)?.suggestedCeiling == .z3)
+    }
 }

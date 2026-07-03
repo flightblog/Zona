@@ -21,6 +21,10 @@ enum WhoopConnectionState: Equatable {
 final class WhoopModel {
     private(set) var state: WhoopConnectionState
 
+    /// Today's WHOOP recovery (score / HRV / resting HR), refreshed alongside the
+    /// zones. Nil until fetched, or when WHOOP has no scored recovery yet.
+    private(set) var recovery: WhoopRecovery?
+
     private let service: WhoopService?
     private let authenticator = WhoopAuthenticator()
     private let config: WhoopOAuthConfig?
@@ -30,7 +34,7 @@ final class WhoopModel {
         if let config {
             self.service = WhoopService(config: config, tokens: KeychainWhoopTokenStore())
             // We can't touch the actor's `isConnected` synchronously here; start
-            // `.disconnected` and let `.task { await syncConnectionState() }`
+            // `.disconnected` and let `.task { await syncOnAppear(settings:) }`
             // upgrade it to `.connected` if tokens already exist.
             self.state = .disconnected
         } else {
@@ -41,14 +45,40 @@ final class WhoopModel {
 
     var isConfigured: Bool { config != nil }
 
-    /// Reconcile the visible state with what's actually in the Keychain. Call from
-    /// the view's `.task`; safe to call repeatedly.
-    func syncConnectionState() async {
+    /// Advisory readiness derived from today's recovery (never changes settings —
+    /// just suggests). Nil when there's no scored recovery to advise on.
+    var readiness: WhoopReadiness? {
+        recovery.flatMap(WhoopReadiness.init(from:))
+    }
+
+    /// Reconcile the visible state with what's actually in the Keychain, and if we
+    /// come up already connected, load today's zones + recovery so a returning user
+    /// sees fresh data without tapping Refresh. Call from the view's `.task`; safe
+    /// to call repeatedly (the fetch only runs once, guarded on `recovery == nil`).
+    func syncOnAppear(settings: RideSettings) async {
         guard let service else { return }
         // Don't stomp a transient state (authorizing/refreshing/failed) mid-flow.
         switch state {
         case .disconnected, .connected:
-            state = await service.isConnected ? .connected : .disconnected
+            if await service.isConnected {
+                // Already connected from a previous session — auto-load once so
+                // today's recovery is populated on launch (guarded on `recovery ==
+                // nil` so it doesn't re-fetch every time the view reappears; the
+                // Refresh button handles manual re-fetches). Do it quietly: unlike
+                // Refresh, a failure here (offline, etc.) must NOT pop an error on
+                // appear — just stay connected and let the user retry.
+                if recovery == nil {
+                    state = .refreshing
+                    do {
+                        try await fetchZonesAndRecovery(into: settings, service: service)
+                    } catch {
+                        // Swallow — no error banner on launch.
+                    }
+                }
+                state = .connected
+            } else {
+                state = .disconnected
+            }
         default:
             break
         }
@@ -65,8 +95,7 @@ final class WhoopModel {
                 try await service.exchange(code: code)
             }
             state = .refreshing
-            let inputs = try await service.fetchZoneInputs()
-            settings.applyWhoopZones(maxHR: inputs.maxHR, restingHR: inputs.restingHR)
+            try await fetchZonesAndRecovery(into: settings, service: service)
             state = .connected
         } catch WhoopAuthError.userCancelled {
             // User backed out of the consent sheet; return to whatever we were.
@@ -82,18 +111,30 @@ final class WhoopModel {
         guard await service.isConnected else { state = .disconnected; return }
         do {
             state = .refreshing
-            let inputs = try await service.fetchZoneInputs()
-            settings.applyWhoopZones(maxHR: inputs.maxHR, restingHR: inputs.restingHR)
+            try await fetchZonesAndRecovery(into: settings, service: service)
             state = .connected
         } catch {
             state = .failed(message: friendly(error))
         }
     }
 
+    /// Pull max HR + today's recovery in one shot, apply the zones, and store the
+    /// recovery for the readiness display. Shared by connect and refresh so both
+    /// keep zones and readiness in lockstep from a single recovery fetch.
+    private func fetchZonesAndRecovery(into settings: RideSettings, service: WhoopService) async throws {
+        let result = try await service.fetchZonesAndRecovery()
+        guard let restingHR = result.recovery?.restingHR else {
+            throw WhoopServiceError.noRestingHR
+        }
+        settings.applyWhoopZones(maxHR: result.maxHR, restingHR: restingHR)
+        recovery = result.recovery
+    }
+
     /// Forget the WHOOP account and stop using its zones (revert to manual LTHR).
     func disconnect(settings: RideSettings) async {
         await service?.disconnect()
         settings.clearWhoopZones()
+        recovery = nil
         state = isConfigured ? .disconnected : .unavailable
     }
 
