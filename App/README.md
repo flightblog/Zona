@@ -11,7 +11,9 @@ next planned sources).
 ## What it does
 
 1. **Setup** — enter your FTP (drives the ERG power target) and your LTHR (drives
-   the HR zones). Pick a target HR zone. Connect sensors.
+   the HR zones), or **connect WHOOP** to use its heart-rate zones as your source
+   of truth instead (see *WHOOP heart-rate zones setup* below). Pick a target HR
+   zone. Connect sensors.
 2. **Ride** — the trainer holds a steady watt setpoint via **FTMS ERG**; a live,
    color-coded HR readout shows whether you're landing in the target HR band
    (green in-zone, blue too easy, orange too hard). Power/cadence/speed also show.
@@ -59,12 +61,19 @@ App/
 │   │   │   └── SensorHub.swift             # multi-peripheral BLE manager
 │   │   ├── Export/
 │   │   │   └── TCXExporter.swift  # ride → TCX (TrainingCenterDatabase v2) string
-│   │   └── Strava/               # pure OAuth/upload logic (no networking)
-│   │       ├── StravaOAuth.swift   # authorize URL, callback parse, token bodies
-│   │       ├── StravaToken.swift   # token decode + expiry
-│   │       ├── StravaUpload.swift  # upload-status decode + poll state machine
-│   │       └── TokenStore.swift    # token persistence seam (mirrors SensorMemory)
-│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests
+│   │   ├── Strava/               # pure OAuth/upload logic (no networking)
+│   │   │   ├── StravaOAuth.swift   # authorize URL, callback parse, token bodies
+│   │   │   ├── StravaToken.swift   # token decode + expiry
+│   │   │   ├── StravaUpload.swift  # upload-status decode + poll state machine
+│   │   │   └── TokenStore.swift    # token persistence seam (mirrors SensorMemory)
+│   │   ├── HeartRateZones.swift  # LTHR/Friel HR zones (manual fallback)
+│   │   ├── HRRZones.swift        # HRR/Karvonen HR zones (WHOOP source-of-truth)
+│   │   └── Whoop/                # pure WHOOP OAuth + DTOs (no networking)
+│   │       ├── WhoopOAuth.swift    # authorize URL (state), callback parse, token bodies
+│   │       ├── WhoopToken.swift    # token decode + expiry
+│   │       ├── WhoopProfile.swift  # body-measurement + recovery DTOs
+│   │       └── WhoopTokenStore.swift # token persistence seam
+│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests, WhoopTests, HRRZonesTests
 └── Zona/                    # App target
     ├── ZonaApp.swift        # @main, RideSettings (FTP/zone/LTHR/HR zone), modelContainer
     ├── Model/
@@ -77,16 +86,22 @@ App/
     │   ├── KeychainTokenStore.swift # Keychain-backed TokenStore
     │   ├── StravaSecrets.swift      # client id/secret from Info.plist
     │   └── StravaUploadModel.swift  # @Observable upload view-model
+    ├── Whoop/                       # app-side I/O glue for WHOOP zones
+    │   ├── WhoopService.swift       # URLSession: exchange, refresh, fetch zone inputs
+    │   ├── WhoopAuthenticator.swift # ASWebAuthenticationSession OAuth login
+    │   ├── KeychainWhoopTokenStore.swift # Keychain-backed WhoopTokenStore
+    │   ├── WhoopSecrets.swift       # client id/secret from Info.plist
+    │   └── WhoopModel.swift         # @Observable connect/refresh view-model
     ├── Config/
     │   └── Secrets.example.xcconfig # template → gitignored Secrets.xcconfig
     ├── Views/
     │   ├── ContentView.swift    # setup ↔ ride router + History link
-    │   ├── SetupView.swift       # FTP, LTHR, zones, sensor rows, connect, Diagnostics
+    │   ├── SetupView.swift       # FTP, LTHR/WHOOP zones, sensor rows, connect, Diagnostics
     │   ├── RideView.swift        # HR readout, power dial, record, End ride
     │   ├── RideSummaryView.swift # per-ride summary + chart + Strava upload / Export
     │   └── HistoryView.swift     # past rides list
     └── Resources/
-        ├── Info.plist                # generated — BLE usage, URL scheme, Strava keys
+        ├── Info.plist                # generated — BLE usage, URL scheme, Strava + WHOOP keys
         ├── Zona.macOS.entitlements   # generated — sandbox + bluetooth + network
         └── Assets.xcassets           # AppIcon (iOS 1024 + macOS ladder)
 ```
@@ -141,6 +156,40 @@ them the button simply hides (the `.tcx` Share export still works).
 > baked into the built binary and is extractable. That's acceptable for a
 > personal, single-user build but blocks unmodified public distribution. A
 > server-side token-exchange proxy would be the fix.
+
+## WHOOP heart-rate zones setup
+
+The **WHOOP** section on the setup screen makes WHOOP the source of truth for your
+HR zones. Without credentials the section simply hides (the manual LTHR zones
+still work).
+
+WHOOP's API doesn't expose zone boundaries directly, but it returns your **max
+heart rate** (body measurement) and **resting heart rate** (recovery), from which
+WHOOP builds its zones using **Heart Rate Reserve** (`bpm = restingHR +
+fraction × (maxHR − restingHR)`, fixed 40/60/70/80/90/100% bands). Zona
+reconstructs those exact boundaries and uses them as the ride target when
+connected, falling back to the manual LTHR zones otherwise.
+
+1. Create an app at <https://developer.whoop.com>. Set its **redirect URI** to
+   exactly `zona://whoop-auth` (matches the app's OAuth redirect), and grant the
+   scopes `read:body_measurement`, `read:recovery`, and `offline` (the last is
+   what lets WHOOP issue a refresh token).
+2. Add your **Client ID** and **Client Secret** to `Zona/Config/Secrets.xcconfig`
+   (the same gitignored file as Strava — copy from `Secrets.example.xcconfig` if
+   you haven't already):
+   ```
+   WHOOP_CLIENT_ID = your_client_id
+   WHOOP_CLIENT_SECRET = your_secret
+   ```
+3. Run `xcodegen generate` and rebuild. On the setup screen, tap **Connect WHOOP**
+   to complete the OAuth login (tokens are captured by the flow and stored in the
+   Keychain — you never paste them), then the WHOOP section shows your zone bands.
+   Cross-check them against the WHOOP app for the same max/resting HR — they should
+   match. Use **Refresh zones** to re-pull after WHOOP updates your numbers.
+
+> Auth is **per-device** (like Strava): tokens live in this device's Keychain and
+> don't iCloud-sync, so connect WHOOP separately on each device. The same
+> PKCE-less client-secret caveat as Strava applies.
 
 ## Verifying the core
 
