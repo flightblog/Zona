@@ -270,11 +270,18 @@ private struct ZoneGauge: View {
                 .padding(.vertical, 4)
                 .background(state.tint.opacity(0.15), in: Capsule())
 
-            Text("\(caption) · \(band.lowerBound)–\(band.upperBound)")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            // Caption and band range on separate lines: at a phone's per-column
+            // width the two together overflow and ellipsize ("Z2 Endurance · 13…"),
+            // so stack them and use a smaller font that fits without clipping.
+            VStack(spacing: 1) {
+                Text(caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text("\(band.lowerBound)–\(band.upperBound)")
+                    .lineLimit(1)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
