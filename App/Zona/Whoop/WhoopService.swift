@@ -64,13 +64,14 @@ actor WhoopService {
 
     // MARK: Zone inputs
 
-    /// The two numbers WHOOP derives its HR zones from: max HR (body measurement)
-    /// and resting HR (latest scored recovery). One combined call so the UI has a
-    /// single "refresh zones" action.
-    func fetchZoneInputs() async throws -> (maxHR: Int, restingHR: Int) {
+    /// Max HR plus the latest recovery in one shot — max HR and the recovery page
+    /// are fetched concurrently, and the recovery page is decoded once for both
+    /// resting HR (zones) and the readiness display. `recovery` is nil when WHOOP
+    /// has no scored recovery yet. This is the single "refresh" call the UI makes.
+    func fetchZonesAndRecovery() async throws -> (maxHR: Int, recovery: WhoopRecovery?) {
         async let maxHR = fetchMaxHR()
-        async let restingHR = fetchRestingHR()
-        return try await (maxHR, restingHR)
+        async let recovery = fetchRecovery()
+        return try await (maxHR, recovery)
     }
 
     /// `GET /v2/user/measurement/body` → max heart rate.
@@ -81,16 +82,30 @@ actor WhoopService {
     }
 
     /// `GET /v2/recovery` (newest first) → resting HR from the latest scored
-    /// record. `limit=10` gives headroom to skip a still-calibrating top record.
+    /// record.
     func fetchRestingHR() async throws -> Int {
+        guard let rhr = try await fetchRecoveryPage().latestRestingHR else {
+            throw WhoopServiceError.noRestingHR
+        }
+        return rhr
+    }
+
+    // MARK: Readiness
+
+    /// The latest scored WHOOP recovery (recovery %, HRV, resting HR) for the
+    /// setup-screen readiness display, or nil if WHOOP hasn't scored a recent one.
+    func fetchRecovery() async throws -> WhoopRecovery? {
+        try await fetchRecoveryPage().latestRecovery
+    }
+
+    /// `GET /v2/recovery` (newest first). `limit=10` gives headroom to skip a
+    /// still-calibrating top record. Shared by resting-HR and readiness fetches.
+    private func fetchRecoveryPage() async throws -> WhoopRecoveryPage {
         var comps = URLComponents(url: Self.apiBase.appendingPathComponent("v2/recovery"),
                                   resolvingAgainstBaseURL: false)!
         comps.queryItems = [URLQueryItem(name: "limit", value: "10")]
         let data = try await authorizedGet(comps.url!)
-        guard let rhr = try decode(WhoopRecoveryPage.self, from: data).latestRestingHR else {
-            throw WhoopServiceError.noRestingHR
-        }
-        return rhr
+        return try decode(WhoopRecoveryPage.self, from: data)
     }
 
     // MARK: HTTP plumbing
