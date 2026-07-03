@@ -29,7 +29,7 @@ The Xcode project and its Info.plist/entitlements are **generated** from
 `xcodegen generate` after cloning.
 
 ```sh
-cd App/ZonaKit && swift test   # 104 tests: zones, BLE decoders, recorder, summaries, TCX export, Strava upload
+cd App/ZonaKit && swift test   # 134 tests: zones, BLE decoders, recorder, summaries, TCX export, Strava + WHOOP
 ```
 
 ## What it does

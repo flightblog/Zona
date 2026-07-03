@@ -45,7 +45,7 @@ LTHR). No closed-loop HR→watts control — that's a possible future phase.
 App/
 ├── project.yml              # XcodeGen spec → Zona.xcodeproj (iOS + macOS).
 │                            #   Owns Info.plist + entitlements — see note below.
-├── ZonaKit/                 # Swift Package: verified core, no UI. 104 tests.
+├── ZonaKit/                 # Swift Package: verified core, no UI. 134 tests.
 │   ├── Sources/ZonaKit/
 │   │   ├── FTMS.swift              # FTMS GATT: op codes, Indoor Bike Data decode
 │   │   ├── Zones.swift            # FTP → Coggan power zones
@@ -195,7 +195,7 @@ connected, falling back to the manual LTHR zones otherwise.
 
 ```sh
 cd App/ZonaKit
-swift test        # 104 tests: zones, FTMS/HR/power decode, recorder, summaries, TCX export, Strava OAuth/upload
+swift test        # 134 tests: zones, FTMS/HR/power decode, recorder, summaries, TCX export, Strava + WHOOP OAuth
 ```
 
 `ZonaKit` is pure and fully unit-tested. The BLE connection logic in `SensorHub`
