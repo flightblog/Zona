@@ -81,6 +81,7 @@ public struct ZoneEngine: Sendable {
 
     /// Which zone a live power reading falls into (for on-screen feedback).
     public func zone(forPower watts: Int) -> PowerZone {
+        guard ftp > 0 else { return .z1Recovery }
         let fraction = Double(watts) / Double(ftp)
         for z in PowerZone.allCases where fraction <= z.upperFraction {
             return z

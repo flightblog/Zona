@@ -61,6 +61,7 @@ public struct HRZoneEngine: Sendable {
 
     /// Which zone a live HR reading falls into (for on-screen feedback).
     public func zone(forHR bpm: Int) -> HRZone {
+        guard lthr > 0 else { return .z1Recovery }
         let fraction = Double(bpm) / Double(lthr)
         for z in HRZone.allCases where fraction <= z.upperFraction {
             return z
