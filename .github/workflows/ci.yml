@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ZonaKit tests
+    # ZonaKit uses CoreBluetooth and targets iOS 17 / macOS 14, so it needs an
+    # Apple toolchain — this can't run on Ubuntu.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Package declares swift-tools-version 6.0, which ships with Xcode 16.
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode_16.app
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Run tests
+        working-directory: App/ZonaKit
+        run: swift test
