@@ -44,18 +44,18 @@ struct RideView: View {
             // endurance-comfortable band.
             HStack(alignment: .top, spacing: 12) {
                 ZoneGauge(
-                    value: controller.metrics.heartRateBpm,
-                    band: settings.targetHRBand,
-                    label: "bpm",
-                    caption: settings.hrZone.name,
-                    icon: "heart.fill"
-                )
-                ZoneGauge(
                     value: controller.metrics.powerW,
                     band: wattBand,
                     label: "watts",
                     caption: settings.hrHoldEnabled ? "target \(wattTarget) W · AUTO" : "target \(wattTarget) W",
                     icon: "bolt.fill"
+                )
+                ZoneGauge(
+                    value: controller.metrics.heartRateBpm,
+                    band: settings.targetHRBand,
+                    label: "bpm",
+                    caption: settings.hrZone.name,
+                    icon: "heart.fill"
                 )
                 ZoneGauge(
                     value: controller.metrics.cadenceRpm,
@@ -71,6 +71,9 @@ struct RideView: View {
                 Metric(title: "Speed",
                        value: controller.metrics.speedKph.map { String(format: "%.1f", $0) } ?? "—",
                        unit: "km/h")
+                Metric(title: "Distance",
+                       value: String(format: "%.2f", recorder.distanceMeters / 1000),
+                       unit: "km")
             }
 
             TargetAdjuster(onAdjust: manualAdjust)
@@ -245,7 +248,7 @@ private struct ZoneGauge: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .stroke(.quaternary, lineWidth: 10)
+                    .stroke(.quaternary, lineWidth: 8)
                 Circle()
                     .trim(from: 0, to: fraction)
                     .stroke(state.tint, style: StrokeStyle(lineWidth: 8, lineCap: .round))

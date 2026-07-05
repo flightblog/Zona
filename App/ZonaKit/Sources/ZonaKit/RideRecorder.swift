@@ -79,6 +79,24 @@ public final class RideRecorder {
 
     public init() {}
 
+    /// Live accumulated distance in metres, integrating trainer speed the same
+    /// stepwise way `RideRecording.distanceMeters` does at ride's end (each
+    /// second's speed held until the next; no interpolation across gaps). Reading
+    /// it re-renders when new samples land, so the ride screen can show a running
+    /// total. Matches the saved-ride figure once recording finishes.
+    public var distanceMeters: Double {
+        let ordered = samplesBySecond.values.sorted { $0.secondsFromStart < $1.secondsFromStart }
+        var metres = 0.0
+        for i in 0..<ordered.count {
+            guard i + 1 < ordered.count else { break }
+            guard let kph = ordered[i].speedKph else { continue }
+            let dt = ordered[i + 1].secondsFromStart - ordered[i].secondsFromStart
+            guard dt > 0 else { continue }
+            metres += (kph / 3.6) * Double(dt)   // (m/s) × s
+        }
+        return metres
+    }
+
     /// Whole seconds elapsed since `start(...)`, measured from the monotonic
     /// start instant. Unlike `elapsedSeconds` (which only advances when metrics
     /// arrive via `ingest`), this reflects real time on demand, so a UI timer can
