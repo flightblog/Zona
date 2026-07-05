@@ -152,6 +152,22 @@ struct RideRecorderTests {
         #expect(recording.summary().durationSeconds == 60)
     }
 
+    /// Live accumulated distance integrates speed the same stepwise way the
+    /// saved recording does, so the ride screen's running total matches the
+    /// summary once the ride ends.
+    @Test func liveDistanceMatchesRecording() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        // 36 km/h = 10 m/s held for one second, then a second sample so the
+        // first interval integrates (the final sample has no "next", per the
+        // integration rule).
+        rec.ingest(RideMetrics(speedKph: 36), at: t0 + .milliseconds(100))
+        rec.ingest(RideMetrics(speedKph: 36), at: t0 + .seconds(1) + .milliseconds(100))
+        #expect(abs(rec.distanceMeters - 10) < 0.001)   // 10 m/s × 1 s
+        #expect(abs(rec.distanceMeters - rec.finish().summary().distanceMeters) < 0.001)
+    }
+
     /// R-R intervals accumulate within a second (multiple HR notifications, each
     /// carrying beats) rather than overwriting like the scalar fields do.
     @Test func rrIntervalsAppendWithinSecond() {
