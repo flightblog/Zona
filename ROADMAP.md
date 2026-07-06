@@ -39,6 +39,16 @@ toggle).
 - **Auto-pause / coasting detection.** When you stop pedaling (watts=0) the timer
   keeps running; detect a coast/stop and auto-pause the recorder to clean up
   summaries and time-in-zone math.
+- **ERG session resiliency (Machine Status + reconnect resend).** `SensorHub`
+  subscribes to Fitness Machine Status (`2ADA`, the Kickr Core 2 requires it before
+  it will answer control-point commands) but never parses its notifications, so an
+  external stop/pause, a safety-key pull, or another app taking the control point
+  goes undetected. Separately, a mid-ride BLE reconnect reruns the Request Control →
+  Start handshake and flips `trainerReady` back to true, but never re-sends the last
+  commanded watts — ERG target state after a drop currently depends on unverified
+  Kickr firmware behavior. Needs `2ADA` frame decoding in `didUpdateValueFor` plus
+  resending `metrics.targetW` whenever `trainerReady` transitions to true, not just
+  on the initial connect.
 - **Live ride charts.** A scrolling HR/power trace during the ride (not just the
   post-ride summary), to see drift and trend, not only the instantaneous gauge.
 
