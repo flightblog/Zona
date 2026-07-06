@@ -115,7 +115,7 @@ private struct WhoopSection: View {
                     WhoopReadinessRow(recovery: recovery, readiness: whoop.readiness)
                 }
                 if let engine = settings.hrrEngine {
-                    ForEach([HRRZone.z1, .z2, .z3], id: \.self) { z in
+                    ForEach(HRRZone.allCases) { z in
                         let band = engine.bpmRange(for: z)
                         LabeledContent(z.name, value: "\(band.lowerBound)–\(band.upperBound) bpm")
                     }
