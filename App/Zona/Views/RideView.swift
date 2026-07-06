@@ -19,9 +19,6 @@ struct RideView: View {
     @State private var savedRide: Ride?
     /// Drives the "End ride?" confirmation so a stray tap can't discard a ride.
     @State private var confirmingEnd = false
-    /// Closed-loop HR→watts controller. Only consulted when `hrHoldEnabled`;
-    /// mutable across ticks so it remembers its cooldown/breakout timers.
-    @State private var hrHold = HRHoldController()
 
     /// Watts are held by ERG, so "in target" is a tight window around the
     /// setpoint rather than the full (wide) power-zone band.
@@ -47,7 +44,7 @@ struct RideView: View {
                     value: controller.metrics.powerW,
                     band: wattBand,
                     label: "watts",
-                    caption: settings.hrHoldEnabled ? "target \(wattTarget) W · AUTO" : "target \(wattTarget) W",
+                    caption: "target \(wattTarget) W",
                     icon: "bolt.fill"
                 )
                 ZoneGauge(
@@ -76,7 +73,7 @@ struct RideView: View {
                        unit: "km")
             }
 
-            TargetAdjuster(onAdjust: manualAdjust)
+            TargetAdjuster()
 
             Spacer()
 
@@ -100,20 +97,16 @@ struct RideView: View {
         .onChange(of: controller.metrics) { _, newMetrics in
             recorder.ingest(newMetrics)
         }
-        // One 1 Hz tick drives two things:
-        //  1. Gap-free recording: re-ingest the current metrics every second so a
-        //     steady stretch (identical metrics → `.onChange` doesn't fire) still
-        //     produces a sample. Without this, `samples.count` under-counts and the
-        //     summary's duration/time-in-zone fall short of real elapsed time.
-        //  2. Closed-loop HR-hold: let the controller nudge the ERG target to keep
-        //     HR in zone. Only active when the rider opted in.
+        // Gap-free recording: re-ingest the current metrics every second so a
+        // steady stretch (identical metrics → `.onChange` doesn't fire) still
+        // produces a sample. Without this, `samples.count` under-counts and the
+        // summary's duration/time-in-zone fall short of real elapsed time.
         // The `.task` runs for the view's life and is cancelled on End ride.
         .task {
             let clock = ContinuousClock()
             while !Task.isCancelled {
                 try? await clock.sleep(for: .seconds(1))
                 recorder.ingest(controller.metrics)
-                hrHoldTick()
             }
         }
         .sheet(item: $savedRide) { ride in
@@ -126,32 +119,6 @@ struct RideView: View {
                     }
             }
         }
-    }
-
-    /// One closed-loop control step. No-op unless auto-hold is enabled and the
-    /// ride is recording. Feeds live HR + the current target into the controller
-    /// and applies any adjustment via the same ERG lever the manual buttons use.
-    private func hrHoldTick() {
-        guard settings.hrHoldEnabled, recorder.isRecording else { return }
-        let current = controller.metrics.targetW ?? settings.target
-        let decision = hrHold.update(
-            hr: controller.metrics.heartRateBpm,
-            currentTargetW: current,
-            band: settings.targetHRBand,
-            wattClamp: settings.engine.wattRange(for: settings.zone),
-            now: Double(recorder.elapsed())
-        )
-        if let newTarget = decision.newTargetW {
-            controller.setTargetPower(newTarget)
-            controller.note("Auto-hold: \(decision.reason)")
-        }
-    }
-
-    /// Apply a manual target change and tell the HR-hold controller, so auto-hold
-    /// backs off briefly instead of immediately fighting the rider's nudge.
-    private func manualAdjust(to watts: Int) {
-        controller.setTargetPower(watts)
-        hrHold.noteManualAdjust(at: Double(recorder.elapsed()))
     }
 
     private func endRide() {
@@ -320,22 +287,19 @@ private struct Metric: View {
     }
 }
 
-/// Nudge the ERG target up/down mid-ride without leaving the zone screen. Routes
-/// through `onAdjust` (not `setTargetPower` directly) so the parent can tell the
-/// HR-hold controller a manual change happened and back off briefly.
+/// Nudge the ERG target up/down mid-ride without leaving the zone screen.
 private struct TargetAdjuster: View {
     @Environment(TrainerController.self) private var controller
     @Environment(RideSettings.self) private var settings
-    let onAdjust: (Int) -> Void
 
     var body: some View {
         let current = controller.metrics.targetW ?? settings.target
         HStack(spacing: 16) {
-            Button { onAdjust(current - 5) } label: {
+            Button { controller.setTargetPower(current - 5) } label: {
                 Image(systemName: "minus.circle.fill")
             }
             Text("Adjust target").font(.headline).foregroundStyle(.secondary)
-            Button { onAdjust(current + 5) } label: {
+            Button { controller.setTargetPower(current + 5) } label: {
                 Image(systemName: "plus.circle.fill")
             }
         }

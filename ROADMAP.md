@@ -6,8 +6,7 @@ a target HR zone, records the ride to SwiftData, computes summaries
 (avg/NP/max power, time-in-zone, distance, RMSSD), exports TCX, uploads
 directly to Strava, and syncs across devices via iCloud/CloudKit. Several of the
 items below build on infrastructure that already exists but isn't yet surfaced
-(the Quarq power decoder, persisted R-R intervals, closed-loop HR-hold behind a
-toggle).
+(the Quarq power decoder, persisted R-R intervals).
 
 ## Tier 1 — Highest value, plumbing largely exists
 
@@ -16,7 +15,7 @@ toggle).
   that drives the ERG target automatically over time — turning Zona from "hold one
   number" into a training tool. The `setTargetPower` lever, `RideRecorder`, and
   time base already exist; this is mostly a workout model + a scheduler ticking
-  targets, reusing the same `.task` loop that drives HR-hold.
+  targets, reusing the same 1 Hz `.task` loop the ride screen already runs.
 - **Workout import/export (.zwo / .erg / .mrc).** Import standard workout files so
   sessions don't all have to be authored in-app. Reuses the XML-handling patterns
   proven in `TCXExporter`.
