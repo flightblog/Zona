@@ -57,12 +57,11 @@ struct SetupView: View {
                         LabeledContent("LTHR", value: "\(settings.lthr) bpm")
                     }
                 }
-                Picker("Target HR zone", selection: $settings.hrZone) {
-                    ForEach([HRZone.z1Recovery, .z2Endurance, .z3Tempo], id: \.self) { z in
-                        Text(z.name).tag(z)
-                    }
-                }
+                // The target HR zone follows the Hold zone above (they're the same
+                // zone), so there's no separate picker — just show the resulting
+                // target band for the selected zone.
                 let band = settings.targetHRBand
+                LabeledContent("Target HR zone", value: settings.hrZone.name)
                 LabeledContent("Target band", value: "\(band.lowerBound)–\(band.upperBound) bpm")
             } header: {
                 Text("Heart rate")
