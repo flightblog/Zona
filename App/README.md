@@ -280,19 +280,35 @@ to the main actor. No `@preconcurrency` escape hatches.
 
 ## Data & privacy
 
-Rides are stored **locally** with SwiftData (on-device only). The model is
-CloudKit-ready (all properties defaulted, no `.unique`, optional relationships)
-so iCloud sync can be enabled later with no migration. The only outbound
-networking is the **optional** Strava upload — nothing leaves the device unless
-you tap Upload; OAuth tokens are kept in the Keychain. Zona does **not** use the
-Wahoo Cloud API — see the roadmap for why.
+Rides are stored with SwiftData and **sync across your own devices** via a
+private **iCloud/CloudKit** container — nothing is shared with anyone else. The
+only other outbound networking is the **optional** Strava upload and the
+**optional** WHOOP Cloud fetch (recovery + max/resting HR for zones); OAuth
+tokens are kept in the Keychain. Zona does **not** use the Wahoo Cloud API — see
+the roadmap for why.
 
 ## Roadmap
 
-- **Quarq power meter** as the power source (decoder already built and tested).
-- **Whoop** as an HR source (should work over standard `0x180D`; verify on device).
-- Optional **iCloud/CloudKit** sync (model already compatible).
-- A **device picker** (currently the scan is unfiltered + name-heuristic; see the
-  SensorHub note above).
-- Possible **closed-loop HR→watts** (auto-adjust ERG to hold an HR zone) and
-  **HRV/R-R** capture (R-R is already parsed, just not stored).
+Shipped since the first cut (all verified on device unless noted):
+
+- **WHOOP** as a live HR source over standard `0x180D`, plus a **WHOOP Cloud**
+  integration: HR zones reconstructed from max/resting HR via HRR (Karvonen),
+  today's recovery/readiness shown as an advisory. The Setup WHOOP section lists
+  all five zones (Z1–Z5).
+- **iCloud/CloudKit** sync — rides sync across iPhone/iPad/Mac.
+- A **device picker** (pin a preferred sensor per kind; hot-swaps live).
+- **HRV/R-R** capture — R-R is parsed, stored per sample, and summarised as RMSSD.
+- **Ride export** to TCX via the Share sheet, with simulated distance.
+
+Still open / optional:
+
+- **Quarq power meter** as a *selectable* power source (decoder + `powerMeter`
+  SensorKind already built; dormant because HR-based zones use the Kickr's power).
+- Direct **Strava OAuth upload** if the manual TCX Share export proves too clunky.
+- Further **HRV** follow-ons now that R-R is stored (SDNN, an HRV time-series chart).
+- **ERG session resiliency** — recover the ERG setpoint after a mid-ride trainer
+  drop/reconnect.
+
+Note: **closed-loop HR→watts** (auto-adjust ERG to hold an HR zone) was built and
+then deliberately removed — the app stays open-loop (power holds the ERG setpoint,
+HR only defines/shows the target zone).
