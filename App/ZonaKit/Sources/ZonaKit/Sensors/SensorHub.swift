@@ -169,7 +169,7 @@ public final class SensorHub {
     }
 
     /// Append a line to the ride event log. `fileprivate` callers (BLE shim) and
-    /// the app (e.g. auto-hold explanations via `TrainerController.note`) share it.
+    /// the app (via `TrainerController.note`) share it.
     public func note(_ line: String) { append(line) }
 
     private func append(_ line: String) {

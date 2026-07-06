@@ -65,7 +65,7 @@ public final class TrainerController {
 
     public var log: [String] { hub.log }
 
-    /// Append a line to the ride event log (e.g. an auto-hold explanation).
+    /// Append a line to the ride event log.
     public func note(_ line: String) { hub.note(line) }
 
     /// Latches true once a ride's start conditions are first met, and stays true

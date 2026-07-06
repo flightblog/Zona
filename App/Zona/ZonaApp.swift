@@ -89,13 +89,6 @@ final class RideSettings {
         didSet { UserDefaults.standard.set(hrZone.rawValue, forKey: "hrZone") }
     }
 
-    /// When true, the ride screen closes the loop: it nudges the ERG watt target
-    /// to hold HR in `hrZone`. Default false — the app stays open-loop unless the
-    /// rider opts in. See `HRHoldController`.
-    var hrHoldEnabled: Bool {
-        didSet { UserDefaults.standard.set(hrHoldEnabled, forKey: "hrHoldEnabled") }
-    }
-
     // WHOOP source-of-truth zones. WHOOP defines HR zones from max HR + resting
     // HR via Heart Rate Reserve; when connected we store those two numbers and
     // (optionally) use the resulting HRR bands instead of the manual LTHR bands.
@@ -130,7 +123,6 @@ final class RideSettings {
         lthr = storedLTHR == 0 ? 160 : storedLTHR
         let storedHRZone = UserDefaults.standard.integer(forKey: "hrZone")
         hrZone = HRZone(rawValue: storedHRZone) ?? .z2Endurance
-        hrHoldEnabled = UserDefaults.standard.bool(forKey: "hrHoldEnabled")  // default false
         whoopMaxHRRaw = UserDefaults.standard.integer(forKey: "whoopMaxHR")        // 0 = unset
         whoopRestingHRRaw = UserDefaults.standard.integer(forKey: "whoopRestingHR") // 0 = unset
         useWhoopZones = UserDefaults.standard.bool(forKey: "useWhoopZones")  // default false

@@ -3,7 +3,7 @@ import Foundation
 /// Heart-rate-variability math over a ride's R-R (beat-to-beat) intervals.
 ///
 /// Pure and `Sendable` — no Bluetooth, no storage, no wall clock — so it unit
-/// tests exactly like `ZoneEngine`/`HRZoneEngine`/`HRHoldController`. The HR
+/// tests exactly like `ZoneEngine`/`HRZoneEngine`. The HR
 /// strap already reports R-R intervals (`HeartRateMeasurement.rrIntervals`, in
 /// seconds); the app concatenates a ride's intervals and calls `rmssd` for a
 /// single summary number.

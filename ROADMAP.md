@@ -6,8 +6,7 @@ a target HR zone, records the ride to SwiftData, computes summaries
 (avg/NP/max power, time-in-zone, distance, RMSSD), exports TCX, uploads
 directly to Strava, and syncs across devices via iCloud/CloudKit. Several of the
 items below build on infrastructure that already exists but isn't yet surfaced
-(the Quarq power decoder, persisted R-R intervals, closed-loop HR-hold behind a
-toggle).
+(the Quarq power decoder, persisted R-R intervals).
 
 ## Tier 1 — Highest value, plumbing largely exists
 
@@ -16,7 +15,7 @@ toggle).
   that drives the ERG target automatically over time — turning Zona from "hold one
   number" into a training tool. The `setTargetPower` lever, `RideRecorder`, and
   time base already exist; this is mostly a workout model + a scheduler ticking
-  targets, reusing the same `.task` loop that drives HR-hold.
+  targets, reusing the same 1 Hz `.task` loop the ride screen already runs.
 - **Workout import/export (.zwo / .erg / .mrc).** Import standard workout files so
   sessions don't all have to be authored in-app. Reuses the XML-handling patterns
   proven in `TCXExporter`.
@@ -39,6 +38,16 @@ toggle).
 - **Auto-pause / coasting detection.** When you stop pedaling (watts=0) the timer
   keeps running; detect a coast/stop and auto-pause the recorder to clean up
   summaries and time-in-zone math.
+- **ERG session resiliency (Machine Status + reconnect resend).** `SensorHub`
+  subscribes to Fitness Machine Status (`2ADA`, the Kickr Core 2 requires it before
+  it will answer control-point commands) but never parses its notifications, so an
+  external stop/pause, a safety-key pull, or another app taking the control point
+  goes undetected. Separately, a mid-ride BLE reconnect reruns the Request Control →
+  Start handshake and flips `trainerReady` back to true, but never re-sends the last
+  commanded watts — ERG target state after a drop currently depends on unverified
+  Kickr firmware behavior. Needs `2ADA` frame decoding in `didUpdateValueFor` plus
+  resending `metrics.targetW` whenever `trainerReady` transitions to true, not just
+  on the initial connect.
 - **Live ride charts.** A scrolling HR/power trace during the ride (not just the
   post-ride summary), to see drift and trend, not only the instantaneous gauge.
 
