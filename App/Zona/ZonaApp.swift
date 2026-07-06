@@ -73,7 +73,14 @@ final class RideSettings {
         didSet { UserDefaults.standard.set(ftp, forKey: "ftp") }
     }
     var zone: PowerZone {
-        didSet { UserDefaults.standard.set(zone.rawValue, forKey: "zone") }
+        didSet {
+            UserDefaults.standard.set(zone.rawValue, forKey: "zone")
+            // The Hold zone is the single zone the rider picks; the target HR zone
+            // tracks it 1:1 (both share raw values 1–5) so the Ride View's BPM
+            // gauge reflects the zone that was selected rather than a stale
+            // independent default.
+            syncHRZoneToHoldZone()
+        }
     }
     /// Where in the zone band to hold, 0…1 (0.5 = middle).
     var bandPosition: Double {
@@ -85,6 +92,9 @@ final class RideSettings {
     var lthr: Int {
         didSet { UserDefaults.standard.set(lthr, forKey: "lthr") }
     }
+    /// The target HR zone. Not picked independently — it mirrors `zone` (the Hold
+    /// zone) via `syncHRZoneToHoldZone()`. Still stored so `targetHRBand`, ride
+    /// records, and summaries can read it directly.
     var hrZone: HRZone {
         didSet { UserDefaults.standard.set(hrZone.rawValue, forKey: "hrZone") }
     }
@@ -128,6 +138,19 @@ final class RideSettings {
         useWhoopZones = UserDefaults.standard.bool(forKey: "useWhoopZones")  // default false
         let storedAppearance = UserDefaults.standard.integer(forKey: "appearance")
         appearance = Appearance(rawValue: storedAppearance) ?? .system  // default .system
+        // The Hold zone is the source of truth; realign the target HR zone to it
+        // in case a previously stored value diverged (e.g. from the old separate
+        // HR-zone picker). `didSet` doesn't fire during init, so do it explicitly.
+        syncHRZoneToHoldZone()
+    }
+
+    /// Point the target HR zone at the selected Hold zone. `PowerZone` and
+    /// `HRZone` share raw values 1–5 for the same zones, so the mapping is by
+    /// raw value; if the power zone has no HR counterpart the HR zone is left
+    /// unchanged (can't happen for the Z1/Z2 the picker offers).
+    private func syncHRZoneToHoldZone() {
+        guard let matched = HRZone(rawValue: zone.rawValue), matched != hrZone else { return }
+        hrZone = matched
     }
 
     var engine: ZoneEngine { ZoneEngine(ftp: ftp) }
