@@ -20,6 +20,11 @@ extension Ride {
         return TCXExporter.makeTCX(start: date, samples: tcxSamples)
     }
 
+    /// The Strava activity title for this ride, e.g. `Zona Z2 Endurance`.
+    var stravaActivityName: String {
+        "Zona \(zone.name)"
+    }
+
     /// A filesystem-safe filename for this ride, e.g. `Zona-2026-07-01-0730.tcx`.
     var tcxFilename: String {
         let f = DateFormatter()

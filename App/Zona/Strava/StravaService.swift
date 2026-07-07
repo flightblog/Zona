@@ -62,14 +62,14 @@ actor StravaService {
 
     /// Upload a TCX document and poll until Strava reaches a terminal state.
     /// `filenameBase` is the multipart filename without extension (e.g.
-    /// `Zona-2026-07-01-0730`).
-    func upload(tcx: String, filenameBase: String) async throws -> StravaUploadOutcome {
+    /// `Zona-2026-07-01-0730`). `activityName` becomes the Strava activity title.
+    func upload(tcx: String, filenameBase: String, activityName: String) async throws -> StravaUploadOutcome {
         let token = try await validAccessToken()
         let uploadsURL = URL(string: "https://www.strava.com/api/v3/uploads")!
         let filename = StravaUploadPoll.multipartFilename(for: filenameBase)
 
         let (body, contentType) = multipartBody(
-            tcx: tcx, filename: filename, dataType: StravaUploadPoll.dataType)
+            tcx: tcx, filename: filename, dataType: StravaUploadPoll.dataType, name: activityName)
         var request = URLRequest(url: uploadsURL)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -135,9 +135,9 @@ actor StravaService {
     }
 
     /// Build a `multipart/form-data` body with the TCX file + `data_type` field.
-    /// Also sets a fixed activity `name` and flags the upload as a `trainer`
-    /// activity — every Zona ride is an indoor trainer Zone 2 session.
-    private func multipartBody(tcx: String, filename: String, dataType: String) -> (Data, String) {
+    /// Also sets the activity `name` and flags the upload as a `trainer`
+    /// activity — every Zona ride is an indoor trainer session.
+    private func multipartBody(tcx: String, filename: String, dataType: String, name: String) -> (Data, String) {
         let boundary = "Boundary-\(UUID().uuidString)"
         var body = Data()
         func append(_ s: String) { body.append(Data(s.utf8)) }
@@ -149,7 +149,7 @@ actor StravaService {
         }
 
         field("data_type", dataType)
-        field("name", "Zona - Z2")
+        field("name", name)
         field("trainer", "1")
 
         append("--\(boundary)\r\n")
