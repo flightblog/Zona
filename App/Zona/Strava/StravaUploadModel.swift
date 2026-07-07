@@ -66,7 +66,8 @@ final class StravaUploadModel {
 
             state = .uploading
             let base = ride.tcxFilename.replacingOccurrences(of: ".tcx", with: "")
-            let outcome = try await service.upload(tcx: ride.tcxString(), filenameBase: base)
+            let outcome = try await service.upload(
+                tcx: ride.tcxString(), filenameBase: base, activityName: ride.stravaActivityName)
 
             switch outcome {
             case .succeeded(let id):
