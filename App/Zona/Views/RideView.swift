@@ -39,7 +39,9 @@ struct RideView: View {
             // Cadence (form). Each fills to show where the live value sits in its
             // band. Cadence has no app-managed target, so it uses a fixed
             // endurance-comfortable band.
-            HStack(alignment: .top, spacing: 12) {
+            // Bottom alignment so the dials share a baseline and the slightly
+            // larger HR dial grows upward rather than hanging off a shared top.
+            HStack(alignment: .bottom, spacing: 12) {
                 ZoneGauge(
                     value: controller.metrics.powerW,
                     band: wattBand,
@@ -52,7 +54,10 @@ struct RideView: View {
                     band: settings.targetHRBand,
                     label: "bpm",
                     caption: settings.hrZone.name,
-                    icon: "heart.fill"
+                    icon: "heart.fill",
+                    // HR is the target the rider chases, so give the center dial a
+                    // couple extra points over Watts/RPM to draw the eye.
+                    ringSize: 120
                 )
                 ZoneGauge(
                     value: controller.metrics.cadenceRpm,
@@ -196,6 +201,11 @@ private struct ZoneGauge: View {
     let label: String
     let caption: String
     let icon: String
+    /// Explicit ring diameter. On a phone the three columns are each narrower
+    /// than the old 120-pt cap, so a `maxWidth` ceiling was never reached and
+    /// every ring rendered the same size. Sizing the ring directly lets the
+    /// center HR dial actually render a couple points larger than Watts/RPM.
+    var ringSize: CGFloat = 104
 
     private var state: ZoneState { ZoneState(value: value, band: band) }
 
@@ -237,12 +247,10 @@ private struct ZoneGauge: View {
                 }
                 .padding(8)
             }
-            // Square, capped so the ring stays compact on wide (iPad/Mac)
-            // layouts instead of ballooning; still shrinks to fit a phone.
-            // The inset keeps a gap between adjacent rings so the stroke edges
-            // never touch when three sit across a narrow phone.
-            .aspectRatio(1, contentMode: .fit)
-            .frame(maxWidth: 120)
+            // Fixed square diameter so each ring renders at a known size (the
+            // center HR dial passes a larger value). Capped small enough that
+            // three fit across a narrow phone with a gap between the strokes.
+            .frame(width: ringSize, height: ringSize)
             .padding(.horizontal, 4)
 
             // State chip: color + word + arrow. Redundant cues on purpose.
