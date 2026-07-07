@@ -10,8 +10,9 @@ Verified on real hardware: **Kickr Core 2 + Garmin HRM 200**, on iOS and macOS.
 
 - **[`App/`](App/)** — the app. `ZonaKit` (a pure, unit-tested Swift package:
   FTMS/HR/power BLE decoding, power & HR zone math, ride recording) plus the
-  SwiftUI target. See **[`App/README.md`](App/README.md)** for build/run details,
-  architecture, and roadmap.
+  SwiftUI target. See **[`App/README.md`](App/README.md)** for build/run details
+  and architecture, and the **[roadmap](App/README.md#roadmap)** for what's shipped
+  and what's next.
 - **[`Prototype/`](Prototype/)** — a retired Phase-0 command-line proof-of-concept
   that validated FTMS trainer control before the app existed. Historical only.
 
