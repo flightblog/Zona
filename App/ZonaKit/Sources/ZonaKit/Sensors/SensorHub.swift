@@ -755,7 +755,10 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             guard let p = CyclingPowerMeasurement(data) else { return }
             // Route to `powerMeterW`, NOT `powerW`: the power meter is a
             // display-only secondary readout and must not overwrite the trainer's
-            // power (which drives ERG, recording, and the Strava export).
+            // power (which drives ERG, recording, and the Strava export). The
+            // meter's watts read differently from the trainer's by design — see
+            // `RideMetrics.powerMeterW` for why (direct crank torque vs. the
+            // trainer's flywheel estimate; the drivetrain loss between them).
             let reading = SensorReading(powerMeterW: p.instantaneousPowerW)
             toOwner { $0.apply(reading) }
 
