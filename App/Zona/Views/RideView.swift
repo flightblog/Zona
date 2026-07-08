@@ -76,6 +76,12 @@ struct RideView: View {
                 Metric(title: "Distance",
                        value: String(format: "%.2f", recorder.distanceMeters / 1000),
                        unit: "km")
+                // Secondary power-meter readout — only appears when a SRAM/Quarq
+                // is connected and reporting. Informational: it isn't recorded,
+                // exported, or used by ERG (see `RideMetrics.powerMeterW`).
+                if let meterW = controller.metrics.powerMeterW {
+                    Metric(title: "Meter", value: "\(meterW)", unit: "W")
+                }
             }
 
             TargetAdjuster()

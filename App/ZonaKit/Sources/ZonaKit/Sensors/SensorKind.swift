@@ -67,6 +67,12 @@ public struct SensorReading: Sendable, Equatable {
     public var cadenceRpm: Int?
     public var speedKph: Double?
     public var heartRateBpm: Int?
+    /// Power (W) from a standalone cycling power meter (SRAM/Quarq), kept
+    /// deliberately SEPARATE from `powerW`. `powerW` is the trainer's own power —
+    /// it drives ERG, recording, zone math, and the Strava export. The power
+    /// meter is a display-only secondary readout, so it never merges into
+    /// `powerW` and can't contaminate any of that.
+    public var powerMeterW: Int?
     /// R-R (beat-to-beat) intervals in seconds from this HR notification, if the
     /// strap reports them (many do; the trainer never will). Feeds HRV. Bursty —
     /// a single packet can carry several — so unlike the other fields these are
@@ -77,11 +83,13 @@ public struct SensorReading: Sendable, Equatable {
                 cadenceRpm: Int? = nil,
                 speedKph: Double? = nil,
                 heartRateBpm: Int? = nil,
+                powerMeterW: Int? = nil,
                 rrIntervalsSec: [Double]? = nil) {
         self.powerW = powerW
         self.cadenceRpm = cadenceRpm
         self.speedKph = speedKph
         self.heartRateBpm = heartRateBpm
+        self.powerMeterW = powerMeterW
         self.rrIntervalsSec = rrIntervalsSec
     }
 }

@@ -105,6 +105,30 @@ struct CyclingPowerMeasurementTests {
     }
 }
 
+@Suite("Power meter isolation")
+@MainActor
+struct PowerMeterIsolationTests {
+    /// A power-meter reading must land in `powerMeterW` and leave the trainer's
+    /// `powerW` untouched, so the meter can't skew ERG/recording/export.
+    @Test func meterReadingDoesNotTouchTrainerPower() {
+        let hub = SensorHub()
+        hub.applyForTesting(SensorReading(powerW: 200))       // trainer
+        hub.applyForTesting(SensorReading(powerMeterW: 187))  // Quarq
+        #expect(hub.metrics.powerW == 200)
+        #expect(hub.metrics.powerMeterW == 187)
+    }
+
+    /// The trainer keeps updating `powerW` independently of the meter.
+    @Test func trainerAndMeterTrackSeparately() {
+        let hub = SensorHub()
+        hub.applyForTesting(SensorReading(powerMeterW: 190))
+        hub.applyForTesting(SensorReading(powerW: 205))
+        hub.applyForTesting(SensorReading(powerMeterW: 195))
+        #expect(hub.metrics.powerW == 205)
+        #expect(hub.metrics.powerMeterW == 195)
+    }
+}
+
 @Suite("HR zones (LTHR)")
 struct HRZoneTests {
     let engine = HRZoneEngine(lthr: 160)

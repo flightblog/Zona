@@ -114,9 +114,13 @@ public final class TrainerController {
 
     // MARK: - Control
 
-    /// Start a ride session: scan for the trainer, plus HR if required.
+    /// Start a ride session: scan for the trainer, the power meter, plus HR if
+    /// required. The power meter is always scanned for but never required — it
+    /// connects silently if present and is simply absent otherwise (same pattern
+    /// as an HR strap when HR isn't required). It only ever feeds the ride
+    /// screen's secondary watts readout; the ride starts on the trainer alone.
     public func connect() {
-        var kinds: Set<SensorKind> = [.trainer]
+        var kinds: Set<SensorKind> = [.trainer, .powerMeter]
         if requiresHeartRate { kinds.insert(.heartRate) }
         hub.connect(kinds)
     }

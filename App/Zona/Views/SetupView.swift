@@ -71,9 +71,14 @@ struct SetupView: View {
                 WhoopSection(whoop: whoop)
             }
 
-            Section("Sensors") {
+            Section {
                 SensorRow(kind: .trainer)
                 SensorRow(kind: .heartRate)
+                SensorRow(kind: .powerMeter)
+            } header: {
+                Text("Sensors")
+            } footer: {
+                Text("A power meter (SRAM/Quarq) is optional — connect one to see its watts alongside the trainer during a ride. It's a secondary readout only and isn't recorded or uploaded.")
             }
 
             Section {
