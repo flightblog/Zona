@@ -37,6 +37,27 @@ public struct RideMetrics: Equatable, Sendable {
     /// `RideSummary`, the TCX export, and every zone calculation ignore it — only
     /// `powerW` (the trainer) feeds those. Keeping it here (not merged into
     /// `powerW`) is what guarantees the meter can't skew recorded/exported data.
+    ///
+    /// Why this reads DIFFERENTLY from `powerW`, and why that's expected:
+    /// The two devices measure different physical quantities at different points
+    /// on the drivetrain. Both send instantaneous power as a signed 16-bit LE
+    /// integer in watts, so the *decoding* is equivalent (see
+    /// `CyclingPowerMeasurement` for the Quarq's 0x2A63, `IndoorBikeData` for the
+    /// trainer's 0x2AD2) — the difference is entirely upstream in how each watt
+    /// value is produced:
+    ///   • Quarq (crank/spider meter): DIRECT measurement. Strain gauges in the
+    ///     crank flex under pedaling force → torque; combined with cadence →
+    ///     power (P = torque × angular velocity). Measures your leg input at the
+    ///     TOP of the drivetrain, before the chain/cassette/pulleys.
+    ///   • Kickr (smart trainer): ESTIMATED from its known resistance curve and
+    ///     flywheel speed — no strain gauge on your drivetrain. Measures what
+    ///     reaches the flywheel, at the BOTTOM of the drivetrain.
+    /// So the trainer typically reads a few watts LOWER than the Quarq for the
+    /// same effort: ~2–4% is lost to chain/bottom-bracket friction between the
+    /// cranks and the flywheel, plus the trainer's estimate carries its own error
+    /// band and averaging window. A small steady-state gap is the drivetrain
+    /// loss, not a bug — which is exactly why the trainer stays the source of
+    /// truth and the meter is display-only.
     public var powerMeterW: Int?
 
     /// The ERG watt target currently commanded (nil before a ride starts).
