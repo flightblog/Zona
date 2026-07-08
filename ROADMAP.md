@@ -5,8 +5,9 @@ exists. Zona today holds a Kickr Core 2 at a steady ERG wattage while you aim fo
 a target HR zone, records the ride to SwiftData, computes summaries
 (avg/NP/max power, time-in-zone, distance, RMSSD), exports TCX, uploads
 directly to Strava, and syncs across devices via iCloud/CloudKit. Several of the
-items below build on infrastructure that already exists but isn't yet surfaced
-(the Quarq power decoder, persisted R-R intervals).
+items below build on infrastructure that already exists but isn't yet fully
+surfaced (the Quarq power meter now shows a live readout but isn't recorded;
+persisted R-R intervals).
 
 ## Tier 1 — Highest value, plumbing largely exists
 
@@ -29,10 +30,13 @@ items below build on infrastructure that already exists but isn't yet surfaced
 
 ## Tier 2 — Rounds out the ride experience
 
-- **Quarq/SRAM as a selectable power source.** The `CyclingPowerMeasurement`
-  decoder, `powerMeter` SensorKind, and preferred-device picker already exist and
-  are dormant-but-ready. Surface it as a display/record source (true leg power
-  alongside the ERG-held trainer power, L/R balance).
+- **Quarq/SRAM as a selectable power source.** 🚧 _Display half shipped (PR #36);
+  pending Quarq-hardware verification._ A connected SRAM/Quarq now shows its live
+  watts on the ride screen as a display-only secondary readout (its own
+  `powerMeterW` field, deliberately never merged into the trainer's `powerW`, so
+  it can't skew recording, zone math, or the Strava export). Still to do: make it
+  a *recorded* source (true leg power alongside the ERG-held trainer power), plus
+  L/R balance.
 - **Audio / haptic zone cues.** Optional voice or haptic feedback ("push," "ease,"
   "back in zone") so you can ride heads-down without watching the gauges.
 - **Auto-pause / coasting detection.** When you stop pedaling (watts=0) the timer
@@ -91,4 +95,5 @@ items below build on infrastructure that already exists but isn't yet surfaced
   already trusted.
 - **HRV chart + SDNN** is the cheapest high-value win — the raw data is already
   stored.
-- **Quarq display** is the lowest-risk way to exercise dormant code.
+- **Quarq display** shipped (PR #36); recording the meter's power + L/R balance is
+  the natural follow-on now that the read path is proven.

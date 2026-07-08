@@ -154,6 +154,9 @@ public final class SensorHub {
         if let c = reading.cadenceRpm { metrics.cadenceRpm = c }
         if let s = reading.speedKph { metrics.speedKph = s }
         if let hr = reading.heartRateBpm { metrics.heartRateBpm = hr }
+        // Power meter watts are tracked separately from the trainer's power (see
+        // `powerMeterW`); only the ride screen's secondary readout reads them.
+        if let pm = reading.powerMeterW { metrics.powerMeterW = pm }
         // R-R is bursty and must not stick across seconds: attach it only for the
         // publish that carried it, then clear it so a later reading (e.g. the next
         // Indoor Bike Data with no R-R) doesn't re-record the same beats.
@@ -171,6 +174,12 @@ public final class SensorHub {
     /// Append a line to the ride event log. `fileprivate` callers (BLE shim) and
     /// the app (via `TrainerController.note`) share it.
     public func note(_ line: String) { append(line) }
+
+    #if DEBUG
+    /// Test seam: fold a reading into `metrics` exactly as a live sensor would,
+    /// without a CoreBluetooth central. Used to assert power-meter isolation.
+    func applyForTesting(_ reading: SensorReading) { apply(reading) }
+    #endif
 
     private func append(_ line: String) {
         log.append(line)
@@ -744,7 +753,10 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
 
         case (.powerMeter, _):
             guard let p = CyclingPowerMeasurement(data) else { return }
-            let reading = SensorReading(powerW: p.instantaneousPowerW)
+            // Route to `powerMeterW`, NOT `powerW`: the power meter is a
+            // display-only secondary readout and must not overwrite the trainer's
+            // power (which drives ERG, recording, and the Strava export).
+            let reading = SensorReading(powerMeterW: p.instantaneousPowerW)
             toOwner { $0.apply(reading) }
 
         default:

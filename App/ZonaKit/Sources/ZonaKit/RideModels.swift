@@ -32,6 +32,13 @@ public struct RideMetrics: Equatable, Sendable {
     public var speedKph: Double?
     public var heartRateBpm: Int?
 
+    /// Live watts from a connected SRAM/Quarq power meter, shown on the ride
+    /// screen as a secondary readout. Purely informational: `RideRecorder`,
+    /// `RideSummary`, the TCX export, and every zone calculation ignore it — only
+    /// `powerW` (the trainer) feeds those. Keeping it here (not merged into
+    /// `powerW`) is what guarantees the meter can't skew recorded/exported data.
+    public var powerMeterW: Int?
+
     /// The ERG watt target currently commanded (nil before a ride starts).
     public var targetW: Int?
 
@@ -45,12 +52,14 @@ public struct RideMetrics: Equatable, Sendable {
                 cadenceRpm: Int? = nil,
                 speedKph: Double? = nil,
                 heartRateBpm: Int? = nil,
+                powerMeterW: Int? = nil,
                 targetW: Int? = nil,
                 rrIntervalsSec: [Double]? = nil) {
         self.powerW = powerW
         self.cadenceRpm = cadenceRpm
         self.speedKph = speedKph
         self.heartRateBpm = heartRateBpm
+        self.powerMeterW = powerMeterW
         self.targetW = targetW
         self.rrIntervalsSec = rrIntervalsSec
     }
