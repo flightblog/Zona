@@ -3,15 +3,9 @@ import SwiftUI
 import ZonaKit
 
 /// List of past rides, newest first, with a time-in-zone badge. Tap for the
-/// full summary. Delete via the Edit button, swipe (iOS), or the row's
-/// context menu — each routes through a confirmation prompt so a ride isn't
-/// destroyed by accident.
+/// full summary, where a ride can be deleted (behind a confirmation alert).
 struct HistoryView: View {
-    @Environment(\.modelContext) private var modelContext
     @Query(sort: \Ride.date, order: .reverse) private var rides: [Ride]
-
-    /// Rides pending deletion, held until the user confirms.
-    @State private var pendingDeletion: [Ride] = []
 
     var body: some View {
         Group {
@@ -29,63 +23,11 @@ struct HistoryView: View {
                         } label: {
                             RideRow(ride: ride)
                         }
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                pendingDeletion = [ride]
-                            } label: {
-                                Label("Delete Ride", systemImage: "trash")
-                            }
-                        }
                     }
-                    .onDelete(perform: requestDelete)
                 }
             }
         }
         .navigationTitle("History")
-        .toolbar {
-            if !rides.isEmpty {
-                #if os(iOS)
-                ToolbarItem(placement: .topBarTrailing) {
-                    EditButton()
-                }
-                #endif
-            }
-        }
-        .confirmationDialog(
-            confirmationTitle,
-            isPresented: confirmationBinding,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive, action: confirmDelete)
-            Button("Cancel", role: .cancel) { pendingDeletion = [] }
-        } message: {
-            Text("This can't be undone.")
-        }
-    }
-
-    private var confirmationTitle: String {
-        pendingDeletion.count == 1
-            ? "Delete this ride?"
-            : "Delete \(pendingDeletion.count) rides?"
-    }
-
-    private var confirmationBinding: Binding<Bool> {
-        Binding(
-            get: { !pendingDeletion.isEmpty },
-            set: { if !$0 { pendingDeletion = [] } }
-        )
-    }
-
-    private func requestDelete(_ offsets: IndexSet) {
-        pendingDeletion = offsets.map { rides[$0] }
-    }
-
-    private func confirmDelete() {
-        for ride in pendingDeletion {
-            modelContext.delete(ride)
-        }
-        try? modelContext.save()
-        pendingDeletion = []
     }
 }
 
