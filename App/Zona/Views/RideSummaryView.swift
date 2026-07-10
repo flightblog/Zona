@@ -8,8 +8,10 @@ import ZonaKit
 struct RideSummaryView: View {
     let ride: Ride
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @State private var exportURL: URL?
     @State private var strava: StravaUploadModel?
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         ScrollView {
@@ -58,12 +60,31 @@ struct RideSummaryView: View {
                     }
                 }
             }
+            ToolbarItem {
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("Delete Ride", systemImage: "trash")
+                }
+            }
         }
         // Write the .tcx once when the summary opens, not on every re-render.
         .task(id: ride.id) {
             exportURL = try? ride.writeTCXTempFile()
             if strava == nil { strava = StravaUploadModel(ride: ride) }
         }
+        .alert("Delete this ride?", isPresented: $showDeleteConfirmation) {
+            Button("Delete", role: .destructive, action: deleteRide)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Are you sure you want to delete? This can't be undone.")
+        }
+    }
+
+    private func deleteRide() {
+        modelContext.delete(ride)
+        try? modelContext.save()
+        dismiss()
     }
 
     private var durationText: String {
