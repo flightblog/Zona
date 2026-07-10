@@ -52,7 +52,7 @@ with a signing team set handles this; from the CLI pass
 
 ## Architecture
 
-**`ZonaKit` (pure, no UI, 138 tests) vs. the `Zona` app target (I/O + SwiftUI).**
+**`ZonaKit` (pure, no UI, 148 tests) vs. the `Zona` app target (I/O + SwiftUI).**
 This split is the main thing to preserve: BLE decoding, zone math, ride
 recording/summarizing, TCX export, and the pure OAuth/token logic for Strava and
 WHOOP all live in `ZonaKit` and are unit-tested. The app target supplies the
