@@ -94,7 +94,7 @@ persisted R-R intervals).
   glanceable ride controller.
 - **Live Activity / Dynamic Island.** Ride timer, current HR/zone on the lock
   screen.
-- **Screen-on / idle management.** ✅ _Shipped (PR #PLACEHOLDER)._ The display
+- **Screen-on / idle management.** ✅ _Shipped (PR #39)._ The display
   stays awake for the whole ride via a `.keepAwake()` modifier on `RideView`
   (which is on screen exactly when a ride is live): iOS sets
   `UIApplication.isIdleTimerDisabled`, macOS holds a `ProcessInfo` activity
