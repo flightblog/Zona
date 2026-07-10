@@ -94,6 +94,11 @@ struct RideView: View {
             .buttonStyle(.borderedProminent)
         }
         .padding()
+        // Keep the screen awake for the whole ride: it's watched, not touched,
+        // so the idle timer / display sleep would otherwise blank the live dials
+        // (and a locked phone can suspend the app mid-session). Tied to this
+        // view's lifetime, which is exactly the live-ride window.
+        .keepAwake()
         .alert("End ride?", isPresented: $confirmingEnd) {
             Button("End ride", role: .destructive, action: endRide)
             Button("Keep riding", role: .cancel) {}
