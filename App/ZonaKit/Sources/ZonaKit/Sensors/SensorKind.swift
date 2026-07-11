@@ -73,6 +73,12 @@ public struct SensorReading: Sendable, Equatable {
     /// meter is a display-only secondary readout, so it never merges into
     /// `powerW` and can't contaminate any of that.
     public var powerMeterW: Int?
+    /// Cadence (rpm) derived from the power meter's crank-revolution data. Like
+    /// `powerMeterW`, display-only and separate from the trainer's `cadenceRpm`.
+    public var powerMeterCadenceRpm: Int?
+    /// Pedal power balance (L/R) from the power meter, as one leg's share 0–100 %.
+    /// Display-only; nil when the meter doesn't report balance.
+    public var powerMeterBalancePercent: Double?
     /// R-R (beat-to-beat) intervals in seconds from this HR notification, if the
     /// strap reports them (many do; the trainer never will). Feeds HRV. Bursty —
     /// a single packet can carry several — so unlike the other fields these are
@@ -84,12 +90,16 @@ public struct SensorReading: Sendable, Equatable {
                 speedKph: Double? = nil,
                 heartRateBpm: Int? = nil,
                 powerMeterW: Int? = nil,
+                powerMeterCadenceRpm: Int? = nil,
+                powerMeterBalancePercent: Double? = nil,
                 rrIntervalsSec: [Double]? = nil) {
         self.powerW = powerW
         self.cadenceRpm = cadenceRpm
         self.speedKph = speedKph
         self.heartRateBpm = heartRateBpm
         self.powerMeterW = powerMeterW
+        self.powerMeterCadenceRpm = powerMeterCadenceRpm
+        self.powerMeterBalancePercent = powerMeterBalancePercent
         self.rrIntervalsSec = rrIntervalsSec
     }
 }
