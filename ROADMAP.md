@@ -3,8 +3,9 @@
 Possible new features, grouped by value and by how much of the plumbing already
 exists. Zona today holds a Kickr Core 2 at a steady ERG wattage while you aim for
 a target HR zone, records the ride to SwiftData, computes summaries
-(avg/NP/max power, time-in-zone, distance, RMSSD), exports TCX, uploads
-directly to Strava, and syncs across devices via iCloud/CloudKit. Several of the
+(avg/NP/max power, time-in-zone, distance, RMSSD), charts watts and HR over time
+both live and post-ride, exports TCX, uploads directly to Strava, and syncs
+across devices via iCloud/CloudKit. Several of the
 items below build on infrastructure that already exists but isn't yet fully
 surfaced (the Quarq power meter now shows a live readout but isn't recorded;
 persisted R-R intervals).
@@ -23,7 +24,8 @@ persisted R-R intervals).
 - **HRV time-series chart + SDNN.** Raw per-second R-R is already persisted
   (`RideSampleModel.rrIntervalsSec`) precisely so this can be added without
   re-riding. Add `HRV.sdnn` alongside the existing `rmssd`, plus an HRV-over-the-
-  ride chart in `RideSummaryView` (already uses Swift Charts). Pure and testable.
+  ride chart in `RideSummaryView` (which now has the dual-axis time-series chart
+  and the `[ChartPoint].downsampled(to:)` reducer to reuse). Pure and testable.
 - **Trends / history dashboard.** `HistoryView` is a flat list today. A trends
   screen — weekly time-in-zone, RMSSD trend, distance/duration totals, a simple
   Z2-discipline view — is high-value and entirely local (all data is in SwiftData).
@@ -61,8 +63,19 @@ persisted R-R intervals).
   Kickr firmware behavior. Needs `2ADA` frame decoding in `didUpdateValueFor` plus
   resending `metrics.targetW` whenever `trainerReady` transitions to true, not just
   on the initial connect.
-- **Live ride charts.** A scrolling HR/power trace during the ride (not just the
-  post-ride summary), to see drift and trend, not only the instantaneous gauge.
+- **Live ride charts.** ✅ _Shipped (PR #47); verified on device._ A dual-axis
+  watts/BPM time-series now draws live on the ride screen (below the SRAM row,
+  trainer watts on the left axis, HR on the right) so you can see drift and trend,
+  not only the instantaneous gauges; the post-ride summary's power chart was
+  rebuilt to match. Swift Charts plots one shared Y-domain, so the second axis is
+  faked by scaling BPM into the watts domain and relabelling the trailing axis
+  back to BPM (shared `scaleBPMToWatts` / `unscaleWattsToBPM`). Samples are
+  downsampled to ≤200 bucket-averaged points before plotting (pure, unit-tested
+  `[ChartPoint].downsampled(to:)` in ZonaKit) — a `LineMark` per second is
+  thousands of marks on an hour ride. NB the reduction and axis ranges must be
+  computed *once* per render, not in computed properties the chart body re-reads
+  per point: doing the latter reprocessed every sample hundreds of times per
+  layout pass and froze the summary when opening a long old ride (fixed same PR).
 
 ## Tier 3 — Connectivity & sync (known deferred items)
 
