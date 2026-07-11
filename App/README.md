@@ -17,9 +17,12 @@ next planned sources).
 2. **Ride** — the trainer holds a steady watt setpoint via **FTMS ERG**; a live,
    color-coded HR readout shows whether you're landing in the target HR band
    (green in-zone, blue too easy, orange too hard). Power/cadence/speed also show.
+   A live **dual-axis chart** traces watts (left axis) and heart rate (right axis)
+   over time, so you can watch drift and trend, not just the instantaneous dials.
 3. **Save & review** — on End ride the session is recorded to **SwiftData** and a
-   summary appears (time-in-HR-zone headline, avg/max HR, power stats, HR+power
-   chart). **History** lists past rides; swipe to delete.
+   summary appears (time-in-HR-zone headline, avg/max HR, power stats, and the same
+   dual-axis watts/HR-over-time chart with the target HR-zone band shaded).
+   **History** lists past rides (read-only; delete a ride from its summary screen).
 4. **Send to Strava** — two options in the summary toolbar:
    - **Upload to Strava** — one tap uploads the ride directly (OAuth, no files).
      First use opens a Strava consent screen; after that it's automatic. The button
@@ -45,7 +48,7 @@ LTHR). No closed-loop HR→watts control — that's a possible future phase.
 App/
 ├── project.yml              # XcodeGen spec → Zona.xcodeproj (iOS + macOS).
 │                            #   Owns Info.plist + entitlements — see note below.
-├── ZonaKit/                 # Swift Package: verified core, no UI. 131 tests.
+├── ZonaKit/                 # Swift Package: verified core, no UI. 156 tests.
 │   ├── Sources/ZonaKit/
 │   │   ├── FTMS.swift              # FTMS GATT: op codes, Indoor Bike Data decode
 │   │   ├── Zones.swift            # FTP → Coggan power zones
@@ -53,6 +56,7 @@ App/
 │   │   ├── RideModels.swift       # ConnectionState, RideMetrics
 │   │   ├── RideRecorder.swift     # 1 Hz sample capture during a ride
 │   │   ├── RideSummary.swift      # avg/NP/max power, avg/max HR, time-in-(HR)zone
+│   │   ├── ChartDownsampling.swift # ChartPoint + bucket-average downsampler for the ride charts
 │   │   ├── TrainerController.swift # app-facing facade over SensorHub
 │   │   ├── Sensors/
 │   │   │   ├── SensorKind.swift            # trainer / heartRate / powerMeter
@@ -73,7 +77,7 @@ App/
 │   │       ├── WhoopToken.swift    # token decode + expiry
 │   │       ├── WhoopProfile.swift  # body-measurement + recovery DTOs
 │   │       └── WhoopTokenStore.swift # token persistence seam
-│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests, WhoopTests, HRRZonesTests
+│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests, WhoopTests, HRRZonesTests, ChartDownsamplingTests
 └── Zona/                    # App target
     ├── ZonaApp.swift        # @main, RideSettings (FTP/zone/LTHR/HR zone), modelContainer
     ├── Model/
@@ -97,8 +101,8 @@ App/
     ├── Views/
     │   ├── ContentView.swift    # setup ↔ ride router + History link
     │   ├── SetupView.swift       # FTP, LTHR/WHOOP zones, sensor rows, connect, Diagnostics
-    │   ├── RideView.swift        # HR readout, power dial, record, End ride
-    │   ├── RideSummaryView.swift # per-ride summary + chart + Strava upload / Export
+    │   ├── RideView.swift        # HR readout, power dial, live dual-axis chart, record, End ride
+    │   ├── RideSummaryView.swift # per-ride summary + dual-axis watts/HR chart + Strava upload / Export
     │   └── HistoryView.swift     # past rides list
     └── Resources/
         ├── Info.plist                # generated — BLE usage, URL scheme, Strava + WHOOP keys
@@ -214,7 +218,7 @@ changes your settings.
 
 ```sh
 cd App/ZonaKit
-swift test        # 131 tests: zones, FTMS/HR/power decode, recorder, summaries, TCX export, Strava + WHOOP OAuth
+swift test        # 156 tests: zones, FTMS/HR/power decode, recorder, summaries, chart downsampling, TCX export, Strava + WHOOP OAuth
 ```
 
 `ZonaKit` is pure and fully unit-tested. The BLE connection logic in `SensorHub`
@@ -299,13 +303,17 @@ Shipped since the first cut (all verified on device unless noted):
 - A **device picker** (pin a preferred sensor per kind; hot-swaps live).
 - **HRV/R-R** capture — R-R is parsed, stored per sample, and summarised as RMSSD.
 - **Ride export** to TCX via the Share sheet, with simulated distance.
+- **Dual-axis ride charts** — watts (left) and heart rate (right) over time, live
+  on the ride screen and on the post-ride summary (with the target HR-zone band
+  shaded). Samples are downsampled so long rides stay responsive.
 
 Still open / optional:
 
 - **Quarq power meter** as a *selectable* power source (decoder + `powerMeter`
   SensorKind already built; dormant because HR-based zones use the Kickr's power).
 - Direct **Strava OAuth upload** if the manual TCX Share export proves too clunky.
-- Further **HRV** follow-ons now that R-R is stored (SDNN, an HRV time-series chart).
+- Further **HRV** follow-ons now that R-R is stored — SDNN, and an HRV time-series
+  chart (which can reuse the dual-axis chart + downsampler already shipped).
 - **ERG session resiliency** — recover the ERG setpoint after a mid-ride trainer
   drop/reconnect.
 
