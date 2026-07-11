@@ -730,13 +730,13 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
         if desired.allSatisfy({ peripherals[$0] != nil }) { central?.stopScan() }
 
         // FTMS handshake: write Request Control immediately after subscribing,
-        // in THIS callback — byte-for-byte identical to the verified single-sensor
-        // prototype (Prototype/WahooFTMSPrototype). Do NOT defer this to
-        // didUpdateNotificationStateFor: that callback fires once per subscribed
-        // characteristic (we subscribe to three), so deferring risks sending
-        // Request Control before the machine-status subscription is active, which
-        // the Kickr requires. The prototype issues all three setNotifyValue calls
-        // then writes — restoring exactly that.
+        // in THIS callback — byte-for-byte identical to the original single-sensor
+        // prototype (since removed) that verified this ordering against the Kickr.
+        // Do NOT defer this to didUpdateNotificationStateFor: that callback fires
+        // once per subscribed characteristic (we subscribe to three), so deferring
+        // risks sending Request Control before the machine-status subscription is
+        // active, which the Kickr requires. Issue all three setNotifyValue calls
+        // then write — exactly the proven sequence.
         if kind == .trainer {
             if let cp = trainerControlPoint {
                 toOwner { $0.note("→ Request Control (handshake start)") }

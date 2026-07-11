@@ -12,8 +12,6 @@ real hardware (Kickr Core 2 + Garmin HRM 200) on iOS and macOS.
 Repo layout:
 - `App/` — the app: `ZonaKit` (pure, unit-tested Swift package) + the SwiftUI
   target. This is where almost all work happens.
-- `Prototype/` — a retired Phase-0 CLI proof-of-concept for FTMS trainer
-  control. Historical only; don't build on it.
 
 ## Commands
 
