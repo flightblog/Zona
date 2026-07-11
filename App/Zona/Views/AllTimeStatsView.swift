@@ -113,9 +113,41 @@ private struct WeeklyTrendChart: View {
     }
 }
 
+/// Builds an in-memory store seeded with a handful of rides so the preview
+/// renders with real numbers instead of the empty state. Dates are relative to
+/// now so the current-streak logic (which keys off "today") lights up: rides
+/// today, yesterday, and the day before make a 3-day current streak, plus two
+/// rides in a prior week so the weekly trend chart has more than one bar.
+@MainActor private func seededStatsContainer() -> ModelContainer {
+    let container = try! ModelContainer(
+        for: Ride.self, RideSampleModel.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+    let cal = Calendar.current
+    func daysAgo(_ n: Int) -> Date {
+        cal.date(byAdding: .day, value: -n, to: cal.startOfDay(for: .now))!
+            .addingTimeInterval(12 * 3600) // midday, clear of day boundaries
+    }
+    // (daysAgo, durationSec, distanceMeters, avgPowerW, timeInHRZoneSec)
+    let seed: [(Int, Int, Double, Int, Int)] = [
+        (0,  1_800, 10_000, 150,  900),   // today
+        (1,  2_400, 13_500, 165, 1_800),  // yesterday — best avg power, longest ride
+        (2,  1_500,  8_200, 140,  450),
+        (9,  2_100, 11_800, 155, 1_400),  // prior week
+        (11, 1_200,  6_500, 148,  600),   // prior week
+    ]
+    for (ago, dur, dist, power, inZone) in seed {
+        container.mainContext.insert(
+            Ride(date: daysAgo(ago), durationSec: dur, avgPowerW: power,
+                 distanceMeters: dist, timeInHRZoneSec: inZone)
+        )
+    }
+    return container
+}
+
 #Preview {
     NavigationStack {
         AllTimeStatsView()
     }
-    .modelContainer(for: [Ride.self, RideSampleModel.self], inMemory: true)
+    .modelContainer(seededStatsContainer())
 }
