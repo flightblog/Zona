@@ -70,27 +70,27 @@ struct RideView: View {
             }
             .frame(maxWidth: .infinity)
 
-            HStack(spacing: 32) {
+            // Speed, Distance, and the secondary SRAM/Quarq readout (power +
+            // cadence) all share one line. The SRAM tiles only appear when the
+            // meter is connected and reporting; when it is, four tiles have to
+            // fit across a phone, so the row scales its font down to keep them on
+            // one line. The SRAM values are informational: none of it is
+            // recorded, exported, or used by ERG (see `RideMetrics.powerMeterW`).
+            HStack(spacing: 16) {
                 Metric(title: "Speed",
                        value: controller.metrics.speedKph.map { String(format: "%.1f", $0) } ?? "—",
                        unit: "km/h")
                 Metric(title: "Distance",
                        value: String(format: "%.2f", recorder.distanceMeters / 1000),
                        unit: "km")
-            }
-
-            // Secondary SRAM/Quarq readout on its own row below Speed/Distance —
-            // power and cadence. Only appears when the meter is connected and
-            // reporting. Informational: none of it is recorded, exported, or
-            // used by ERG (see `RideMetrics.powerMeterW`).
-            if let meterW = controller.metrics.powerMeterW {
-                HStack(spacing: 32) {
+                if let meterW = controller.metrics.powerMeterW {
                     Metric(title: "SRAM", value: "\(meterW)", unit: "W")
                     Metric(title: "Cadence",
                            value: controller.metrics.powerMeterCadenceRpm.map { "\($0)" } ?? "—",
                            unit: "rpm")
                 }
             }
+            .frame(maxWidth: .infinity)
 
             // Live time-series of the two numbers that matter during the ride:
             // trainer watts (left axis, the lever) and BPM (right axis, the
@@ -320,10 +320,18 @@ private struct Metric: View {
             Text(value)
                 .font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText())
+                // Four of these have to fit on one line when a SRAM meter is
+                // connected; scale the number down (never wrap) so the row stays
+                // on a single line on a narrow phone.
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
             Text("\(title) · \(unit)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
