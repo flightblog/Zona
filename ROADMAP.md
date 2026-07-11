@@ -5,7 +5,10 @@ exists. Zona today holds a Kickr Core 2 at a steady ERG wattage while you aim fo
 a target HR zone, records the ride to SwiftData, computes summaries
 (avg/NP/max power, time-in-zone, distance, RMSSD), charts watts and HR over time
 both live and post-ride, exports TCX, uploads directly to Strava, and syncs
-across devices via iCloud/CloudKit. Several of the
+across devices via iCloud/CloudKit. The `App/` project (the `ZonaKit` package
+plus the SwiftUI target) is now the sole codebase — the retired Phase-0
+`WahooFTMSPrototype` CLI that validated FTMS trainer control before the app
+existed has been removed. Several of the
 items below build on infrastructure that already exists but isn't yet fully
 surfaced (the Quarq power meter now shows a live readout but isn't recorded;
 persisted R-R intervals).
