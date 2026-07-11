@@ -201,59 +201,51 @@ private struct PowerChart: View {
     /// pushes into it) then lag badly on open. See `downsampled(to:)`.
     private let maxPoints = 200
 
-    /// Bucket-averaged points actually plotted. Sort first (the SwiftData
-    /// relationship order isn't guaranteed), then reduce to the point budget.
-    private var points: [ChartPoint] {
-        (ride.samples ?? [])
-            .sorted { $0.secondsFromStart < $1.secondsFromStart }
-            .map { ChartPoint(seconds: $0.secondsFromStart,
-                              watts: $0.powerW.map(Double.init),
-                              bpm: $0.heartRateBpm.map(Double.init)) }
-            .downsampled(to: maxPoints)
-    }
-
     private var hrBand: ClosedRange<Int> {
         HRZoneEngine(lthr: ride.lthr).bpmRange(for: ride.hrZone)
     }
 
     /// Watts axis range: 0 to a little past the ride's peak power.
-    private var wattRange: ClosedRange<Double> {
+    private func wattRange(_ points: [ChartPoint]) -> ClosedRange<Double> {
         let peak = points.compactMap(\.watts).max() ?? 0
         return 0...max(100, peak * 1.1)
     }
 
     /// BPM axis range: padded past the ride's HR extremes, and always wide enough
     /// to contain the shaded target band even if HR never reached it.
-    private var bpmRange: ClosedRange<Double> {
+    private func bpmRange(_ points: [ChartPoint], band: ClosedRange<Int>) -> ClosedRange<Double> {
         let hrs = points.compactMap(\.bpm)
-        let lo = min(hrs.min() ?? Double(hrBand.lowerBound), Double(hrBand.lowerBound))
-        let hi = max(hrs.max() ?? Double(hrBand.upperBound), Double(hrBand.upperBound))
+        let lo = min(hrs.min() ?? Double(band.lowerBound), Double(band.lowerBound))
+        let hi = max(hrs.max() ?? Double(band.upperBound), Double(band.upperBound))
         // Guard against a zero-width span (a ride with a single flat HR value).
         let paddedLo = lo - 5
         let paddedHi = hi + 5
         return paddedLo...max(paddedHi, paddedLo + 1)
     }
 
-    /// Map a BPM value onto the watts domain so both series share one Y-axis.
-    private func wattsForBPM(_ bpm: Double) -> Double {
-        let frac = (bpm - bpmRange.lowerBound)
-            / (bpmRange.upperBound - bpmRange.lowerBound)
-        return wattRange.lowerBound + frac * (wattRange.upperBound - wattRange.lowerBound)
-    }
-
-    /// Inverse of `wattsForBPM`, for relabelling the right axis back to BPM.
-    private func bpmForWatts(_ watts: Double) -> Int {
-        let frac = (watts - wattRange.lowerBound)
-            / (wattRange.upperBound - wattRange.lowerBound)
-        return Int((bpmRange.lowerBound + frac * (bpmRange.upperBound - bpmRange.lowerBound)).rounded())
-    }
-
     var body: some View {
-        Chart {
+        // Compute the plotted points, HR band, and both axis ranges ONCE per
+        // render. Previously these were computed properties, and the BPM→watts
+        // scaling (called once per point and per axis label) re-read the ranges,
+        // each of which re-ran the whole sort+downsample — so a long ride
+        // reprocessed all its samples hundreds of times per layout pass and froze
+        // the summary (and the History row that opens it). Binding here runs the
+        // O(n log n) reduction exactly once.
+        let points = (ride.samples ?? [])
+            .sorted { $0.secondsFromStart < $1.secondsFromStart }
+            .map { ChartPoint(seconds: $0.secondsFromStart,
+                              watts: $0.powerW.map(Double.init),
+                              bpm: $0.heartRateBpm.map(Double.init)) }
+            .downsampled(to: maxPoints)
+        let band = hrBand
+        let wattRange = wattRange(points)
+        let bpmRange = bpmRange(points, band: band)
+
+        return Chart {
             // Target HR-zone band, mapped from BPM into the watts domain.
             RectangleMark(
-                yStart: .value("Low", wattsForBPM(Double(hrBand.lowerBound))),
-                yEnd: .value("High", wattsForBPM(Double(hrBand.upperBound)))
+                yStart: .value("Low", scaleBPMToWatts(Double(band.lowerBound), bpmRange: bpmRange, wattRange: wattRange)),
+                yEnd: .value("High", scaleBPMToWatts(Double(band.upperBound), bpmRange: bpmRange, wattRange: wattRange))
             )
             .foregroundStyle(.green.opacity(0.12))
 
@@ -270,7 +262,7 @@ private struct PowerChart: View {
                 if let hr = point.bpm {
                     LineMark(
                         x: .value("Time", point.seconds),
-                        y: .value("BPM", wattsForBPM(hr)),
+                        y: .value("BPM", scaleBPMToWatts(hr, bpmRange: bpmRange, wattRange: wattRange)),
                         series: .value("Series", "Heart rate (bpm)")
                     )
                     .foregroundStyle(.red)
@@ -297,7 +289,10 @@ private struct PowerChart: View {
             // Right axis: same tick positions, relabelled from watts back to BPM.
             AxisMarks(position: .trailing) { value in
                 if let watts = value.as(Double.self) {
-                    AxisValueLabel { Text("\(bpmForWatts(watts))").foregroundStyle(.red) }
+                    AxisValueLabel {
+                        Text("\(unscaleWattsToBPM(watts, bpmRange: bpmRange, wattRange: wattRange))")
+                            .foregroundStyle(.red)
+                    }
                 }
             }
         }
