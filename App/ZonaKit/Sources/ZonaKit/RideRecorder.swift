@@ -79,13 +79,21 @@ public final class RideRecorder {
 
     public init() {}
 
+    /// The seconds captured so far, in time order. Reading it re-renders when new
+    /// samples land, so the live ride screen can plot a running time-series of the
+    /// values (e.g. watts and BPM). Mirrors the ordering `finish()` produces, so a
+    /// live chart and the saved ride agree on the sequence.
+    public var samples: [RideSample] {
+        samplesBySecond.values.sorted { $0.secondsFromStart < $1.secondsFromStart }
+    }
+
     /// Live accumulated distance in metres, integrating trainer speed the same
     /// stepwise way `RideRecording.distanceMeters` does at ride's end (each
     /// second's speed held until the next; no interpolation across gaps). Reading
     /// it re-renders when new samples land, so the ride screen can show a running
     /// total. Matches the saved-ride figure once recording finishes.
     public var distanceMeters: Double {
-        let ordered = samplesBySecond.values.sorted { $0.secondsFromStart < $1.secondsFromStart }
+        let ordered = samples
         var metres = 0.0
         for i in 0..<ordered.count {
             guard i + 1 < ordered.count else { break }

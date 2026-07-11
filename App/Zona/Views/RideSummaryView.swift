@@ -183,39 +183,86 @@ private struct Stat: View {
     }
 }
 
-/// Heart rate and power over time, with the target HR-zone band shaded. HR is
-/// the headline series (zones are HR-based); power is shown lighter for context.
+/// Heart rate and power over time on two independent scales — watts on the LEFT
+/// axis, BPM on the RIGHT — with the target HR-zone band shaded. Matches the live
+/// ride screen's dual-axis chart so a ride reads the same during and after.
+///
+/// Swift Charts plots every mark against one shared Y-domain, so the second axis
+/// is faked the standard way: watts plot in natural units and own the left axis;
+/// BPM (both the heart-rate line and the shaded zone band) is scaled into the
+/// watts domain before plotting, then the right axis is relabelled back to real
+/// BPM. Ranges auto-fit the ride's own data since a saved ride's full extent is
+/// known up front.
 private struct PowerChart: View {
     let ride: Ride
 
-    private var samples: [RideSampleModel] {
-        (ride.samples ?? []).sorted { $0.secondsFromStart < $1.secondsFromStart }
+    /// At most this many points reach Charts. A `LineMark` per second makes a
+    /// long ride thousands of marks — the summary (and the History list that
+    /// pushes into it) then lag badly on open. See `downsampled(to:)`.
+    private let maxPoints = 200
+
+    private var hrBand: ClosedRange<Int> {
+        HRZoneEngine(lthr: ride.lthr).bpmRange(for: ride.hrZone)
+    }
+
+    /// Watts axis range: 0 to a little past the ride's peak power.
+    private func wattRange(_ points: [ChartPoint]) -> ClosedRange<Double> {
+        let peak = points.compactMap(\.watts).max() ?? 0
+        return 0...max(100, peak * 1.1)
+    }
+
+    /// BPM axis range: padded past the ride's HR extremes, and always wide enough
+    /// to contain the shaded target band even if HR never reached it.
+    private func bpmRange(_ points: [ChartPoint], band: ClosedRange<Int>) -> ClosedRange<Double> {
+        let hrs = points.compactMap(\.bpm)
+        let lo = min(hrs.min() ?? Double(band.lowerBound), Double(band.lowerBound))
+        let hi = max(hrs.max() ?? Double(band.upperBound), Double(band.upperBound))
+        // Guard against a zero-width span (a ride with a single flat HR value).
+        let paddedLo = lo - 5
+        let paddedHi = hi + 5
+        return paddedLo...max(paddedHi, paddedLo + 1)
     }
 
     var body: some View {
-        let hrBand = HRZoneEngine(lthr: ride.lthr).bpmRange(for: ride.hrZone)
+        // Compute the plotted points, HR band, and both axis ranges ONCE per
+        // render. Previously these were computed properties, and the BPM→watts
+        // scaling (called once per point and per axis label) re-read the ranges,
+        // each of which re-ran the whole sort+downsample — so a long ride
+        // reprocessed all its samples hundreds of times per layout pass and froze
+        // the summary (and the History row that opens it). Binding here runs the
+        // O(n log n) reduction exactly once.
+        let points = (ride.samples ?? [])
+            .sorted { $0.secondsFromStart < $1.secondsFromStart }
+            .map { ChartPoint(seconds: $0.secondsFromStart,
+                              watts: $0.powerW.map(Double.init),
+                              bpm: $0.heartRateBpm.map(Double.init)) }
+            .downsampled(to: maxPoints)
+        let band = hrBand
+        let wattRange = wattRange(points)
+        let bpmRange = bpmRange(points, band: band)
 
-        Chart {
+        return Chart {
+            // Target HR-zone band, mapped from BPM into the watts domain.
             RectangleMark(
-                yStart: .value("Low", hrBand.lowerBound),
-                yEnd: .value("High", hrBand.upperBound)
+                yStart: .value("Low", scaleBPMToWatts(Double(band.lowerBound), bpmRange: bpmRange, wattRange: wattRange)),
+                yEnd: .value("High", scaleBPMToWatts(Double(band.upperBound), bpmRange: bpmRange, wattRange: wattRange))
             )
             .foregroundStyle(.green.opacity(0.12))
 
-            ForEach(samples, id: \.secondsFromStart) { sample in
-                if let power = sample.powerW {
+            ForEach(points, id: \.seconds) { point in
+                if let power = point.watts {
                     LineMark(
-                        x: .value("Time", sample.secondsFromStart),
-                        y: .value("Value", power),
+                        x: .value("Time", point.seconds),
+                        y: .value("Watts", power),
                         series: .value("Series", "Power (W)")
                     )
                     .foregroundStyle(.blue.opacity(0.45))
                     .interpolationMethod(.monotone)
                 }
-                if let hr = sample.heartRateBpm {
+                if let hr = point.bpm {
                     LineMark(
-                        x: .value("Time", sample.secondsFromStart),
-                        y: .value("Value", hr),
+                        x: .value("Time", point.seconds),
+                        y: .value("BPM", scaleBPMToWatts(hr, bpmRange: bpmRange, wattRange: wattRange)),
                         series: .value("Series", "Heart rate (bpm)")
                     )
                     .foregroundStyle(.red)
@@ -227,7 +274,28 @@ private struct PowerChart: View {
             "Heart rate (bpm)": Color.red,
             "Power (W)": Color.blue.opacity(0.45)
         ])
+        .chartYScale(domain: wattRange)
+        // Both axes share the watts domain; declare them in one block (a second
+        // .chartYAxis call would replace the first rather than add to it).
+        .chartYAxis {
+            // Left axis: real watts.
+            AxisMarks(position: .leading) { value in
+                AxisGridLine()
+                AxisTick()
+                if let watts = value.as(Double.self) {
+                    AxisValueLabel { Text("\(Int(watts))").foregroundStyle(.blue) }
+                }
+            }
+            // Right axis: same tick positions, relabelled from watts back to BPM.
+            AxisMarks(position: .trailing) { value in
+                if let watts = value.as(Double.self) {
+                    AxisValueLabel {
+                        Text("\(unscaleWattsToBPM(watts, bpmRange: bpmRange, wattRange: wattRange))")
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+        }
         .chartXAxisLabel("seconds")
-        .chartYAxisLabel("bpm / watts")
     }
 }
