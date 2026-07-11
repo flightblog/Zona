@@ -154,9 +154,12 @@ public final class SensorHub {
         if let c = reading.cadenceRpm { metrics.cadenceRpm = c }
         if let s = reading.speedKph { metrics.speedKph = s }
         if let hr = reading.heartRateBpm { metrics.heartRateBpm = hr }
-        // Power meter watts are tracked separately from the trainer's power (see
-        // `powerMeterW`); only the ride screen's secondary readout reads them.
+        // Power-meter values (watts, cadence, L/R balance) are tracked separately
+        // from the trainer's (see `powerMeterW`); only the ride screen's secondary
+        // readout reads them — never recorded, exported, or fed to ERG.
         if let pm = reading.powerMeterW { metrics.powerMeterW = pm }
+        if let pc = reading.powerMeterCadenceRpm { metrics.powerMeterCadenceRpm = pc }
+        if let pb = reading.powerMeterBalancePercent { metrics.powerMeterBalancePercent = pb }
         // R-R is bursty and must not stick across seconds: attach it only for the
         // publish that carried it, then clear it so a later reading (e.g. the next
         // Indoor Bike Data with no R-R) doesn't re-record the same beats.
@@ -224,6 +227,12 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
     // Names captured at advertisement time, for browse probes (peripheral.name
     // can be nil until connected; the advert name is often richer).
     private var advertisedNames: [UUID: String] = [:]
+
+    // Previous crank-revolution sample from the power meter, to derive cadence
+    // from the delta between successive Cycling Power packets (the packet carries
+    // counters, not rpm). Both counters wrap at UInt16.
+    private var lastCrankRevs: Int?
+    private var lastCrankEventTime: Int?
 
     init(owner: SensorHub, memory: SensorMemory) {
         self.owner = owner
@@ -753,13 +762,17 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
 
         case (.powerMeter, _):
             guard let p = CyclingPowerMeasurement(data) else { return }
-            // Route to `powerMeterW`, NOT `powerW`: the power meter is a
-            // display-only secondary readout and must not overwrite the trainer's
-            // power (which drives ERG, recording, and the Strava export). The
-            // meter's watts read differently from the trainer's by design — see
-            // `RideMetrics.powerMeterW` for why (direct crank torque vs. the
-            // trainer's flywheel estimate; the drivetrain loss between them).
-            let reading = SensorReading(powerMeterW: p.instantaneousPowerW)
+            // Route to `powerMeterW`/cadence/balance, NOT the trainer fields: the
+            // power meter is a display-only secondary readout and must not
+            // overwrite the trainer's power (which drives ERG, recording, and the
+            // Strava export). The meter's watts read differently from the
+            // trainer's by design — see `RideMetrics.powerMeterW` for why (direct
+            // crank torque vs. the trainer's flywheel estimate; the drivetrain
+            // loss between them).
+            let cadence = powerMeterCadence(from: p)
+            let reading = SensorReading(powerMeterW: p.instantaneousPowerW,
+                                        powerMeterCadenceRpm: cadence,
+                                        powerMeterBalancePercent: p.pedalPowerBalancePercent)
             toOwner { $0.apply(reading) }
 
         default:
@@ -785,5 +798,33 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
                 toOwner { $0.setTrainerReady() }
             }
         }
+    }
+
+    /// Derive cadence (rpm) from a power meter's crank-revolution counters. The
+    /// packet reports cumulative revolutions + the time of the last crank event
+    /// (1/1024 s); cadence is the revolution delta over the time delta between
+    /// two packets. Returns nil on the first packet (no baseline yet), when the
+    /// meter omits crank data, or when the event time didn't advance (coasting —
+    /// the counters freeze, so we can't compute a rate and leave the last value).
+    /// Both counters are UInt16 and wrap, so deltas are taken modulo 2^16.
+    private func powerMeterCadence(from p: CyclingPowerMeasurement) -> Int? {
+        guard let revs = p.cumulativeCrankRevolutions,
+              let eventTime = p.lastCrankEventTime else {
+            return nil
+        }
+        defer {
+            lastCrankRevs = revs
+            lastCrankEventTime = eventTime
+        }
+        guard let prevRevs = lastCrankRevs, let prevTime = lastCrankEventTime else {
+            return nil  // first packet — establish the baseline only
+        }
+        let revDelta = (revs - prevRevs) & 0xFFFF
+        let timeDelta = (eventTime - prevTime) & 0xFFFF
+        guard timeDelta > 0 else { return nil }  // coasting: event time frozen
+        // timeDelta is in 1/1024 s → seconds; rpm = revs / minutes.
+        let seconds = Double(timeDelta) / 1024.0
+        let rpm = Double(revDelta) / seconds * 60.0
+        return Int(rpm.rounded())
     }
 }

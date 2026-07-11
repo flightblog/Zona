@@ -76,11 +76,21 @@ struct RideView: View {
                 Metric(title: "Distance",
                        value: String(format: "%.2f", recorder.distanceMeters / 1000),
                        unit: "km")
-                // Secondary power-meter readout — only appears when a SRAM/Quarq
-                // is connected and reporting. Informational: it isn't recorded,
-                // exported, or used by ERG (see `RideMetrics.powerMeterW`).
-                if let meterW = controller.metrics.powerMeterW {
-                    Metric(title: "Meter", value: "\(meterW)", unit: "W")
+            }
+
+            // Secondary SRAM/Quarq readout on its own row below Speed/Distance —
+            // power, cadence, and L/R balance. Only appears when the meter is
+            // connected and reporting. Informational: none of it is recorded,
+            // exported, or used by ERG (see `RideMetrics.powerMeterW`).
+            if let meterW = controller.metrics.powerMeterW {
+                HStack(spacing: 32) {
+                    Metric(title: "SRAM", value: "\(meterW)", unit: "W")
+                    Metric(title: "Cadence",
+                           value: controller.metrics.powerMeterCadenceRpm.map { "\($0)" } ?? "—",
+                           unit: "rpm")
+                    Metric(title: "Balance",
+                           value: balanceText(controller.metrics.powerMeterBalancePercent),
+                           unit: "L/R")
                 }
             }
 
@@ -166,6 +176,15 @@ struct RideView: View {
     /// it — this is a fixed endurance-comfortable window (~80–100 rpm) so the dial
     /// gives the same in-zone/push/ease cue as BPM and Watts.
     private var cadenceBand: ClosedRange<Int> { 80...100 }
+
+    /// Render the power meter's pedal balance as "L–R" whole-percent shares. The
+    /// meter reports one leg's share; the other is its complement. "—" when the
+    /// meter doesn't send balance.
+    private func balanceText(_ percent: Double?) -> String {
+        guard let percent else { return "—" }
+        let left = Int(percent.rounded())
+        return "\(left)–\(100 - left)"
+    }
 }
 
 /// Where a live reading sits relative to its target band, and the correction it
