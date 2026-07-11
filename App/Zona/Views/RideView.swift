@@ -1,3 +1,4 @@
+import Charts
 import SwiftData
 import SwiftUI
 import ZonaKit
@@ -92,6 +93,16 @@ struct RideView: View {
                            value: balanceText(controller.metrics.powerMeterBalancePercent),
                            unit: "L/R")
                 }
+            }
+
+            // Live time-series of the two numbers that matter during the ride:
+            // trainer watts (left axis, the lever) and BPM (right axis, the
+            // target). Reads the recorder's ordered samples, so it grows a point
+            // per second as the ride runs. Only shows once there's something to
+            // plot — before the first sample it would be an empty box.
+            if recorder.samples.contains(where: { $0.powerW != nil || $0.heartRateBpm != nil }) {
+                RidePowerHRChart(samples: recorder.samples)
+                    .frame(height: 160)
             }
 
             TargetAdjuster()
@@ -322,6 +333,112 @@ private struct Metric: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// Live dual-axis time-series for the ride screen: trainer watts on the LEFT
+/// axis, heart rate (BPM) on the RIGHT axis, both against elapsed seconds.
+///
+/// Swift Charts plots every mark against one shared Y-domain, so a true second
+/// axis is faked the standard way: watts are plotted in their natural units and
+/// own the (leading) left axis; BPM is *scaled into the watts domain* before
+/// plotting, then the (trailing) right axis is relabelled back to real BPM. The
+/// result reads as two independent scales — a 130 W line and a 130 bpm line
+/// don't have to overlap — while Charts still sees a single domain underneath.
+private struct RidePowerHRChart: View {
+    let samples: [RideSample]
+
+    /// At most this many points reach Charts. A `LineMark` per second makes a
+    /// long ride thousands of marks and the screen lags; a chart this wide can't
+    /// resolve more than a few hundred points anyway. See `downsampled(to:)`.
+    private let maxPoints = 200
+
+    /// Bucket-averaged points actually plotted (see `ChartPoint.downsampled`).
+    private var points: [ChartPoint] {
+        samples
+            .map { ChartPoint(seconds: $0.secondsFromStart,
+                              watts: $0.powerW.map(Double.init),
+                              bpm: $0.heartRateBpm.map(Double.init)) }
+            .downsampled(to: maxPoints)
+    }
+
+    /// Watts axis fixed range. Anchored at 0 with a little headroom over the
+    /// ride's peak so the left axis doesn't rescale every second and make the
+    /// line jump; 300 W is a sane floor for a Z1/Z2 endurance ride.
+    private var wattRange: ClosedRange<Double> {
+        let peak = points.compactMap(\.watts).max() ?? 0
+        return 0...max(300, peak * 1.15)
+    }
+
+    /// BPM axis fixed range. A resting-to-hard endurance window; padded past the
+    /// ride's own max so the HR line isn't clipped at the top.
+    private var bpmRange: ClosedRange<Double> {
+        let peak = points.compactMap(\.bpm).max() ?? 0
+        return 40...max(180, peak * 1.1)
+    }
+
+    /// Map a BPM value onto the watts domain so the two series can share Charts'
+    /// single Y-axis. Preserves each value's *relative* position in its own
+    /// range, which is what makes the right-axis relabelling line up.
+    private func wattsForBPM(_ bpm: Double) -> Double {
+        let bFrac = (bpm - bpmRange.lowerBound)
+            / (bpmRange.upperBound - bpmRange.lowerBound)
+        return wattRange.lowerBound + bFrac * (wattRange.upperBound - wattRange.lowerBound)
+    }
+
+    /// Inverse of `wattsForBPM`: turn a watts-domain tick back into the BPM it
+    /// represents, for labelling the right axis.
+    private func bpmForWatts(_ watts: Double) -> Int {
+        let wFrac = (watts - wattRange.lowerBound)
+            / (wattRange.upperBound - wattRange.lowerBound)
+        return Int((bpmRange.lowerBound + wFrac * (bpmRange.upperBound - bpmRange.lowerBound)).rounded())
+    }
+
+    var body: some View {
+        Chart {
+            ForEach(points, id: \.seconds) { point in
+                if let power = point.watts {
+                    LineMark(
+                        x: .value("Time", point.seconds),
+                        y: .value("Watts", power),
+                        series: .value("Series", "Watts")
+                    )
+                    .foregroundStyle(.blue)
+                    .interpolationMethod(.monotone)
+                }
+                if let hr = point.bpm {
+                    LineMark(
+                        x: .value("Time", point.seconds),
+                        y: .value("BPM", wattsForBPM(hr)),
+                        series: .value("Series", "BPM")
+                    )
+                    .foregroundStyle(.red)
+                    .interpolationMethod(.monotone)
+                }
+            }
+        }
+        .chartForegroundStyleScale(["Watts": Color.blue, "BPM": Color.red])
+        .chartYScale(domain: wattRange)
+        // Both axes share the watts domain (so the tick positions line up), but
+        // one .chartYAxis block must declare them together — a second call would
+        // replace the first, not add to it.
+        .chartYAxis {
+            // Left axis: real watts.
+            AxisMarks(position: .leading) { value in
+                AxisGridLine()
+                AxisTick()
+                if let watts = value.as(Double.self) {
+                    AxisValueLabel { Text("\(Int(watts))").foregroundStyle(.blue) }
+                }
+            }
+            // Right axis: same tick positions, relabelled from watts back to BPM.
+            AxisMarks(position: .trailing) { value in
+                if let watts = value.as(Double.self) {
+                    AxisValueLabel { Text("\(bpmForWatts(watts))").foregroundStyle(.red) }
+                }
+            }
+        }
+        .chartXAxisLabel("seconds")
     }
 }
 
