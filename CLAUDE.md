@@ -52,7 +52,7 @@ with a signing team set handles this; from the CLI pass
 
 ## Architecture
 
-**`ZonaKit` (pure, no UI, 131 tests) vs. the `Zona` app target (I/O + SwiftUI).**
+**`ZonaKit` (pure, no UI, 138 tests) vs. the `Zona` app target (I/O + SwiftUI).**
 This split is the main thing to preserve: BLE decoding, zone math, ride
 recording/summarizing, TCX export, and the pure OAuth/token logic for Strava and
 WHOOP all live in `ZonaKit` and are unit-tested. The app target supplies the
@@ -72,8 +72,11 @@ deliberately removed — don't reintroduce it without discussion.
 **`SensorHub` manages multiple independent BLE sensors over one
 `CBCentralManager`**, keyed by `SensorKind` (`trainer` / `heartRate` /
 `powerMeter`), each using its standard GATT service (FTMS `0x1826`, Heart Rate
-`0x180D`, Cycling Power `0x1818`). Notable behaviors baked into it, worth
-knowing before touching connection logic:
+`0x180D`, Cycling Power `0x1818`). The trainer is the source of truth for ride
+data; a connected SRAM/Quarq power meter is a **display-only** secondary readout
+(power, cadence derived from its crank revolutions, and L/R balance) that is
+never recorded, exported, or fed to ERG — see `RideMetrics.powerMeterW`. Notable
+behaviors baked into it, worth knowing before touching connection logic:
 - Scans are **unfiltered** (`services: nil`) and devices are classified by their
   actual GATT services after connecting — some sensors (Garmin HRM 200 included)
   don't advertise their service UUID, so a filtered scan would miss them.
