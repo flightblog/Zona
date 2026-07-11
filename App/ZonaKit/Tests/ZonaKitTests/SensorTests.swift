@@ -183,6 +183,21 @@ struct HRZoneTests {
     @Test func z1StartsAtZero() {
         #expect(engine.bpmRange(for: .z1Recovery).lowerBound == 0)
     }
+
+    @Test func secondsPerZoneBucketsEachReadingOnce() {
+        // Three Z1 (120), two Z2 (140), one Z5 (175); each reading = 1 second.
+        let bpms = [120, 120, 120, 140, 140, 175]
+        let buckets = engine.secondsPerZone(bpms: bpms)
+        #expect(buckets == [HRZone.z1Recovery.rawValue: 3,
+                            HRZone.z2Endurance.rawValue: 2,
+                            HRZone.z5VO2Max.rawValue: 1])
+        // Total time is conserved — no reading double-counted at a boundary.
+        #expect(buckets.values.reduce(0, +) == bpms.count)
+    }
+
+    @Test func secondsPerZoneEmptyForNoReadings() {
+        #expect(engine.secondsPerZone(bpms: []).isEmpty)
+    }
 }
 
 @Suite("HR ride summary")
