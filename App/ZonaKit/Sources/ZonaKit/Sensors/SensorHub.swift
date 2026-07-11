@@ -154,12 +154,11 @@ public final class SensorHub {
         if let c = reading.cadenceRpm { metrics.cadenceRpm = c }
         if let s = reading.speedKph { metrics.speedKph = s }
         if let hr = reading.heartRateBpm { metrics.heartRateBpm = hr }
-        // Power-meter values (watts, cadence, L/R balance) are tracked separately
-        // from the trainer's (see `powerMeterW`); only the ride screen's secondary
-        // readout reads them — never recorded, exported, or fed to ERG.
+        // Power-meter values (watts, cadence) are tracked separately from the
+        // trainer's (see `powerMeterW`); only the ride screen's secondary readout
+        // reads them — never recorded, exported, or fed to ERG.
         if let pm = reading.powerMeterW { metrics.powerMeterW = pm }
         if let pc = reading.powerMeterCadenceRpm { metrics.powerMeterCadenceRpm = pc }
-        if let pb = reading.powerMeterBalancePercent { metrics.powerMeterBalancePercent = pb }
         // R-R is bursty and must not stick across seconds: attach it only for the
         // publish that carried it, then clear it so a later reading (e.g. the next
         // Indoor Bike Data with no R-R) doesn't re-record the same beats.
@@ -779,17 +778,16 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
 
         case (.powerMeter, _):
             guard let p = CyclingPowerMeasurement(data) else { return }
-            // Route to `powerMeterW`/cadence/balance, NOT the trainer fields: the
-            // power meter is a display-only secondary readout and must not
-            // overwrite the trainer's power (which drives ERG, recording, and the
-            // Strava export). The meter's watts read differently from the
-            // trainer's by design — see `RideMetrics.powerMeterW` for why (direct
-            // crank torque vs. the trainer's flywheel estimate; the drivetrain
-            // loss between them).
+            // Route to `powerMeterW`/cadence, NOT the trainer fields: the power
+            // meter is a display-only secondary readout and must not overwrite the
+            // trainer's power (which drives ERG, recording, and the Strava
+            // export). The meter's watts read differently from the trainer's by
+            // design — see `RideMetrics.powerMeterW` for why (direct crank torque
+            // vs. the trainer's flywheel estimate; the drivetrain loss between
+            // them).
             let cadence = powerMeterCadence(from: p)
             let reading = SensorReading(powerMeterW: p.instantaneousPowerW,
-                                        powerMeterCadenceRpm: cadence,
-                                        powerMeterBalancePercent: p.pedalPowerBalancePercent)
+                                        powerMeterCadenceRpm: cadence)
             toOwner { $0.apply(reading) }
 
         default:

@@ -65,10 +65,6 @@ public struct RideMetrics: Equatable, Sendable {
     /// drives the cadence dial, and never recorded or exported.
     public var powerMeterCadenceRpm: Int?
 
-    /// Pedal power balance (L/R) from the SRAM/Quarq, as one leg's share 0–100 %.
-    /// Display-only; nil when the meter doesn't report balance.
-    public var powerMeterBalancePercent: Double?
-
     /// The ERG watt target currently commanded (nil before a ride starts).
     public var targetW: Int?
 
@@ -84,7 +80,6 @@ public struct RideMetrics: Equatable, Sendable {
                 heartRateBpm: Int? = nil,
                 powerMeterW: Int? = nil,
                 powerMeterCadenceRpm: Int? = nil,
-                powerMeterBalancePercent: Double? = nil,
                 targetW: Int? = nil,
                 rrIntervalsSec: [Double]? = nil) {
         self.powerW = powerW
@@ -93,7 +88,6 @@ public struct RideMetrics: Equatable, Sendable {
         self.heartRateBpm = heartRateBpm
         self.powerMeterW = powerMeterW
         self.powerMeterCadenceRpm = powerMeterCadenceRpm
-        self.powerMeterBalancePercent = powerMeterBalancePercent
         self.targetW = targetW
         self.rrIntervalsSec = rrIntervalsSec
     }
