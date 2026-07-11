@@ -135,6 +135,14 @@ final class RideSampleModel {
 }
 
 extension Ride {
+    /// Maps this saved ride into ZonaKit's pure history-aggregation input, so
+    /// the all-time stats view can reduce over `RideHistoryEntry` without
+    /// ZonaKit needing to know about SwiftData.
+    var historyEntry: RideHistoryEntry {
+        RideHistoryEntry(date: date, durationSec: durationSec, distanceMeters: distanceMeters,
+                          avgPowerW: avgPowerW, timeInHRZoneSec: timeInHRZoneSec)
+    }
+
     /// Map a finished ZonaKit recording into a persistable `Ride`, precomputing
     /// both power- and HR-zone summary columns and attaching the per-second
     /// sample models. HR summary needs the rider's `lthr` and target `hrZone`,

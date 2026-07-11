@@ -28,6 +28,15 @@ struct HistoryView: View {
             }
         }
         .navigationTitle("History")
+        .toolbar {
+            ToolbarItem {
+                NavigationLink {
+                    AllTimeStatsView()
+                } label: {
+                    Label("All-Time Stats", systemImage: "chart.bar")
+                }
+            }
+        }
     }
 }
 
