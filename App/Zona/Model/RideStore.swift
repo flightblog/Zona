@@ -137,10 +137,15 @@ final class RideSampleModel {
 extension Ride {
     /// Maps this saved ride into ZonaKit's pure history-aggregation input, so
     /// the all-time stats view can reduce over `RideHistoryEntry` without
-    /// ZonaKit needing to know about SwiftData.
+    /// ZonaKit needing to know about SwiftData. The per-zone HR breakdown is
+    /// recomputed here from the stored per-second samples (only the target-zone
+    /// total is persisted), which is why this needs the sample models.
     var historyEntry: RideHistoryEntry {
-        RideHistoryEntry(date: date, durationSec: durationSec, distanceMeters: distanceMeters,
-                          avgPowerW: avgPowerW, timeInHRZoneSec: timeInHRZoneSec)
+        let bpms = (samples ?? []).compactMap(\.heartRateBpm)
+        let secondsPerHRZone = HRZoneEngine(lthr: lthr).secondsPerZone(bpms: bpms)
+        return RideHistoryEntry(date: date, durationSec: durationSec, distanceMeters: distanceMeters,
+                                avgPowerW: avgPowerW, timeInHRZoneSec: timeInHRZoneSec,
+                                secondsPerHRZone: secondsPerHRZone)
     }
 
     /// Map a finished ZonaKit recording into a persistable `Ride`, precomputing

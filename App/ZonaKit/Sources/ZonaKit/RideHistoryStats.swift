@@ -9,13 +9,19 @@ public struct RideHistoryEntry: Sendable, Equatable {
     public let distanceMeters: Double
     public let avgPowerW: Int
     public let timeInHRZoneSec: Int
+    /// Seconds spent in each HR zone this ride, keyed by `HRZone.rawValue` (1…5),
+    /// recomputed from the ride's per-second HR samples. Zones with no time are
+    /// omitted; empty for rides with no HR samples.
+    public let secondsPerHRZone: [Int: Int]
 
-    public init(date: Date, durationSec: Int, distanceMeters: Double, avgPowerW: Int, timeInHRZoneSec: Int) {
+    public init(date: Date, durationSec: Int, distanceMeters: Double, avgPowerW: Int,
+                timeInHRZoneSec: Int, secondsPerHRZone: [Int: Int] = [:]) {
         self.date = date
         self.durationSec = durationSec
         self.distanceMeters = distanceMeters
         self.avgPowerW = avgPowerW
         self.timeInHRZoneSec = timeInHRZoneSec
+        self.secondsPerHRZone = secondsPerHRZone
     }
 
     /// Fraction of this ride spent in the target HR zone, 0…1.
@@ -47,11 +53,10 @@ public struct RideHistoryStats: Sendable, Equatable {
     public let totalDurationSec: Int
     public let totalDistanceMeters: Double
     public let totalTimeInHRZoneSec: Int
-    /// Consecutive days ridden, ending today or yesterday (today doesn't break
-    /// a streak until it's over — see `compute(from:)`).
-    public let currentStreakDays: Int
-    /// The longest run of consecutive ridden days anywhere in history.
-    public let longestStreakDays: Int
+    /// All-time seconds spent in each HR zone, keyed by `HRZone.rawValue` (1…5),
+    /// summed across every ride's per-second HR samples. Zones never ridden are
+    /// omitted.
+    public let secondsPerHRZone: [Int: Int]
     public let longestRideDurationSec: Int
     public let bestAvgPowerW: Int
     public let bestTimeInHRZoneFraction: Double
@@ -68,8 +73,7 @@ public struct RideHistoryStats: Sendable, Equatable {
         totalDurationSec: 0,
         totalDistanceMeters: 0,
         totalTimeInHRZoneSec: 0,
-        currentStreakDays: 0,
-        longestStreakDays: 0,
+        secondsPerHRZone: [:],
         longestRideDurationSec: 0,
         bestAvgPowerW: 0,
         bestTimeInHRZoneFraction: 0,
@@ -80,8 +84,7 @@ public struct RideHistoryStats: Sendable, Equatable {
                 totalDurationSec: Int,
                 totalDistanceMeters: Double,
                 totalTimeInHRZoneSec: Int,
-                currentStreakDays: Int,
-                longestStreakDays: Int,
+                secondsPerHRZone: [Int: Int],
                 longestRideDurationSec: Int,
                 bestAvgPowerW: Int,
                 bestTimeInHRZoneFraction: Double,
@@ -90,76 +93,37 @@ public struct RideHistoryStats: Sendable, Equatable {
         self.totalDurationSec = totalDurationSec
         self.totalDistanceMeters = totalDistanceMeters
         self.totalTimeInHRZoneSec = totalTimeInHRZoneSec
-        self.currentStreakDays = currentStreakDays
-        self.longestStreakDays = longestStreakDays
+        self.secondsPerHRZone = secondsPerHRZone
         self.longestRideDurationSec = longestRideDurationSec
         self.bestAvgPowerW = bestAvgPowerW
         self.bestTimeInHRZoneFraction = bestTimeInHRZoneFraction
         self.weeklyTotals = weeklyTotals
     }
 
-    /// Reduce every saved ride into an all-time rollup. `calendar`/`now` are
-    /// injectable so streaks (which depend on "today") are deterministic in tests.
+    /// Reduce every saved ride into an all-time rollup. `calendar` is injectable
+    /// so the weekly bucketing is deterministic in tests.
     public static func compute(from entries: [RideHistoryEntry],
-                                calendar: Calendar = .current,
-                                now: Date = Date()) -> RideHistoryStats {
+                                calendar: Calendar = .current) -> RideHistoryStats {
         guard !entries.isEmpty else { return .empty }
 
-        let rideDays = Set(entries.map { calendar.startOfDay(for: $0.date) })
-        let (current, longest) = streaks(rideDays: rideDays, calendar: calendar, now: now)
+        var secondsPerHRZone: [Int: Int] = [:]
+        for entry in entries {
+            for (zone, seconds) in entry.secondsPerHRZone {
+                secondsPerHRZone[zone, default: 0] += seconds
+            }
+        }
 
         return RideHistoryStats(
             rideCount: entries.count,
             totalDurationSec: entries.reduce(0) { $0 + $1.durationSec },
             totalDistanceMeters: entries.reduce(0) { $0 + $1.distanceMeters },
             totalTimeInHRZoneSec: entries.reduce(0) { $0 + $1.timeInHRZoneSec },
-            currentStreakDays: current,
-            longestStreakDays: longest,
+            secondsPerHRZone: secondsPerHRZone,
             longestRideDurationSec: entries.map(\.durationSec).max() ?? 0,
             bestAvgPowerW: entries.map(\.avgPowerW).max() ?? 0,
             bestTimeInHRZoneFraction: entries.map(\.timeInHRZoneFraction).max() ?? 0,
             weeklyTotals: weeklyTotals(entries: entries, calendar: calendar)
         )
-    }
-
-    /// `rideDays` holds each ridden calendar day once (via `calendar.startOfDay`),
-    /// so consecutive entries in sorted order differ by whole days — safe to
-    /// diff with `dateComponents` across DST without drifting.
-    private static func streaks(rideDays: Set<Date>, calendar: Calendar, now: Date) -> (current: Int, longest: Int) {
-        guard !rideDays.isEmpty else { return (0, 0) }
-
-        let sorted = rideDays.sorted()
-        var longest = 1
-        var run = 1
-        for i in 1..<sorted.count {
-            let gap = calendar.dateComponents([.day], from: sorted[i - 1], to: sorted[i]).day ?? 0
-            if gap == 1 {
-                run += 1
-            } else {
-                longest = max(longest, run)
-                run = 1
-            }
-        }
-        longest = max(longest, run)
-
-        // Walk back from today while consecutive; a day not yet ridden doesn't
-        // break the streak until it's over, so try yesterday first if today's
-        // ride hasn't happened.
-        let today = calendar.startOfDay(for: now)
-        var cursor = today
-        if !rideDays.contains(cursor) {
-            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today) else { return (0, longest) }
-            cursor = yesterday
-        }
-        guard rideDays.contains(cursor) else { return (0, longest) }
-
-        var current = 0
-        while rideDays.contains(cursor) {
-            current += 1
-            guard let prev = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
-            cursor = prev
-        }
-        return (current, longest)
     }
 
     /// Buckets every ride into the Monday-start week it fell in.

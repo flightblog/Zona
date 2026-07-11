@@ -68,4 +68,17 @@ public struct HRZoneEngine: Sendable {
         }
         return .z5VO2Max
     }
+
+    /// Buckets a ride's per-second HR readings into each zone, keyed by
+    /// `HRZone.rawValue` (1…5). Each reading is one second (samples are 1 Hz)
+    /// and lands in exactly one zone via `zone(forHR:)`, so the buckets never
+    /// double-count a boundary BPM the way overlapping `bpmRange`s would.
+    /// Zones with no time are omitted.
+    public func secondsPerZone(bpms: [Int]) -> [Int: Int] {
+        var buckets: [Int: Int] = [:]
+        for bpm in bpms {
+            buckets[zone(forHR: bpm).rawValue, default: 0] += 1
+        }
+        return buckets
+    }
 }

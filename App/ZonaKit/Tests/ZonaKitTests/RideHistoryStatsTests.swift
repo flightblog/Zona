@@ -17,9 +17,11 @@ struct RideHistoryStatsTests {
     }
 
     private func entry(day d: Int, hour: Int = 12, durationSec: Int = 1800, distanceMeters: Double = 10_000,
-                        avgPowerW: Int = 150, timeInHRZoneSec: Int = 900) -> RideHistoryEntry {
+                        avgPowerW: Int = 150, timeInHRZoneSec: Int = 900,
+                        secondsPerHRZone: [Int: Int] = [:]) -> RideHistoryEntry {
         RideHistoryEntry(date: day(d, hour: hour), durationSec: durationSec, distanceMeters: distanceMeters,
-                          avgPowerW: avgPowerW, timeInHRZoneSec: timeInHRZoneSec)
+                          avgPowerW: avgPowerW, timeInHRZoneSec: timeInHRZoneSec,
+                          secondsPerHRZone: secondsPerHRZone)
     }
 
     @Test func emptyHistoryIsAllZero() {
@@ -31,7 +33,7 @@ struct RideHistoryStatsTests {
             entry(day: 1, durationSec: 1800, distanceMeters: 10_000, timeInHRZoneSec: 900),
             entry(day: 2, durationSec: 2400, distanceMeters: 12_000, timeInHRZoneSec: 1200)
         ]
-        let stats = RideHistoryStats.compute(from: entries, calendar: utc, now: day(2))
+        let stats = RideHistoryStats.compute(from: entries, calendar: utc)
         #expect(stats.rideCount == 2)
         #expect(stats.totalDurationSec == 4200)
         #expect(stats.totalDistanceMeters == 22_000)
@@ -44,52 +46,26 @@ struct RideHistoryStatsTests {
             entry(day: 1, durationSec: 1800, avgPowerW: 140, timeInHRZoneSec: 900),   // 50%
             entry(day: 2, durationSec: 3600, avgPowerW: 200, timeInHRZoneSec: 3600)   // 100%, longest
         ]
-        let stats = RideHistoryStats.compute(from: entries, calendar: utc, now: day(2))
+        let stats = RideHistoryStats.compute(from: entries, calendar: utc)
         #expect(stats.longestRideDurationSec == 3600)
         #expect(stats.bestAvgPowerW == 200)
         #expect(abs(stats.bestTimeInHRZoneFraction - 1.0) < 0.0001)
     }
 
-    // MARK: Streaks
-
-    @Test func consecutiveDaysBuildACurrentStreak() {
-        // Rode days 1,2,3; "now" is day 3 → 3-day current streak.
-        let entries = [entry(day: 1), entry(day: 2), entry(day: 3)]
-        let stats = RideHistoryStats.compute(from: entries, calendar: utc, now: day(3))
-        #expect(stats.currentStreakDays == 3)
-        #expect(stats.longestStreakDays == 3)
+    @Test func perZoneSecondsSumPerZoneAcrossRides() {
+        let entries = [
+            entry(day: 1, secondsPerHRZone: [1: 100, 2: 300, 3: 50]),
+            entry(day: 2, secondsPerHRZone: [2: 200, 3: 150, 5: 40])
+        ]
+        let stats = RideHistoryStats.compute(from: entries, calendar: utc)
+        #expect(stats.secondsPerHRZone == [1: 100, 2: 500, 3: 200, 5: 40])
+        // Zone 4 was never ridden, so it's absent (not a zero bucket).
+        #expect(stats.secondsPerHRZone[4] == nil)
     }
 
-    @Test func todayNotYetRiddenDoesNotBreakStreak() {
-        // Rode days 1,2; "now" is day 3 (no ride yet today) → streak still 2,
-        // counted from yesterday.
-        let entries = [entry(day: 1), entry(day: 2)]
-        let stats = RideHistoryStats.compute(from: entries, calendar: utc, now: day(3))
-        #expect(stats.currentStreakDays == 2)
-    }
-
-    @Test func gapOfTwoOrMoreDaysEndsCurrentStreak() {
-        // Last ride was day 1; "now" is day 3 → today and yesterday both
-        // unridden, so the streak is over.
-        let entries = [entry(day: 1)]
-        let stats = RideHistoryStats.compute(from: entries, calendar: utc, now: day(3))
-        #expect(stats.currentStreakDays == 0)
-    }
-
-    @Test func longestStreakSurvivesAfterCurrentStreakEnds() {
-        // A 3-day streak (1,2,3), a gap, then a lone ride on day 10. "now" is
-        // day 12 → current streak is 0, but longest streak remembers the 3.
-        let entries = [entry(day: 1), entry(day: 2), entry(day: 3), entry(day: 10)]
-        let stats = RideHistoryStats.compute(from: entries, calendar: utc, now: day(12))
-        #expect(stats.currentStreakDays == 0)
-        #expect(stats.longestStreakDays == 3)
-    }
-
-    @Test func multipleRidesOnSameDayCountOnceTowardStreak() {
-        let entries = [entry(day: 1, hour: 8), entry(day: 1, hour: 18), entry(day: 2)]
-        let stats = RideHistoryStats.compute(from: entries, calendar: utc, now: day(2))
-        #expect(stats.rideCount == 3)
-        #expect(stats.currentStreakDays == 2)
+    @Test func perZoneSecondsEmptyWhenNoHRSamples() {
+        let stats = RideHistoryStats.compute(from: [entry(day: 1)], calendar: utc)
+        #expect(stats.secondsPerHRZone.isEmpty)
     }
 
     // MARK: Weekly totals
@@ -101,7 +77,7 @@ struct RideHistoryStatsTests {
             entry(day: 9, durationSec: 1800, timeInHRZoneSec: 600),   // Thu, week of 6th
             entry(day: 15, durationSec: 1800, timeInHRZoneSec: 300)   // Wed, week of 13th
         ]
-        let stats = RideHistoryStats.compute(from: entries, calendar: utc, now: day(15))
+        let stats = RideHistoryStats.compute(from: entries, calendar: utc)
         #expect(stats.weeklyTotals.count == 2)
         #expect(stats.weeklyTotals[0].rideCount == 2)
         #expect(stats.weeklyTotals[0].totalTimeInHRZoneSec == 1500)
