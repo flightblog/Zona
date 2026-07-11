@@ -182,6 +182,23 @@ public final class SensorHub {
     /// Test seam: fold a reading into `metrics` exactly as a live sensor would,
     /// without a CoreBluetooth central. Used to assert power-meter isolation.
     func applyForTesting(_ reading: SensorReading) { apply(reading) }
+
+    /// Test seam: set desired kinds and their initial per-kind states exactly
+    /// as `connect(_:)` would, without starting a CoreBluetooth scan.
+    func setDesiredKindsForTesting(_ kinds: Set<SensorKind>) {
+        desiredKinds = kinds
+        for kind in kinds where states[kind] == nil { states[kind] = .scanning }
+    }
+
+    /// Test seam: report a per-kind connection state change exactly as the BLE
+    /// shim would, without CoreBluetooth. Drives `onStateChange`.
+    func setStateForTesting(_ state: SensorConnectionState, for kind: SensorKind) {
+        setState(state, for: kind)
+    }
+
+    /// Test seam: mark the trainer's FTMS handshake complete, without
+    /// CoreBluetooth. Drives `onStateChange`.
+    func setTrainerReadyForTesting() { setTrainerReady() }
     #endif
 
     private func append(_ line: String) {

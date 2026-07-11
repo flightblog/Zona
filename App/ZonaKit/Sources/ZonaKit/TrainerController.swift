@@ -161,4 +161,11 @@ public final class TrainerController {
         if case .connected(let name) = state { return name }
         return "Trainer"
     }
+
+    #if DEBUG
+    /// Test seam: the hub this controller wraps, so tests can drive
+    /// connection-state changes via `SensorHub`'s own DEBUG test seams
+    /// without a CoreBluetooth central.
+    var hubForTesting: SensorHub { hub }
+    #endif
 }
