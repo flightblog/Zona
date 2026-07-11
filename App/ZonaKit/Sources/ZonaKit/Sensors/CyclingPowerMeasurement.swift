@@ -10,18 +10,13 @@ import Foundation
 /// FIXED order, so to reach a later one (crank revolutions) we must know the
 /// size of every present earlier one and walk past it.
 ///
-/// We decode three things the Quarq reports: instantaneous power, pedal-power
-/// balance (L/R %), and crank-revolution data. Cadence isn't in the packet
-/// directly — it's derived from the change in cumulative crank revolutions over
-/// the change in crank-event time between two packets (see `SensorHub`), so here
-/// we just surface the raw revolution counters.
+/// We decode two things the Quarq reports: instantaneous power and
+/// crank-revolution data. Cadence isn't in the packet directly — it's derived
+/// from the change in cumulative crank revolutions over the change in crank-event
+/// time between two packets (see `SensorHub`), so here we just surface the raw
+/// revolution counters.
 public struct CyclingPowerMeasurement: Sendable, Equatable {
     public let instantaneousPowerW: Int
-
-    /// Pedal power balance as a percentage 0–100 (the share attributed to one
-    /// leg, per the reference bit; nil when the meter doesn't report it). A Quarq
-    /// DZero/AXS reports this; single-sided meters may omit it.
-    public let pedalPowerBalancePercent: Double?
 
     /// Cumulative crank revolutions (wraps at UInt16), paired with the time of the
     /// last crank event in 1/1024 s units. nil when the meter doesn't report crank
@@ -54,16 +49,12 @@ public struct CyclingPowerMeasurement: Sendable, Equatable {
             return v
         }
 
-        // 1. Pedal power balance (UInt8, unit 1/2 %). A following reference bit
-        //    (1 << 1) says which leg it's for; we surface the raw percentage.
-        var balance: Double?
+        // 1. Pedal power balance (UInt8, unit 1/2 %) — we don't use it, but must
+        //    skip it (with its following reference bit's field, if any) so the
+        //    crank-revolution field that follows lands at the right offset.
         if flags & Self.pedalPowerBalancePresent != 0 {
-            if offset + 1 <= bytes.count {
-                balance = Double(bytes[offset]) / 2.0
-                offset += 1
-            }
+            if offset + 1 <= bytes.count { offset += 1 }
         }
-        pedalPowerBalancePercent = balance
 
         // 2. Accumulated torque (UInt16) — we don't use it, but must skip it so
         //    the crank-revolution field that follows lands at the right offset.

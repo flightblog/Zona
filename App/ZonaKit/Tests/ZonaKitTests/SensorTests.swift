@@ -106,16 +106,8 @@ struct CyclingPowerMeasurementTests {
 
     @Test func noOptionalFieldsWhenFlagsClear() {
         let d = CyclingPowerMeasurement(Data([0x00, 0x00, 0xFA, 0x00]))
-        #expect(d?.pedalPowerBalancePercent == nil)
         #expect(d?.cumulativeCrankRevolutions == nil)
         #expect(d?.lastCrankEventTime == nil)
-    }
-
-    @Test func decodesPedalBalance() {
-        // flags 0x0001 (balance present), power 200, balance 0x68 = 104 → 52.0 %.
-        let d = CyclingPowerMeasurement(Data([0x01, 0x00, 0xC8, 0x00, 0x68]))
-        #expect(d?.instantaneousPowerW == 200)
-        #expect(d?.pedalPowerBalancePercent == 52.0)
     }
 
     @Test func decodesCrankRevolutions() {
@@ -128,13 +120,13 @@ struct CyclingPowerMeasurementTests {
     }
 
     /// The crank field sits AFTER balance + torque; decoding it correctly proves
-    /// the walker skips the earlier present fields by the right byte widths.
+    /// the walker skips the earlier present (but unused) fields by the right byte
+    /// widths.
     @Test func reachesCrankFieldPastBalanceAndTorque() {
         // flags 0x0025 = balance(0x01) + torque(0x04) + crank(0x20).
-        // power 200 | balance 0x68 | torque 0x1234 (skipped) | revs 50 | time 512.
+        // power 200 | balance 0x68 (skipped) | torque 0x1234 (skipped) | revs 50 | time 512.
         let d = CyclingPowerMeasurement(
             Data([0x25, 0x00, 0xC8, 0x00, 0x68, 0x34, 0x12, 0x32, 0x00, 0x00, 0x02]))
-        #expect(d?.pedalPowerBalancePercent == 52.0)
         #expect(d?.cumulativeCrankRevolutions == 50)
         #expect(d?.lastCrankEventTime == 512)
     }
