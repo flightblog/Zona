@@ -216,6 +216,20 @@ struct HRRideSummaryTests {
         #expect(abs(rec.timeInHRZoneFraction(.z2Endurance, lthr: 160) - 0.6) < 0.0001)
     }
 
+    @Test func timeInHRZoneFractionDividesByWallClockDuration() {
+        // 3 of 5 in-band samples, but the ride actually lasted 10 s — seconds
+        // with no sample at all (dropped notifications) still count toward the
+        // denominator, so the fraction is 3/10, not 3/5. Using samples.count
+        // would overstate it as 0.6.
+        let samples = [120, 140, 140, 140, 150].enumerated().map {
+            RideSample(secondsFromStart: $0.offset, powerW: 130, heartRateBpm: $0.element)
+        }
+        let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(),
+                                samples: samples, durationSeconds: 10)
+        #expect(rec.timeInHRZone(.z2Endurance, lthr: 160) == 3)
+        #expect(abs(rec.timeInHRZoneFraction(.z2Endurance, lthr: 160) - 0.3) < 0.0001)
+    }
+
     @Test func averageHeartRate() {
         let rec = recording(hrs: [130, 140, 150])
         #expect(rec.averageHeartRate == 140)
