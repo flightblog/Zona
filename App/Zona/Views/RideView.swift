@@ -209,51 +209,37 @@ struct RideView: View {
 
 }
 
-/// Six-zone horizontal HR readout for the top of the ride screen: current BPM
-/// plus a segmented bar (Zone 0 = below Z1, through Zone 5 = VO2 Max) with a
-/// handle showing where the live reading sits. Distinct from the `ZoneGauge`
-/// dials below it, which show value-vs-target-band rather than which named
-/// zone the rider is currently in. Colors mirror the Z1–Z5 ramp
-/// `AllTimeStatsView.zoneColor` uses, with gray added for the Zone 0
-/// catch-all so the two zone displays read consistently across the app.
+/// Live "which zone am I in right now" readout for the top of the ride screen:
+/// current BPM over a segmented Z1–Z5 bar with a handle marking where the reading
+/// sits. Complements the `ZoneGauge` dials below it — those answer "am I inside my
+/// *target* band?", this answers "which zone is this effort, on the model this ride
+/// is being scored against?".
+///
+/// The zone it highlights is the one `RideHRZoning.zone(forHR:)` returns, i.e. the
+/// exact classifier the ride's own time-in-zone scoring and the all-time per-zone
+/// breakdown use. That's deliberate and worth preserving: the bar must never name a
+/// different zone than the ride records for the same beat. Don't reintroduce a local
+/// bucket-scan over `bpmRange`s here — the bands are inclusive on both ends and
+/// overlap at their boundaries, so scanning them lands on the wrong zone (this is
+/// the same double-count `secondsPerZone` documents avoiding).
 private struct HRZoneBar: View {
     let bpm: Int?
     let zoning: RideHRZoning
 
-    private static let colors: [Color] = [.gray, .blue, .green, .yellow, .orange, .red]
-    private static let labels = ["Zone 0", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"]
-
-    /// BPM ranges for the 6 buckets: index 0 is the synthetic "below Z1"
-    /// catch-all (0 up to Z1's floor — non-empty under WHOOP's HRR model,
-    /// which reserves 0–40% HRR below Z1; collapses to just 0 under the LTHR
-    /// model, whose Z1 floor is 0). Indices 1–5 mirror `HRZone.allCases`.
-    private var ranges: [ClosedRange<Int>] {
-        let z1Low = zoning.bpmRange(for: .z1Recovery).lowerBound
-        return [0...max(z1Low - 1, 0)] + HRZone.allCases.map { zoning.bpmRange(for: $0) }
-    }
-
-    /// Which of the 6 buckets the live BPM falls in: first range whose
-    /// ceiling reaches the value, falling back to the last (Zone 5) for
-    /// anything above it. Mirrors `HRZoneEngine.zone(forHR:)`'s scan.
-    private func activeIndex(in ranges: [ClosedRange<Int>]) -> Int {
-        let value = bpm ?? 0
-        for (i, range) in ranges.enumerated() where value <= range.upperBound {
-            return i
-        }
-        return ranges.count - 1
-    }
-
-    /// How far across its own bucket the live BPM sits, for positioning the
-    /// handle within the active segment rather than always at its start.
-    private func fraction(of value: Int, in range: ClosedRange<Int>) -> Double {
-        let span = Double(max(range.upperBound - range.lowerBound, 1))
-        return min(max((Double(value) - Double(range.lowerBound)) / span, 0), 1)
+    /// Where the live BPM sits inside its own zone's band, 0…1 — so the handle
+    /// travels across the active segment as the effort climbs, rather than
+    /// snapping to its start. Both engines clamp out-of-range readings into the
+    /// end zones, so a value below Z1's floor or above Z5's ceiling pins to 0 or 1.
+    private func fraction(of value: Int, in band: ClosedRange<Int>) -> Double {
+        let span = Double(max(band.upperBound - band.lowerBound, 1))
+        return min(max((Double(value) - Double(band.lowerBound)) / span, 0), 1)
     }
 
     var body: some View {
-        let zoneRanges = ranges
-        let active = activeIndex(in: zoneRanges)
-        let handleFraction = fraction(of: bpm ?? 0, in: zoneRanges[active])
+        // nil BPM (no strap yet, or a mid-ride dropout) is genuinely "no reading" —
+        // show a dash and light no segment, rather than a confident 0 sitting in Z1.
+        let active = bpm.map { zoning.zone(forHR: $0) }
+        let handleFraction = bpm.map { fraction(of: $0, in: zoning.bpmRange(for: zoning.zone(forHR: $0))) }
 
         VStack(alignment: .leading, spacing: 10) {
             Text("HEART RATE")
@@ -261,41 +247,50 @@ private struct HRZoneBar: View {
                 .tracking(1)
                 .foregroundStyle(.secondary)
 
-            Text(bpm.map { "\($0)" } ?? "0")
+            Text(bpm.map { "\($0)" } ?? "—")
                 .font(.system(size: 40, weight: .bold, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText())
 
             GeometryReader { geo in
-                let segmentWidth = geo.size.width / CGFloat(zoneRanges.count)
-                let handleX = segmentWidth * (CGFloat(active) + CGFloat(handleFraction))
+                let count = CGFloat(HRZone.allCases.count)
+                let segmentWidth = geo.size.width / count
 
                 ZStack(alignment: .leading) {
                     HStack(spacing: 3) {
-                        ForEach(0..<zoneRanges.count, id: \.self) { i in
+                        ForEach(HRZone.allCases) { zone in
                             Capsule()
-                                .fill(i == active ? Color.primary : Self.colors[i].opacity(0.18))
+                                .fill(zone == active ? zone.color : zone.color.opacity(0.18))
                         }
                     }
                     .frame(height: 8)
 
-                    Circle()
-                        .fill(Color.primary)
-                        .frame(width: 18, height: 18)
-                        .offset(x: handleX - 9)
-                        .animation(.easeOut(duration: 0.3), value: handleX)
+                    if let active, let handleFraction {
+                        // Zones are 1-indexed, so subtract 1 to get the segment offset.
+                        let index = CGFloat(active.rawValue - 1)
+                        let handleX = segmentWidth * (index + CGFloat(handleFraction))
+                        Circle()
+                            .fill(Color.primary)
+                            .frame(width: 18, height: 18)
+                            .offset(x: handleX - 9)
+                            .animation(.easeOut(duration: 0.3), value: handleX)
+                    }
                 }
             }
             .frame(height: 18)
 
             HStack(spacing: 0) {
-                ForEach(0..<Self.labels.count, id: \.self) { i in
-                    Text(Self.labels[i])
-                        .font(.caption.weight(i == active ? .bold : .regular))
-                        .foregroundStyle(i == active ? Color.primary : Self.colors[i].opacity(0.7))
+                ForEach(HRZone.allCases) { zone in
+                    Text(zone.shortName)
+                        .font(.caption.weight(zone == active ? .bold : .regular))
+                        .foregroundStyle(zone == active ? Color.primary : zone.color.opacity(0.7))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Heart rate")
+        .accessibilityValue(bpm.map { "\($0) beats per minute, \(zoning.zone(forHR: $0).name)" }
+            ?? "No reading")
     }
 }
 

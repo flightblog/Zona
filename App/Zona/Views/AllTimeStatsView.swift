@@ -110,7 +110,7 @@ private struct TimeInEachZone: View {
                         .frame(width: 110, alignment: .leading)
                     GeometryReader { geo in
                         Capsule()
-                            .fill(zoneColor(zone))
+                            .fill(zone.color)
                             .frame(width: max(geo.size.width * fraction, seconds > 0 ? 4 : 0))
                             .frame(maxHeight: .infinity, alignment: .leading)
                     }
@@ -126,17 +126,6 @@ private struct TimeInEachZone: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    /// Cool→warm across Z1–Z5, so the effort ramp reads at a glance.
-    private func zoneColor(_ zone: HRZone) -> Color {
-        switch zone {
-        case .z1Recovery:  return .blue
-        case .z2Endurance: return .green
-        case .z3Tempo:     return .yellow
-        case .z4Threshold: return .orange
-        case .z5VO2Max:    return .red
-        }
     }
 
     private func durationText(_ seconds: Int) -> String {
