@@ -34,6 +34,8 @@ struct RideView: View {
 
     var body: some View {
         VStack(spacing: 24) {
+            HRZoneBar(bpm: controller.metrics.heartRateBpm, zoning: rideZoning)
+
             // Tick once a second off a periodic clock so the timer advances on
             // its own, independent of whether new trainer metrics have arrived.
             // Reading `context.date` is what makes SwiftUI re-render each tick.
@@ -205,6 +207,91 @@ struct RideView: View {
     /// gives the same in-zone/push/ease cue as BPM and Watts.
     private var cadenceBand: ClosedRange<Int> { 80...100 }
 
+}
+
+/// Live "which zone am I in right now" readout for the top of the ride screen:
+/// current BPM over a segmented Z1–Z5 bar with a handle marking where the reading
+/// sits. Complements the `ZoneGauge` dials below it — those answer "am I inside my
+/// *target* band?", this answers "which zone is this effort, on the model this ride
+/// is being scored against?".
+///
+/// The zone it highlights is the one `RideHRZoning.zone(forHR:)` returns, i.e. the
+/// exact classifier the ride's own time-in-zone scoring and the all-time per-zone
+/// breakdown use. That's deliberate and worth preserving: the bar must never name a
+/// different zone than the ride records for the same beat. Don't reintroduce a local
+/// bucket-scan over `bpmRange`s here — the bands are inclusive on both ends and
+/// overlap at their boundaries, so scanning them lands on the wrong zone (this is
+/// the same double-count `secondsPerZone` documents avoiding).
+private struct HRZoneBar: View {
+    let bpm: Int?
+    let zoning: RideHRZoning
+
+    /// Where the live BPM sits inside its own zone's band, 0…1 — so the handle
+    /// travels across the active segment as the effort climbs, rather than
+    /// snapping to its start. Both engines clamp out-of-range readings into the
+    /// end zones, so a value below Z1's floor or above Z5's ceiling pins to 0 or 1.
+    private func fraction(of value: Int, in band: ClosedRange<Int>) -> Double {
+        let span = Double(max(band.upperBound - band.lowerBound, 1))
+        return min(max((Double(value) - Double(band.lowerBound)) / span, 0), 1)
+    }
+
+    var body: some View {
+        // nil BPM (no strap yet, or a mid-ride dropout) is genuinely "no reading" —
+        // show a dash and light no segment, rather than a confident 0 sitting in Z1.
+        let active = bpm.map { zoning.zone(forHR: $0) }
+        let handleFraction = bpm.map { fraction(of: $0, in: zoning.bpmRange(for: zoning.zone(forHR: $0))) }
+
+        VStack(alignment: .leading, spacing: 10) {
+            Text("HEART RATE")
+                .font(.caption.weight(.bold))
+                .tracking(1)
+                .foregroundStyle(.secondary)
+
+            Text(bpm.map { "\($0)" } ?? "—")
+                .font(.system(size: 40, weight: .bold, design: .rounded).monospacedDigit())
+                .contentTransition(.numericText())
+
+            GeometryReader { geo in
+                let count = CGFloat(HRZone.allCases.count)
+                let segmentWidth = geo.size.width / count
+
+                ZStack(alignment: .leading) {
+                    HStack(spacing: 3) {
+                        ForEach(HRZone.allCases) { zone in
+                            Capsule()
+                                .fill(zone == active ? zone.color : zone.color.opacity(0.18))
+                        }
+                    }
+                    .frame(height: 8)
+
+                    if let active, let handleFraction {
+                        // Zones are 1-indexed, so subtract 1 to get the segment offset.
+                        let index = CGFloat(active.rawValue - 1)
+                        let handleX = segmentWidth * (index + CGFloat(handleFraction))
+                        Circle()
+                            .fill(Color.primary)
+                            .frame(width: 18, height: 18)
+                            .offset(x: handleX - 9)
+                            .animation(.easeOut(duration: 0.3), value: handleX)
+                    }
+                }
+            }
+            .frame(height: 18)
+
+            HStack(spacing: 0) {
+                ForEach(HRZone.allCases) { zone in
+                    Text(zone.shortName)
+                        .font(.caption.weight(zone == active ? .bold : .regular))
+                        .foregroundStyle(zone == active ? Color.primary : zone.color.opacity(0.7))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Heart rate")
+        .accessibilityValue(bpm.map { "\($0) beats per minute, \(zoning.zone(forHR: $0).name)" }
+            ?? "No reading")
+    }
 }
 
 /// Where a live reading sits relative to its target band, and the correction it

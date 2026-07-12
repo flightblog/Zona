@@ -73,6 +73,33 @@ struct RideHRZoningTests {
         #expect(whoop.zone(forHR: 147) == .z2Endurance)
     }
 
+    @Test func classifyingByBandScanWouldLandOnTheWrongZone() {
+        // Guards the ride screen's live zone bar (and anything else tempted to
+        // classify a reading by scanning `bpmRange`s). The bands are inclusive at
+        // BOTH ends and touch at their boundaries — under LTHR 160, Z4 is 150…168
+        // and Z5 is 168…192 — so "first band whose upperBound reaches the value"
+        // is not a classifier: at Z1's floor of 0 it swallows everything, and at a
+        // shared edge it can hand the beat to the wrong side. `zone(forHR:)` is the
+        // one right answer, and it's what the ride's own scoring uses.
+        let zoning = RideHRZoning.lthr(160)
+
+        // 160 bpm is 100% of LTHR — threshold, squarely Z4. A naive scan over the
+        // bands (Z1 = 0…136 first) reports Z5 here, which is what this pins against.
+        #expect(zoning.zone(forHR: 160) == .z4Threshold)
+
+        // Z1's band starts at 0 under the Friel model, so it overlaps every other
+        // band's floor. Classification must not be confused by that.
+        #expect(zoning.bpmRange(for: .z1Recovery).lowerBound == 0)
+        #expect(zoning.zone(forHR: 150) == .z3Tempo)   // shared Z3/Z4 edge
+        #expect(zoning.zone(forHR: 168) == .z4Threshold) // shared Z4/Z5 edge
+
+        // And every zone's own band must classify back to itself at both ends.
+        for zone in HRZone.allCases {
+            let band = zoning.bpmRange(for: zone)
+            #expect(zoning.zone(forHR: band.upperBound) == zone)
+        }
+    }
+
     // MARK: Bucketing
 
     @Test func secondsPerZoneBucketsEachReadingExactlyOnce() {
