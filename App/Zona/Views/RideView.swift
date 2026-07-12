@@ -209,11 +209,16 @@ struct RideView: View {
 
 }
 
-/// Live "which zone am I in right now" readout for the top of the ride screen:
-/// current BPM over a segmented Z1–Z5 bar with a handle marking where the reading
-/// sits. Complements the `ZoneGauge` dials below it — those answer "am I inside my
-/// *target* band?", this answers "which zone is this effort, on the model this ride
-/// is being scored against?".
+/// Live "which zone am I in right now" readout for the top of the ride screen: a
+/// segmented Z1–Z5 bar with a handle marking where the current reading sits inside
+/// its zone. Complements the `ZoneGauge` dials below it — those answer "am I inside
+/// my *target* band?", this answers "which zone is this effort, on the model this
+/// ride is being scored against?".
+///
+/// Deliberately shows no BPM number of its own: the BPM `ZoneGauge` below already
+/// gives the live figure with its in-zone/push/ease colouring, so a second copy here
+/// was just noise competing with it. This is the *zone* readout; the gauge is the
+/// *number* readout.
 ///
 /// The zone it highlights is the one `RideHRZoning.zone(forHR:)` returns, i.e. the
 /// exact classifier the ride's own time-in-zone scoring and the all-time per-zone
@@ -236,21 +241,13 @@ private struct HRZoneBar: View {
     }
 
     var body: some View {
-        // nil BPM (no strap yet, or a mid-ride dropout) is genuinely "no reading" —
-        // show a dash and light no segment, rather than a confident 0 sitting in Z1.
+        // nil BPM (no strap yet, or a mid-ride dropout) is genuinely "no reading":
+        // light no segment and hide the handle, rather than parking it in Z1 as a
+        // confident 0 would. The BPM gauge below is what says "—" in that case.
         let active = bpm.map { zoning.zone(forHR: $0) }
         let handleFraction = bpm.map { fraction(of: $0, in: zoning.bpmRange(for: zoning.zone(forHR: $0))) }
 
         VStack(alignment: .leading, spacing: 10) {
-            Text("HEART RATE")
-                .font(.caption.weight(.bold))
-                .tracking(1)
-                .foregroundStyle(.secondary)
-
-            Text(bpm.map { "\($0)" } ?? "—")
-                .font(.system(size: 40, weight: .bold, design: .rounded).monospacedDigit())
-                .contentTransition(.numericText())
-
             GeometryReader { geo in
                 let count = CGFloat(HRZone.allCases.count)
                 let segmentWidth = geo.size.width / count
