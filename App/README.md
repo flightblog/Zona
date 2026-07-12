@@ -314,11 +314,19 @@ Shipped since the first cut (all verified on device unless noted):
   personal bests, a **time-in-each-HR-zone** breakdown (Z1–Z5, recomputed from each
   ride's stored HR samples), and a weekly in-zone trend, all rolled up by a pure
   `RideHistoryStats` reducer in `ZonaKit`.
+- **Quarq/SRAM display readout** — a connected SRAM/Quarq power meter shows its
+  live watts and cadence on the ride screen as a **display-only** secondary
+  readout (its own `powerMeterW` field, never merged into the trainer's power, so
+  it can't skew recording, zone math, or export). _Not yet verified against a
+  physical meter._
 
 Still open / optional:
 
-- **Quarq power meter** as a *selectable* power source (decoder + `powerMeter`
-  SensorKind already built; dormant because HR-based zones use the Kickr's power).
+- **Quarq power meter** as a *recorded, selectable* power source — the display
+  readout above already exists; the open work is recording its watts alongside
+  the ERG-held trainer power and adding L/R balance (decoder + `powerMeter`
+  SensorKind already built; kept display-only because HR-based zones use the
+  Kickr's power).
 - Direct **Strava OAuth upload** if the manual TCX Share export proves too clunky.
 - Further **HRV** follow-ons now that R-R is stored — SDNN, and an HRV time-series
   chart (which can reuse the dual-axis chart + downsampler already shipped).
