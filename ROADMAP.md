@@ -40,14 +40,14 @@ persisted R-R intervals).
 
 ## Tier 2 — Rounds out the ride experience
 
-- **Quarq/SRAM as a selectable power source.** 🚧 _Display half code-complete
-  (PR #36)._ A connected SRAM/Quarq now shows its live
+- **Quarq/SRAM as a selectable power source.** 🚧 _Display half shipped (PR #36)
+  and verified on a physical meter._ A connected SRAM/Quarq shows its live
   watts and cadence on the ride screen as a display-only secondary readout (its
   own `powerMeterW` field, deliberately never merged into the trainer's `powerW`,
-  so it can't skew recording, zone math, or the Strava export). Note a real Quarq
-  reads a few watts higher than the Kickr by design (direct crank torque vs.
-  flywheel estimate + drivetrain loss; see the `RideMetrics.powerMeterW` doc
-  comment), so a small gap on-device confirms correct behavior rather than a bug.
+  so it can't skew recording, zone math, or the Strava export). As expected, a real
+  Quarq reads a few watts higher than the Kickr (direct crank torque vs. flywheel
+  estimate + drivetrain loss; see the `RideMetrics.powerMeterW` doc comment) — that
+  small gap is the two meters working correctly, not a bug to reconcile.
   Still to do: make it a *recorded* source (true leg power alongside the
   ERG-held trainer power), plus L/R balance.
 - **Audio / haptic zone cues.** Optional voice or haptic feedback ("push," "ease,"
