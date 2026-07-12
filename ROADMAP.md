@@ -65,19 +65,32 @@ persisted R-R intervals).
   Kickr firmware behavior. Needs `2ADA` frame decoding in `didUpdateValueFor` plus
   resending `metrics.targetW` whenever `trainerReady` transitions to true, not just
   on the initial connect.
-- **Live ride charts.** ✅ _Shipped (PR #47); verified on device._ A dual-axis
-  watts/BPM time-series now draws live on the ride screen (below the SRAM row,
-  trainer watts on the left axis, HR on the right) so you can see drift and trend,
-  not only the instantaneous gauges; the post-ride summary's power chart was
-  rebuilt to match. Swift Charts plots one shared Y-domain, so the second axis is
+- **Ride charts.** ✅ _Shipped (PR #47); verified on device._ The post-ride summary
+  plots a dual-axis watts/BPM time-series (trainer watts on the left axis, HR on the
+  right, target HR band shaded) so you can see drift and trend across the finished
+  ride. Swift Charts plots one shared Y-domain, so the second axis is
   faked by scaling BPM into the watts domain and relabelling the trailing axis
-  back to BPM (shared `scaleBPMToWatts` / `unscaleWattsToBPM`). Samples are
+  back to BPM (`scaleBPMToWatts` / `unscaleWattsToBPM`). Samples are
   downsampled to ≤200 bucket-averaged points before plotting (pure, unit-tested
   `[ChartPoint].downsampled(to:)` in ZonaKit) — a `LineMark` per second is
   thousands of marks on an hour ride. NB the reduction and axis ranges must be
   computed *once* per render, not in computed properties the chart body re-reads
   per point: doing the latter reprocessed every sample hundreds of times per
   layout pass and froze the summary when opening a long old ride (fixed same PR).
+  The same chart also drew *live* on the ride screen until PR #67 replaced it there
+  with the zone bar below — mid-ride you're steering to a zone, not reading a trend,
+  and the drift question is better asked afterwards, which the summary still answers.
+- **Live HR zone bar.** ✅ _Shipped (PR #65, trimmed in #66, took the chart's slot in
+  #67); verified on device._ A segmented Z1–Z5 bar on the ride screen with a handle
+  marking where the current effort sits inside its zone — the "which zone am I in
+  *right now*?" readout, complementing the `ZoneGauge` dials ("am I inside my
+  *target* band?"). It classifies through `RideHRZoning.zone(forHR:)`, i.e. the exact
+  classifier the ride's own time-in-zone scoring uses, so the bar can never name a
+  different zone than the ride records for the same beat. **Don't classify a reading
+  by scanning `bpmRange`s** — the bands are inclusive at both ends and Friel's Z1
+  floor is 0, so a band-scan lands on the wrong zone (it shipped that way in #65's
+  first commit and put a 160 bpm Z4 effort in Zone 5); `zone(forHR:)` is the only
+  classifier. Pinned by a regression test.
 
 ## Tier 3 — Connectivity & sync (known deferred items)
 

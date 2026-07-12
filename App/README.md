@@ -17,11 +17,13 @@ next planned sources).
 2. **Ride** — the trainer holds a steady watt setpoint via **FTMS ERG**; a live,
    color-coded HR readout shows whether you're landing in the target HR band
    (green in-zone, blue too easy, orange too hard). Power/cadence/speed also show.
-   A live **dual-axis chart** traces watts (left axis) and heart rate (right axis)
-   over time, so you can watch drift and trend, not just the instantaneous dials.
+   A live **zone bar** (Z1–Z5, with a handle marking where the current effort sits
+   inside its zone) answers the other question: not "am I on my target?" but "which
+   zone is this?" — scored against the same model the ride itself is.
 3. **Save & review** — on End ride the session is recorded to **SwiftData** and a
-   summary appears (time-in-HR-zone headline, avg/max HR, power stats, and the same
-   dual-axis watts/HR-over-time chart with the target HR-zone band shaded). The ride
+   summary appears (time-in-HR-zone headline, avg/max HR, power stats, and a
+   dual-axis watts/HR-over-time chart with the target HR-zone band shaded — drift
+   and trend are a question for after the ride, not during it). The ride
    keeps the HR-zone model it was ridden under — WHOOP or LTHR — so it's always
    scored against the bands you were actually chasing, and the headline names which.
    **History** lists past rides (read-only; delete a ride from its summary screen),
@@ -106,7 +108,8 @@ App/
     ├── Views/
     │   ├── ContentView.swift    # setup ↔ ride router + History link
     │   ├── SetupView.swift       # FTP, LTHR/WHOOP zones, sensor rows, connect, Diagnostics
-    │   ├── RideView.swift        # HR readout, power dial, live dual-axis chart, record, End ride
+    │   ├── RideView.swift        # HR readout, power dial, live Z1–Z5 zone bar, record, End ride
+    │   ├── HRZoneColor.swift     # shared Z1–Z5 cool→warm ramp (HRZone.color)
     │   ├── RideSummaryView.swift # per-ride summary + dual-axis watts/HR chart + Strava upload / Export
     │   ├── HistoryView.swift     # past rides list + All-Time Stats link
     │   └── AllTimeStatsView.swift # all-time totals, bests, time-in-each-zone, weekly trend
@@ -322,9 +325,15 @@ Shipped since the first cut (all verified on device unless noted):
 - A **device picker** (pin a preferred sensor per kind; hot-swaps live).
 - **HRV/R-R** capture — R-R is parsed, stored per sample, and summarised as RMSSD.
 - **Ride export** to TCX via the Share sheet, with simulated distance.
-- **Dual-axis ride charts** — watts (left) and heart rate (right) over time, live
-  on the ride screen and on the post-ride summary (with the target HR-zone band
-  shaded). Samples are downsampled so long rides stay responsive.
+- **Dual-axis ride chart** — watts (left) and heart rate (right) over time on the
+  post-ride summary, with the target HR-zone band shaded. Samples are downsampled
+  so long rides stay responsive.
+- **Live HR zone bar** on the ride screen — a segmented Z1–Z5 bar with a handle
+  showing where the current effort sits inside its zone. It answers "which zone am
+  I in right now?", where the gauges answer "am I inside my target band?", and it
+  classifies through the same `RideHRZoning.zone(forHR:)` the ride's own scoring
+  uses — so it can't name a zone the ride wouldn't record. (It replaced the live
+  chart on this screen: mid-ride you're steering to a zone, not reading a trend.)
 - **All-Time Stats** (off the History toolbar) — totals (rides / time / distance),
   personal bests, a **time-in-each-HR-zone** breakdown (Z1–Z5, recomputed from each
   ride's stored HR samples), and a weekly in-zone trend, all rolled up by a pure
