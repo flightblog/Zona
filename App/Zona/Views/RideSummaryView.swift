@@ -311,3 +311,25 @@ private struct PowerChart: View {
         .chartXAxisLabel("seconds")
     }
 }
+
+/// Project a BPM value into the watts domain so the two series can share Swift
+/// Charts' single Y-axis: preserves the value's *relative* position within its
+/// own range, which is what makes the relabelled right axis line up. Free
+/// functions (not view methods) so the ranges are passed in explicitly and
+/// computed once per render, never re-derived per call — see `PowerChart.body`
+/// for why that matters.
+private func scaleBPMToWatts(_ bpm: Double,
+                             bpmRange: ClosedRange<Double>,
+                             wattRange: ClosedRange<Double>) -> Double {
+    let frac = (bpm - bpmRange.lowerBound) / (bpmRange.upperBound - bpmRange.lowerBound)
+    return wattRange.lowerBound + frac * (wattRange.upperBound - wattRange.lowerBound)
+}
+
+/// Inverse of `scaleBPMToWatts`: turn a watts-domain axis tick back into the BPM
+/// it represents, for relabelling the right axis.
+private func unscaleWattsToBPM(_ watts: Double,
+                               bpmRange: ClosedRange<Double>,
+                               wattRange: ClosedRange<Double>) -> Int {
+    let frac = (watts - wattRange.lowerBound) / (wattRange.upperBound - wattRange.lowerBound)
+    return Int((bpmRange.lowerBound + frac * (bpmRange.upperBound - bpmRange.lowerBound)).rounded())
+}
