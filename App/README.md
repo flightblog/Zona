@@ -11,9 +11,9 @@ next planned sources).
 ## What it does
 
 1. **Setup** — enter your FTP (drives the ERG power target) and your LTHR (drives
-   the HR zones), or **connect WHOOP** to use its heart-rate zones as your source
-   of truth instead (see *WHOOP heart-rate zones setup* below). Pick a target HR
-   zone. Connect sensors.
+   the HR zones). **Connect WHOOP** and its heart-rate zones take over as your
+   source of truth, LTHR being the fallback for when it isn't connected (see
+   *WHOOP heart-rate zones setup* below). Pick a target HR zone. Connect sensors.
 2. **Ride** — the trainer holds a steady watt setpoint via **FTMS ERG**; a live,
    color-coded HR readout shows whether you're landing in the target HR band
    (green in-zone, blue too easy, orange too hard). Power/cadence/speed also show.
@@ -21,7 +21,9 @@ next planned sources).
    over time, so you can watch drift and trend, not just the instantaneous dials.
 3. **Save & review** — on End ride the session is recorded to **SwiftData** and a
    summary appears (time-in-HR-zone headline, avg/max HR, power stats, and the same
-   dual-axis watts/HR-over-time chart with the target HR-zone band shaded).
+   dual-axis watts/HR-over-time chart with the target HR-zone band shaded). The ride
+   keeps the HR-zone model it was ridden under — WHOOP or LTHR — so it's always
+   scored against the bands you were actually chasing, and the headline names which.
    **History** lists past rides (read-only; delete a ride from its summary screen),
    and its toolbar opens an **All-Time Stats** screen (totals, personal bests,
    time in each HR zone, and a weekly in-zone trend).
@@ -50,11 +52,12 @@ LTHR). No closed-loop HR→watts control — that's a possible future phase.
 App/
 ├── project.yml              # XcodeGen spec → Zona.xcodeproj (iOS + macOS).
 │                            #   Owns Info.plist + entitlements — see note below.
-├── ZonaKit/                 # Swift Package: verified core, no UI. 156 tests.
+├── ZonaKit/                 # Swift Package: verified core, no UI. Unit-tested.
 │   ├── Sources/ZonaKit/
 │   │   ├── FTMS.swift              # FTMS GATT: op codes, Indoor Bike Data decode
 │   │   ├── Zones.swift            # FTP → Coggan power zones
-│   │   ├── HeartRateZones.swift   # LTHR → HR zones (HRZone / HRZoneEngine)
+│   │   ├── HeartRateZones.swift   # LTHR → HR zones (HRZone / HRZoneEngine), the manual fallback
+│   │   ├── RideHRZoning.swift     # which model a ride is scored against: .lthr / .whoopHRR
 │   │   ├── RideModels.swift       # ConnectionState, RideMetrics
 │   │   ├── RideRecorder.swift     # 1 Hz sample capture during a ride
 │   │   ├── RideSummary.swift      # avg/NP/max power, avg/max HR, time-in-(HR)zone
@@ -73,14 +76,13 @@ App/
 │   │   │   ├── StravaToken.swift   # token decode + expiry
 │   │   │   ├── StravaUpload.swift  # upload-status decode + poll state machine
 │   │   │   └── TokenStore.swift    # token persistence seam (mirrors SensorMemory)
-│   │   ├── HeartRateZones.swift  # LTHR/Friel HR zones (manual fallback)
 │   │   ├── HRRZones.swift        # HRR/Karvonen HR zones (WHOOP source-of-truth)
 │   │   └── Whoop/                # pure WHOOP OAuth + DTOs (no networking)
 │   │       ├── WhoopOAuth.swift    # authorize URL (state), callback parse, token bodies
 │   │       ├── WhoopToken.swift    # token decode + expiry
 │   │       ├── WhoopProfile.swift  # body-measurement + recovery DTOs
 │   │       └── WhoopTokenStore.swift # token persistence seam
-│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests, WhoopTests, HRRZonesTests, ChartDownsamplingTests
+│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests, WhoopTests, HRRZonesTests, RideHRZoningTests, ChartDownsamplingTests
 └── Zona/                    # App target
     ├── ZonaApp.swift        # @main, RideSettings (FTP/zone/LTHR/HR zone), modelContainer
     ├── Model/
@@ -190,11 +192,18 @@ WHOOP's API doesn't expose zone boundaries directly, but it returns your **max
 heart rate** (body measurement) and **resting heart rate** (recovery), from which
 WHOOP builds its zones using **Heart Rate Reserve** (`bpm = restingHR +
 fraction × (maxHR − restingHR)`, fixed 40/60/70/80/90/100% bands). Zona
-reconstructs those exact boundaries and uses them as the ride target when
-connected, falling back to the manual LTHR zones otherwise. Once connected, the
-section also shows today's **Recovery %, HRV, and resting HR** with a one-line
-advisory zone suggestion ("go hard or keep it Z2?") — advisory only; it never
-changes your settings.
+reconstructs those exact boundaries and uses them as the ride target. Once
+connected, the section also shows today's **Recovery %, HRV, and resting HR** with
+a one-line advisory zone suggestion ("go hard or keep it Z2?") — advisory only; it
+never changes your settings.
+
+**Holding WHOOP's two numbers _is_ what makes them your zone model** — there's no
+separate "use WHOOP zones" switch to keep in step with the connection. So the
+manual LTHR stepper is what you ride to only until WHOOP is connected (the Heart
+rate section swaps it for a read-only *Zone source: WHOOP*), and **Disconnect
+WHOOP** — which forgets the max/resting HR — is what reverts you to LTHR. Each
+finished ride permanently records the model it was ridden under, so connecting
+WHOOP never retroactively rescores your old LTHR rides.
 
 1. Create an app at <https://developer.whoop.com>. Set its **redirect URI** to
    exactly `zona://whoop-auth` (matches the app's OAuth redirect), and grant the
@@ -222,7 +231,7 @@ changes your settings.
 
 ```sh
 cd App/ZonaKit
-swift test        # 156 tests: zones, FTMS/HR/power decode, recorder, summaries, chart downsampling, TCX export, Strava + WHOOP OAuth
+swift test        # zones (incl. which model a ride is scored against), FTMS/HR/power decode, recorder, summaries, chart downsampling, TCX export, Strava + WHOOP OAuth
 ```
 
 `ZonaKit` is pure and fully unit-tested. The BLE connection logic in `SensorHub`
@@ -302,7 +311,13 @@ Shipped since the first cut (all verified on device unless noted):
 - **WHOOP** as a live HR source over standard `0x180D`, plus a **WHOOP Cloud**
   integration: HR zones reconstructed from max/resting HR via HRR (Karvonen),
   today's recovery/readiness shown as an advisory. The Setup WHOOP section lists
-  all five zones (Z1–Z5).
+  all five zones (Z1–Z5). Connecting WHOOP *is* the opt-in — holding its max and
+  resting HR makes them your zone model, and Disconnect reverts you to LTHR.
+- **Per-ride HR-zone model** — each finished ride records whether it was ridden on
+  WHOOP's HRR bands or the manual LTHR bands (`RideHRZoning`) and is scored against
+  that, so connecting WHOOP doesn't retroactively rescore old LTHR rides (nor
+  disconnecting restate WHOOP ones). The model is latched at ride start, so a
+  mid-ride refresh can't move the target band under you.
 - **iCloud/CloudKit** sync — rides sync across iPhone/iPad/Mac.
 - A **device picker** (pin a preferred sensor per kind; hot-swaps live).
 - **HRV/R-R** capture — R-R is parsed, stored per sample, and summarised as RMSSD.
