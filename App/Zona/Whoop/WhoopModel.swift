@@ -65,7 +65,10 @@ final class WhoopModel {
     ///
     /// Quietly: unlike the Refresh button, a failure here (offline, WHOOP down)
     /// must NOT pop an error or knock the user off WHOOP zones — we stay
-    /// `.connected` and keep using the last-fetched values.
+    /// `.connected` and keep riding the last-fetched values, which remain the zone
+    /// model precisely because they're still stored.
+    ///
+    /// The `clearWhoopZones()` in `disconnect` is the only thing that drops them.
     func syncOnAppear(settings: RideSettings) async {
         guard let service else { return }
         // Don't stomp a transient state (authorizing/refreshing/failed) mid-flow.
@@ -74,7 +77,7 @@ final class WhoopModel {
             if await service.isConnected {
                 state = .refreshing
                 do {
-                    try await fetchZonesAndRecovery(into: settings, service: service, optIn: false)
+                    try await fetchZonesAndRecovery(into: settings, service: service)
                 } catch {
                     // Swallow — no error banner on appear; the cached zones stand.
                 }
@@ -98,7 +101,7 @@ final class WhoopModel {
                 try await service.exchange(code: code)
             }
             state = .refreshing
-            try await fetchZonesAndRecovery(into: settings, service: service, optIn: true)
+            try await fetchZonesAndRecovery(into: settings, service: service)
             state = .connected
         } catch WhoopAuthError.userCancelled {
             // User backed out of the consent sheet; return to whatever we were.
@@ -114,7 +117,7 @@ final class WhoopModel {
         guard await service.isConnected else { state = .disconnected; return }
         do {
             state = .refreshing
-            try await fetchZonesAndRecovery(into: settings, service: service, optIn: true)
+            try await fetchZonesAndRecovery(into: settings, service: service)
             state = .connected
         } catch {
             state = .failed(message: friendly(error))
@@ -124,25 +127,15 @@ final class WhoopModel {
     /// Pull max HR + today's recovery in one shot, apply the zones, and store the
     /// recovery for the readiness display. Shared by connect, refresh, and the
     /// pre-ride sync so all three keep zones and readiness in lockstep from a
-    /// single recovery fetch.
-    ///
-    /// `optIn` is what separates them. Connecting (or hitting Refresh) is the
-    /// rider asking for WHOOP's zones, so it switches the app onto them. The
-    /// pre-ride sync just freshens the numbers behind whatever the rider already
-    /// chose — it passes `optIn: false` so a background fetch can't silently flip
-    /// someone onto WHOOP zones they'd turned off.
+    /// single recovery fetch — and all three land on WHOOP's zones, since a stored
+    /// max/resting HR *is* the zone model (`RideSettings.zoning`).
     private func fetchZonesAndRecovery(into settings: RideSettings,
-                                       service: WhoopService,
-                                       optIn: Bool) async throws {
+                                       service: WhoopService) async throws {
         let result = try await service.fetchZonesAndRecovery()
         guard let restingHR = result.recovery?.restingHR else {
             throw WhoopServiceError.noRestingHR
         }
-        if optIn {
-            settings.enableWhoopZones(maxHR: result.maxHR, restingHR: restingHR)
-        } else {
-            settings.storeWhoopInputs(maxHR: result.maxHR, restingHR: restingHR)
-        }
+        settings.storeWhoopInputs(maxHR: result.maxHR, restingHR: restingHR)
         recovery = result.recovery
     }
 
