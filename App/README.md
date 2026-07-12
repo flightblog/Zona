@@ -22,7 +22,9 @@ next planned sources).
 3. **Save & review** — on End ride the session is recorded to **SwiftData** and a
    summary appears (time-in-HR-zone headline, avg/max HR, power stats, and the same
    dual-axis watts/HR-over-time chart with the target HR-zone band shaded).
-   **History** lists past rides (read-only; delete a ride from its summary screen).
+   **History** lists past rides (read-only; delete a ride from its summary screen),
+   and its toolbar opens an **All-Time Stats** screen (totals, personal bests,
+   time in each HR zone, and a weekly in-zone trend).
 4. **Send to Strava** — two options in the summary toolbar:
    - **Upload to Strava** — one tap uploads the ride directly (OAuth, no files).
      First use opens a Strava consent screen; after that it's automatic. The button
@@ -56,6 +58,7 @@ App/
 │   │   ├── RideModels.swift       # ConnectionState, RideMetrics
 │   │   ├── RideRecorder.swift     # 1 Hz sample capture during a ride
 │   │   ├── RideSummary.swift      # avg/NP/max power, avg/max HR, time-in-(HR)zone
+│   │   ├── RideHistoryStats.swift # all-time rollup: totals, bests, per-zone time, weekly trend
 │   │   ├── ChartDownsampling.swift # ChartPoint + bucket-average downsampler for the ride charts
 │   │   ├── TrainerController.swift # app-facing facade over SensorHub
 │   │   ├── Sensors/
@@ -103,7 +106,8 @@ App/
     │   ├── SetupView.swift       # FTP, LTHR/WHOOP zones, sensor rows, connect, Diagnostics
     │   ├── RideView.swift        # HR readout, power dial, live dual-axis chart, record, End ride
     │   ├── RideSummaryView.swift # per-ride summary + dual-axis watts/HR chart + Strava upload / Export
-    │   └── HistoryView.swift     # past rides list
+    │   ├── HistoryView.swift     # past rides list + All-Time Stats link
+    │   └── AllTimeStatsView.swift # all-time totals, bests, time-in-each-zone, weekly trend
     └── Resources/
         ├── Info.plist                # generated — BLE usage, URL scheme, Strava + WHOOP keys
         ├── Zona.macOS.entitlements   # generated — sandbox + bluetooth + network
@@ -306,6 +310,10 @@ Shipped since the first cut (all verified on device unless noted):
 - **Dual-axis ride charts** — watts (left) and heart rate (right) over time, live
   on the ride screen and on the post-ride summary (with the target HR-zone band
   shaded). Samples are downsampled so long rides stay responsive.
+- **All-Time Stats** (off the History toolbar) — totals (rides / time / distance),
+  personal bests, a **time-in-each-HR-zone** breakdown (Z1–Z5, recomputed from each
+  ride's stored HR samples), and a weekly in-zone trend, all rolled up by a pure
+  `RideHistoryStats` reducer in `ZonaKit`.
 
 Still open / optional:
 
