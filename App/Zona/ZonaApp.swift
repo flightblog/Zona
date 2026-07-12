@@ -100,19 +100,14 @@ final class RideSettings {
     }
 
     // WHOOP source-of-truth zones. WHOOP defines HR zones from max HR + resting
-    // HR via Heart Rate Reserve; when connected we store those two numbers and
-    // (optionally) use the resulting HRR bands instead of the manual LTHR bands.
-    // 0 means "not fetched" (see `whoopMaxHR`/`whoopRestingHR` accessors below).
+    // HR via Heart Rate Reserve; whenever we hold those two numbers they *are* the
+    // zone model, and the manual LTHR bands are only the fallback for when we
+    // don't. 0 means "not fetched" (see `whoopMaxHR`/`whoopRestingHR` below).
     private var whoopMaxHRRaw: Int {
         didSet { UserDefaults.standard.set(whoopMaxHRRaw, forKey: "whoopMaxHR") }
     }
     private var whoopRestingHRRaw: Int {
         didSet { UserDefaults.standard.set(whoopRestingHRRaw, forKey: "whoopRestingHR") }
-    }
-    /// When true (and WHOOP inputs are present), the ride target uses WHOOP's HRR
-    /// zones; otherwise it uses the manual LTHR zones. Default false.
-    var useWhoopZones: Bool {
-        didSet { UserDefaults.standard.set(useWhoopZones, forKey: "useWhoopZones") }
     }
 
     /// Light/dark appearance. `.system` follows the OS setting; the others force
@@ -135,7 +130,6 @@ final class RideSettings {
         hrZone = HRZone(rawValue: storedHRZone) ?? .z2Endurance
         whoopMaxHRRaw = UserDefaults.standard.integer(forKey: "whoopMaxHR")        // 0 = unset
         whoopRestingHRRaw = UserDefaults.standard.integer(forKey: "whoopRestingHR") // 0 = unset
-        useWhoopZones = UserDefaults.standard.bool(forKey: "useWhoopZones")  // default false
         let storedAppearance = UserDefaults.standard.integer(forKey: "appearance")
         appearance = Appearance(rawValue: storedAppearance) ?? .system  // default .system
         // The Hold zone is the source of truth; realign the target HR zone to it
@@ -173,14 +167,19 @@ final class RideSettings {
         return HRRZoneEngine(maxHR: maxHR, restingHR: restingHR)
     }
 
-    /// The HR-zone model a ride started right now would be scored against:
-    /// WHOOP's HRR bands when opted in with both inputs available, else the manual
-    /// LTHR bands. Handed to `Ride.make` at save time so the finished ride carries
-    /// (and keeps) the model it was actually ridden against. Also what the setup
-    /// screen asks (`zoning.isWhoop`) to decide whether the LTHR stepper applies.
+    /// The HR-zone model a ride started right now would be scored against: WHOOP's
+    /// HRR bands whenever both WHOOP inputs are on hand, else the manual LTHR
+    /// bands. WHOOP is the better model — measured max and a freshly-rescored
+    /// resting HR beat a hand-typed threshold — so holding its numbers is itself
+    /// the decision to use them; there's no separate opt-in to fall out of sync.
+    /// LTHR is what you ride to only until WHOOP is connected.
+    ///
+    /// Handed to `Ride.make` at ride start so the finished ride carries (and keeps)
+    /// the model it was actually ridden against, and asked by the setup screen
+    /// (`zoning.isWhoop`) to decide whether the LTHR stepper applies. Mirrors
+    /// `Ride.zoning`, which resolves a *stored* ride from the same two columns.
     var zoning: RideHRZoning {
-        guard useWhoopZones else { return .lthr(lthr) }
-        return RideHRZoning.resolve(maxHR: whoopMaxHR, restingHR: whoopRestingHR, lthr: lthr)
+        RideHRZoning.resolve(maxHR: whoopMaxHR, restingHR: whoopRestingHR, lthr: lthr)
     }
 
     /// The target HR band for the selected zone, under whichever model is active.
@@ -188,29 +187,21 @@ final class RideSettings {
     /// selection carries across both models.
     var targetHRBand: ClosedRange<Int> { zoning.bpmRange(for: hrZone) }
 
-    /// Store the two inputs WHOOP derives its zones from, without changing whether
-    /// the app is *using* them. Called on every WHOOP fetch — including the
-    /// pre-ride refresh, which runs on each visit to setup — so refreshing a
-    /// stale resting HR can't quietly re-opt a rider into WHOOP zones. Use
-    /// `enableWhoopZones(maxHR:restingHR:)` for the connect flow, where switching
-    /// onto WHOOP's zones *is* the point.
+    /// Store the two inputs WHOOP derives its zones from. Called on every WHOOP
+    /// fetch — connect, Refresh, and the pre-ride sync alike — and, because holding
+    /// the numbers is what makes them the zone model, each of those equally puts
+    /// the rider on WHOOP's zones. Freshening a stale resting HR therefore keeps
+    /// the model it already had; there's no opt-in flag left for it to disturb.
     func storeWhoopInputs(maxHR: Int, restingHR: Int) {
         whoopMaxHRRaw = maxHR
         whoopRestingHRRaw = restingHR
     }
 
-    /// Store the WHOOP inputs *and* switch the app onto WHOOP's zones. Called by
-    /// `WhoopModel` when the rider explicitly connects (or hits Refresh).
-    func enableWhoopZones(maxHR: Int, restingHR: Int) {
-        storeWhoopInputs(maxHR: maxHR, restingHR: restingHR)
-        useWhoopZones = true
-    }
-
     /// Forget the WHOOP inputs and revert to manual LTHR zones ("Disconnect").
+    /// Dropping the numbers is what reverts the model — see `zoning`.
     func clearWhoopZones() {
         whoopMaxHRRaw = 0
         whoopRestingHRRaw = 0
-        useWhoopZones = false
     }
 }
 
