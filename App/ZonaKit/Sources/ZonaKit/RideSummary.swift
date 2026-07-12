@@ -138,10 +138,15 @@ public extension RideRecording {
         return samples.compactMap(\.heartRateBpm).filter { band.contains($0) }.count
     }
 
-    /// Fraction of ride time (0…1) spent in the target HR zone.
+    /// Fraction of ride time (0…1) spent in the target HR zone. Uses wall-clock
+    /// duration (falling back to sample count only when none was recorded, as
+    /// `summary()` does) rather than `samples.count`, since a second with no
+    /// sensor data at all leaves no sample and would otherwise understate the
+    /// denominator.
     func timeInHRZoneFraction(_ hrZone: HRZone, lthr: Int) -> Double {
-        guard !samples.isEmpty else { return 0 }
-        return Double(timeInHRZone(hrZone, lthr: lthr)) / Double(samples.count)
+        let duration = durationSeconds > 0 ? durationSeconds : samples.count
+        guard duration > 0 else { return 0 }
+        return Double(timeInHRZone(hrZone, lthr: lthr)) / Double(duration)
     }
 
     /// Average heart rate across samples that reported HR.
