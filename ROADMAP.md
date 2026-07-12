@@ -29,9 +29,14 @@ persisted R-R intervals).
   re-riding. Add `HRV.sdnn` alongside the existing `rmssd`, plus an HRV-over-the-
   ride chart in `RideSummaryView` (which now has the dual-axis time-series chart
   and the `[ChartPoint].downsampled(to:)` reducer to reuse). Pure and testable.
-- **Trends / history dashboard.** `HistoryView` is a flat list today. A trends
-  screen — weekly time-in-zone, RMSSD trend, distance/duration totals, a simple
-  Z2-discipline view — is high-value and entirely local (all data is in SwiftData).
+- **Trends / history dashboard.** ✅ _Shipped (PR #54); verified in-app._ An
+  **All-Time Stats** screen off the History toolbar rolls every saved ride up into
+  totals (rides / time / distance), personal bests (longest ride, best avg power),
+  a **time-in-each-HR-zone** breakdown (Z1–Z5, recomputed from each ride's stored
+  per-second HR samples), and a weekly in-zone trend chart. Entirely local (all
+  data is in SwiftData) via a pure, unit-tested `RideHistoryStats` reducer in
+  ZonaKit. Still open as follow-ons: an RMSSD/HRV trend (the R-R data is already
+  stored — see the HRV item above) and any further Z2-discipline cuts.
 
 ## Tier 2 — Rounds out the ride experience
 
