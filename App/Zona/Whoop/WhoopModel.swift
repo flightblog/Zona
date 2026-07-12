@@ -52,28 +52,31 @@ final class WhoopModel {
     }
 
     /// Reconcile the visible state with what's actually in the Keychain, and if we
-    /// come up already connected, load today's zones + recovery so a returning user
-    /// sees fresh data without tapping Refresh. Call from the view's `.task`; safe
-    /// to call repeatedly (the fetch only runs once, guarded on `recovery == nil`).
+    /// come up already connected, pull today's zones + recovery. Call from the
+    /// setup view's `.task`; safe to call repeatedly.
+    ///
+    /// This is the pre-ride refresh. SetupView is the screen you pass through on
+    /// the way to every ride (the app enters the ride once the trainer and strap
+    /// are ready, and drops back here afterwards), so refreshing on each appear is
+    /// what keeps the resting HR the zones are built from current — WHOOP rescores
+    /// it each morning once your sleep is scored, and a ride is now permanently
+    /// stamped with the zoning it was ridden against. One small request per visit
+    /// is cheap next to riding a day-old resting HR.
+    ///
+    /// Quietly: unlike the Refresh button, a failure here (offline, WHOOP down)
+    /// must NOT pop an error or knock the user off WHOOP zones — we stay
+    /// `.connected` and keep using the last-fetched values.
     func syncOnAppear(settings: RideSettings) async {
         guard let service else { return }
         // Don't stomp a transient state (authorizing/refreshing/failed) mid-flow.
         switch state {
         case .disconnected, .connected:
             if await service.isConnected {
-                // Already connected from a previous session — auto-load once so
-                // today's recovery is populated on launch (guarded on `recovery ==
-                // nil` so it doesn't re-fetch every time the view reappears; the
-                // Refresh button handles manual re-fetches). Do it quietly: unlike
-                // Refresh, a failure here (offline, etc.) must NOT pop an error on
-                // appear — just stay connected and let the user retry.
-                if recovery == nil {
-                    state = .refreshing
-                    do {
-                        try await fetchZonesAndRecovery(into: settings, service: service)
-                    } catch {
-                        // Swallow — no error banner on launch.
-                    }
+                state = .refreshing
+                do {
+                    try await fetchZonesAndRecovery(into: settings, service: service, optIn: false)
+                } catch {
+                    // Swallow — no error banner on appear; the cached zones stand.
                 }
                 state = .connected
             } else {
@@ -95,7 +98,7 @@ final class WhoopModel {
                 try await service.exchange(code: code)
             }
             state = .refreshing
-            try await fetchZonesAndRecovery(into: settings, service: service)
+            try await fetchZonesAndRecovery(into: settings, service: service, optIn: true)
             state = .connected
         } catch WhoopAuthError.userCancelled {
             // User backed out of the consent sheet; return to whatever we were.
@@ -111,7 +114,7 @@ final class WhoopModel {
         guard await service.isConnected else { state = .disconnected; return }
         do {
             state = .refreshing
-            try await fetchZonesAndRecovery(into: settings, service: service)
+            try await fetchZonesAndRecovery(into: settings, service: service, optIn: true)
             state = .connected
         } catch {
             state = .failed(message: friendly(error))
@@ -119,14 +122,27 @@ final class WhoopModel {
     }
 
     /// Pull max HR + today's recovery in one shot, apply the zones, and store the
-    /// recovery for the readiness display. Shared by connect and refresh so both
-    /// keep zones and readiness in lockstep from a single recovery fetch.
-    private func fetchZonesAndRecovery(into settings: RideSettings, service: WhoopService) async throws {
+    /// recovery for the readiness display. Shared by connect, refresh, and the
+    /// pre-ride sync so all three keep zones and readiness in lockstep from a
+    /// single recovery fetch.
+    ///
+    /// `optIn` is what separates them. Connecting (or hitting Refresh) is the
+    /// rider asking for WHOOP's zones, so it switches the app onto them. The
+    /// pre-ride sync just freshens the numbers behind whatever the rider already
+    /// chose — it passes `optIn: false` so a background fetch can't silently flip
+    /// someone onto WHOOP zones they'd turned off.
+    private func fetchZonesAndRecovery(into settings: RideSettings,
+                                       service: WhoopService,
+                                       optIn: Bool) async throws {
         let result = try await service.fetchZonesAndRecovery()
         guard let restingHR = result.recovery?.restingHR else {
             throw WhoopServiceError.noRestingHR
         }
-        settings.applyWhoopZones(maxHR: result.maxHR, restingHR: restingHR)
+        if optIn {
+            settings.enableWhoopZones(maxHR: result.maxHR, restingHR: restingHR)
+        } else {
+            settings.storeWhoopInputs(maxHR: result.maxHR, restingHR: restingHR)
+        }
         recovery = result.recovery
     }
 

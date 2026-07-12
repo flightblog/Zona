@@ -20,6 +20,13 @@ struct RideView: View {
     @State private var savedRide: Ride?
     /// Drives the "End ride?" confirmation so a stray tap can't discard a ride.
     @State private var confirmingEnd = false
+    /// The HR-zone model this ride is being ridden against, latched from settings
+    /// at ride start (`.onAppear`) rather than read again at save time. The rider
+    /// chases the band this view shows, so that band — not whatever settings hold
+    /// when they hit End ride — is the one the ride must be scored against. A
+    /// WHOOP refresh landing mid-ride would otherwise move the target under them
+    /// and rescore the ride against bands they were never aiming at.
+    @State private var zoning: RideHRZoning?
 
     /// Watts are held by ERG, so "in target" is a tight window around the
     /// setpoint rather than the full (wide) power-zone band.
@@ -52,7 +59,7 @@ struct RideView: View {
                 )
                 ZoneGauge(
                     value: controller.metrics.heartRateBpm,
-                    band: settings.targetHRBand,
+                    band: targetHRBand,
                     label: "bpm",
                     caption: settings.hrZone.name,
                     icon: "heart.fill",
@@ -126,9 +133,11 @@ struct RideView: View {
             Text("This stops recording and saves your ride.")
         }
         .onAppear {
-            // Enter ERG at the configured steady target and start recording.
+            // Enter ERG at the configured steady target and start recording, and
+            // pin the HR-zone model for the rest of the ride.
             controller.setTargetPower(settings.target)
             recorder.start(ftp: settings.ftp, zone: settings.zone)
+            zoning = settings.zoning
         }
         .onChange(of: controller.metrics) { _, newMetrics in
             recorder.ingest(newMetrics)
@@ -162,11 +171,20 @@ struct RideView: View {
         controller.stop()
         // Only persist rides that actually captured data.
         guard !recording.samples.isEmpty else { return }
-        let ride = Ride.make(from: recording, lthr: settings.lthr, hrZone: settings.hrZone)
+        let ride = Ride.make(from: recording, zoning: rideZoning, hrZone: settings.hrZone)
         modelContext.insert(ride)
         try? modelContext.save()
         savedRide = ride
     }
+
+    /// The zone model the ride is being scored against: the one latched at
+    /// `.onAppear`, falling back to settings only on the first `body` evaluation
+    /// (which runs before `.onAppear`) — at that point nothing has been ridden
+    /// yet, so the two agree.
+    private var rideZoning: RideHRZoning { zoning ?? settings.zoning }
+
+    /// The target HR band the rider is chasing, under the latched zone model.
+    private var targetHRBand: ClosedRange<Int> { rideZoning.bpmRange(for: settings.hrZone) }
 
     /// Elapsed ride time as mm:ss. `asOf` is the enclosing `TimelineView`'s
     /// periodic tick — passing it in ties the recompute to the clock, so the

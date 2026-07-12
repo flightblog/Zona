@@ -129,13 +129,13 @@ public extension RideRecording {
 
     // MARK: Heart-rate zone stats
     //
-    // The recording captures HR samples but not the rider's LTHR / target HR
-    // zone (those live in settings), so these take them as parameters.
+    // The recording captures HR samples but not the rider's zone model (LTHR, or
+    // WHOOP's HRR bands — those live in settings), so these take a `RideHRZoning`
+    // parameter. Score a ride against the model the rider was actually aiming at.
 
-    /// Seconds where heart rate fell inside `hrZone`'s band for the given LTHR.
-    func timeInHRZone(_ hrZone: HRZone, lthr: Int) -> Int {
-        let band = HRZoneEngine(lthr: lthr).bpmRange(for: hrZone)
-        return samples.compactMap(\.heartRateBpm).filter { band.contains($0) }.count
+    /// Seconds where heart rate fell inside `hrZone`'s band under `zoning`.
+    func timeInHRZone(_ hrZone: HRZone, zoning: RideHRZoning) -> Int {
+        zoning.secondsInZone(hrZone, bpms: samples.compactMap(\.heartRateBpm))
     }
 
     /// Fraction of ride time (0…1) spent in the target HR zone. Uses wall-clock
@@ -143,10 +143,10 @@ public extension RideRecording {
     /// `summary()` does) rather than `samples.count`, since a second with no
     /// sensor data at all leaves no sample and would otherwise understate the
     /// denominator.
-    func timeInHRZoneFraction(_ hrZone: HRZone, lthr: Int) -> Double {
+    func timeInHRZoneFraction(_ hrZone: HRZone, zoning: RideHRZoning) -> Double {
         let duration = durationSeconds > 0 ? durationSeconds : samples.count
         guard duration > 0 else { return 0 }
-        return Double(timeInHRZone(hrZone, lthr: lthr)) / Double(duration)
+        return Double(timeInHRZone(hrZone, zoning: zoning)) / Double(duration)
     }
 
     /// Average heart rate across samples that reported HR.

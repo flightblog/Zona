@@ -46,7 +46,7 @@ struct SetupView: View {
             }
 
             Section {
-                if settings.usingWhoopZones {
+                if settings.zoning.isWhoop {
                     // WHOOP is the source of truth: show its inputs read-only.
                     LabeledContent("Zone source", value: "WHOOP")
                     if let maxHR = settings.whoopMaxHR, let restingHR = settings.whoopRestingHR {

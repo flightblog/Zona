@@ -173,8 +173,13 @@ private struct WeeklyTrendChart: View {
 /// renders with real numbers instead of the empty state. Three rides fall in a
 /// recent week and two in a prior week, so the weekly trend chart has more than
 /// one bar; the varied durations/power give the personal-best tiles distinct
-/// values from the totals. Each ride carries a spread of per-second HR samples
-/// (LTHR 160) so the "Time in each zone" section is populated across Z1–Z5.
+/// values from the totals. Each ride carries a spread of per-second HR samples so
+/// the "Time in each zone" section is populated across Z1–Z5.
+///
+/// The last ride is deliberately WHOOP-scored while the rest are LTHR-scored: the
+/// two models bucket the same BPM differently, so a mixed history is what proves
+/// the breakdown is recomputed per-ride against the model each ride was ridden
+/// against rather than against whatever is configured now.
 @MainActor private func seededStatsContainer() -> ModelContainer {
     let container = try! ModelContainer(
         for: Ride.self, RideSampleModel.self,
@@ -188,21 +193,31 @@ private struct WeeklyTrendChart: View {
     let lthr = 160
     // A representative BPM per zone at LTHR 160 (see HRZone.upperFraction):
     // Z1 <136, Z2 136–142, Z3 143–150, Z4 151–168, Z5 >168.
-    let zoneBPM = [125, 139, 147, 158, 175]
+    let lthrZoneBPM = [125, 139, 147, 158, 175]
+    // The same, under WHOOP's HRR bands at max 190 / resting 50 (reserve 140):
+    // Z1 106–134, Z2 134–148, Z3 148–162, Z4 162–176, Z5 176–190. Note 147 is Z3
+    // by LTHR but Z2 here — bucketing a WHOOP ride against LTHR would misplace it.
+    let whoopMaxHR = 190
+    let whoopRestingHR = 50
+    let whoopZoneBPM = [120, 140, 155, 170, 185]
 
     // (daysAgo, durationSec, distanceMeters, avgPowerW, timeInHRZoneSec,
-    //  seconds-per-zone Z1…Z5)
-    let seed: [(Int, Int, Double, Int, Int, [Int])] = [
-        (0,  1_800, 10_000, 150,  900, [200, 900, 500, 180,  20]),   // today
-        (1,  2_400, 13_500, 165, 1_800, [150, 800, 900, 480,  70]),  // yesterday — best power/longest
-        (2,  1_500,  8_200, 140,  450, [400, 450, 400, 220,  30]),
-        (9,  2_100, 11_800, 155, 1_400, [180, 700, 800, 380,  40]),  // prior week
-        (11, 1_200,  6_500, 148,  600, [300, 400, 300, 180,  20]),   // prior week
+    //  seconds-per-zone Z1…Z5, whoop-scored)
+    let seed: [(Int, Int, Double, Int, Int, [Int], Bool)] = [
+        (0,  1_800, 10_000, 150,  900, [200, 900, 500, 180,  20], false),  // today
+        (1,  2_400, 13_500, 165, 1_800, [150, 800, 900, 480,  70], false), // yesterday — best power/longest
+        (2,  1_500,  8_200, 140,  450, [400, 450, 400, 220,  30], false),
+        (9,  2_100, 11_800, 155, 1_400, [180, 700, 800, 380,  40], false), // prior week
+        (11, 1_200,  6_500, 148,  600, [300, 400, 300, 180,  20], true),   // prior week, WHOOP zones
     ]
-    for (ago, dur, dist, power, inZone, perZone) in seed {
+    for (ago, dur, dist, power, inZone, perZone, isWhoop) in seed {
         let ride = Ride(date: daysAgo(ago), durationSec: dur, avgPowerW: power,
-                        distanceMeters: dist, lthr: lthr, timeInHRZoneSec: inZone)
-        // Expand the per-zone counts into per-second HR samples.
+                        distanceMeters: dist, lthr: lthr, timeInHRZoneSec: inZone,
+                        whoopMaxHR: isWhoop ? whoopMaxHR : nil,
+                        whoopRestingHR: isWhoop ? whoopRestingHR : nil)
+        // Expand the per-zone counts into per-second HR samples, using BPMs that
+        // land in the intended zone under *this ride's* model.
+        let zoneBPM = isWhoop ? whoopZoneBPM : lthrZoneBPM
         var second = 0
         var samples: [RideSampleModel] = []
         for (zoneIndex, count) in perZone.enumerated() {
