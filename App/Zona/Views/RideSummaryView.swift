@@ -103,7 +103,9 @@ struct RideSummaryView: View {
 }
 
 /// Headline leads with time in the target HR zone — the metric that matters now
-/// that zones are HR-based.
+/// that zones are HR-based. Names the band and the model it came from (WHOOP's
+/// HRR bands or the manual LTHR ones), so a ride scored under one model isn't
+/// misread against the other after the rider connects or disconnects WHOOP.
 private struct TimeInZoneHeadline: View {
     let ride: Ride
 
@@ -118,7 +120,17 @@ private struct TimeInZoneHeadline: View {
             Text("\(Int((ride.timeInHRZoneFraction * 100).rounded()))% of \(formatted(ride.durationSec))")
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
+            Text(bandText)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
+    }
+
+    /// e.g. "134–148 bpm · WHOOP zones" / "136–142 bpm · LTHR 160".
+    private var bandText: String {
+        let band = ride.zoning.bpmRange(for: ride.hrZone)
+        let source = ride.zoning.isWhoop ? "WHOOP zones" : "LTHR \(ride.lthr)"
+        return "\(band.lowerBound)–\(band.upperBound) bpm · \(source)"
     }
 
     private func formatted(_ seconds: Int) -> String {
@@ -202,7 +214,7 @@ private struct PowerChart: View {
     private let maxPoints = 200
 
     private var hrBand: ClosedRange<Int> {
-        HRZoneEngine(lthr: ride.lthr).bpmRange(for: ride.hrZone)
+        ride.zoning.bpmRange(for: ride.hrZone)
     }
 
     /// Watts axis range: 0 to a little past the ride's peak power.

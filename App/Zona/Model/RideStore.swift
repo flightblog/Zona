@@ -27,13 +27,23 @@ final class Ride {
     /// Simulated distance in metres (trainer speed integrated; not GPS).
     var distanceMeters: Double = 0
 
-    // Heart-rate summary. Zones are HR-based (LTHR), so these are the headline.
+    // Heart-rate summary. Zones are HR-based, so these are the headline.
     var lthr: Int = 0
     /// `HRZone.rawValue`.
     var hrZoneRaw: Int = HRZone.z2Endurance.rawValue
     var avgHeartRate: Int = 0
     var maxHeartRate: Int = 0
     var timeInHRZoneSec: Int = 0
+
+    // The WHOOP HRR inputs this ride was scored against, or nil when it was ridden
+    // on the manual LTHR bands. Persisted per-ride (rather than read from current
+    // settings) because the zone model is a fact *about the ride*: without them,
+    // connecting WHOOP would retroactively rescore old LTHR rides, and
+    // disconnecting it would silently restate WHOOP rides against LTHR. Optional
+    // with no default keeps them CloudKit-safe and lightweight-migrates existing
+    // rides to nil = LTHR (same pattern as `hrvRMSSDms`).
+    var whoopMaxHR: Int?
+    var whoopRestingHR: Int?
     /// Heart-rate variability (RMSSD, ms) for the ride, or nil when the strap
     /// reported too few R-R beats (or none — e.g. a sensor that omits R-R). nil,
     /// not 0, so the summary can show "—" instead of a fabricated value.
@@ -66,6 +76,8 @@ final class Ride {
          avgHeartRate: Int = 0,
          maxHeartRate: Int = 0,
          timeInHRZoneSec: Int = 0,
+         whoopMaxHR: Int? = nil,
+         whoopRestingHR: Int? = nil,
          hrvRMSSDms: Int? = nil,
          stravaActivityId: Int64? = nil,
          stravaUploadedAt: Date? = nil) {
@@ -84,6 +96,8 @@ final class Ride {
         self.avgHeartRate = avgHeartRate
         self.maxHeartRate = maxHeartRate
         self.timeInHRZoneSec = timeInHRZoneSec
+        self.whoopMaxHR = whoopMaxHR
+        self.whoopRestingHR = whoopRestingHR
         self.hrvRMSSDms = hrvRMSSDms
         self.stravaActivityId = stravaActivityId
         self.stravaUploadedAt = stravaUploadedAt
@@ -91,6 +105,15 @@ final class Ride {
 
     var zone: PowerZone { PowerZone(rawValue: zoneRaw) ?? .z2Endurance }
     var hrZone: HRZone { HRZone(rawValue: hrZoneRaw) ?? .z2Endurance }
+
+    /// The HR-zone model this ride was ridden against: WHOOP's HRR bands when the
+    /// ride carries both WHOOP inputs, else the manual LTHR bands. Every HR-zone
+    /// readout for this ride (target band, time-in-zone, per-zone breakdown, the
+    /// summary chart's shaded band) resolves through here, so a ride always reads
+    /// back against the model the rider was actually aiming at.
+    var zoning: RideHRZoning {
+        RideHRZoning.resolve(maxHR: whoopMaxHR, restingHR: whoopRestingHR, lthr: lthr)
+    }
 
     var timeInZoneFraction: Double {
         durationSec > 0 ? Double(timeInZoneSec) / Double(durationSec) : 0
@@ -142,7 +165,7 @@ extension Ride {
     /// total is persisted), which is why this needs the sample models.
     var historyEntry: RideHistoryEntry {
         let bpms = (samples ?? []).compactMap(\.heartRateBpm)
-        let secondsPerHRZone = HRZoneEngine(lthr: lthr).secondsPerZone(bpms: bpms)
+        let secondsPerHRZone = zoning.secondsPerZone(bpms: bpms)
         return RideHistoryEntry(date: date, durationSec: durationSec, distanceMeters: distanceMeters,
                                 avgPowerW: avgPowerW, timeInHRZoneSec: timeInHRZoneSec,
                                 secondsPerHRZone: secondsPerHRZone)
@@ -150,9 +173,11 @@ extension Ride {
 
     /// Map a finished ZonaKit recording into a persistable `Ride`, precomputing
     /// both power- and HR-zone summary columns and attaching the per-second
-    /// sample models. HR summary needs the rider's `lthr` and target `hrZone`,
-    /// which live in settings rather than the recording.
-    static func make(from recording: RideRecording, lthr: Int, hrZone: HRZone) -> Ride {
+    /// sample models. The HR summary needs the rider's zone model (`zoning`) and
+    /// target `hrZone`, which live in settings rather than the recording; the
+    /// WHOOP inputs are stored on the ride so it stays scored against the bands it
+    /// was ridden against even if WHOOP is later refreshed or disconnected.
+    static func make(from recording: RideRecording, zoning: RideHRZoning, hrZone: HRZone) -> Ride {
         let summary = recording.summary()
         let ride = Ride(
             date: recording.startedAt,
@@ -164,11 +189,13 @@ extension Ride {
             maxPowerW: summary.maxPowerW,
             timeInZoneSec: summary.timeInZoneSeconds,
             distanceMeters: summary.distanceMeters,
-            lthr: lthr,
+            lthr: zoning.storedLTHR,
             hrZoneRaw: hrZone.rawValue,
             avgHeartRate: recording.averageHeartRate,
             maxHeartRate: recording.maxHeartRate,
-            timeInHRZoneSec: recording.timeInHRZone(hrZone, lthr: lthr),
+            timeInHRZoneSec: recording.timeInHRZone(hrZone, zoning: zoning),
+            whoopMaxHR: zoning.storedWhoopMaxHR,
+            whoopRestingHR: zoning.storedWhoopRestingHR,
             hrvRMSSDms: summary.hrvRMSSDms
         )
         ride.samples = recording.samples.map {

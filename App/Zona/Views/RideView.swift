@@ -162,7 +162,7 @@ struct RideView: View {
         controller.stop()
         // Only persist rides that actually captured data.
         guard !recording.samples.isEmpty else { return }
-        let ride = Ride.make(from: recording, lthr: settings.lthr, hrZone: settings.hrZone)
+        let ride = Ride.make(from: recording, zoning: settings.zoning, hrZone: settings.hrZone)
         modelContext.insert(ride)
         try? modelContext.save()
         savedRide = ride

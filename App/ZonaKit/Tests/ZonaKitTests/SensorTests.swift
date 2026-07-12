@@ -212,8 +212,8 @@ struct HRRideSummaryTests {
     @Test func timeInHRZoneCountsInBandSeconds() {
         // LTHR 160 → HR Z2 band 136…142. 140 in-band; 120 (Z1) & 150 (Z4) out.
         let rec = recording(hrs: [120, 140, 140, 140, 150])
-        #expect(rec.timeInHRZone(.z2Endurance, lthr: 160) == 3)
-        #expect(abs(rec.timeInHRZoneFraction(.z2Endurance, lthr: 160) - 0.6) < 0.0001)
+        #expect(rec.timeInHRZone(.z2Endurance, zoning: .lthr(160)) == 3)
+        #expect(abs(rec.timeInHRZoneFraction(.z2Endurance, zoning: .lthr(160)) - 0.6) < 0.0001)
     }
 
     @Test func timeInHRZoneFractionDividesByWallClockDuration() {
@@ -226,8 +226,24 @@ struct HRRideSummaryTests {
         }
         let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(),
                                 samples: samples, durationSeconds: 10)
-        #expect(rec.timeInHRZone(.z2Endurance, lthr: 160) == 3)
-        #expect(abs(rec.timeInHRZoneFraction(.z2Endurance, lthr: 160) - 0.3) < 0.0001)
+        #expect(rec.timeInHRZone(.z2Endurance, zoning: .lthr(160)) == 3)
+        #expect(abs(rec.timeInHRZoneFraction(.z2Endurance, zoning: .lthr(160)) - 0.3) < 0.0001)
+    }
+
+    @Test func timeInHRZoneScoresAgainstWhoopBandsWhenZoned() {
+        // Same HR samples, scored under WHOOP's HRR bands instead of LTHR. With
+        // max 190 / resting 50 the reserve is 140, so Z2 (60–70% HRR) is 134…148:
+        // 140 and 145 are in-band, and 150 — which LTHR 160 would call Z4 — now
+        // falls outside Z2's ceiling too, while 120 stays below the floor.
+        let rec = recording(hrs: [120, 140, 145, 150, 190])
+        let whoop = RideHRZoning.whoopHRR(maxHR: 190, restingHR: 50, lthr: 160)
+        #expect(whoop.bpmRange(for: .z2Endurance) == 134...148)
+        #expect(rec.timeInHRZone(.z2Endurance, zoning: whoop) == 2)
+
+        // The same recording under LTHR 160 counts only 140 (band 136…142), so the
+        // two models genuinely disagree — which is the whole reason a ride has to
+        // remember which one it was ridden against.
+        #expect(rec.timeInHRZone(.z2Endurance, zoning: .lthr(160)) == 1)
     }
 
     @Test func averageHeartRate() {

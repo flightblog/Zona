@@ -178,16 +178,19 @@ final class RideSettings {
 
     var hrEngine: HRZoneEngine { HRZoneEngine(lthr: lthr) }
 
-    /// The target HR band for the selected zone. Prefers WHOOP's HRR bands when
-    /// active, else the manual LTHR bands. `hrZone`'s raw value (1–5) maps 1:1
-    /// onto `HRRZone`, so the same picker selection carries across both models.
-    var targetHRBand: ClosedRange<Int> {
-        if let hrr = hrrEngine, useWhoopZones,
-           let hrrZone = HRRZone(rawValue: hrZone.rawValue) {
-            return hrr.bpmRange(for: hrrZone)
-        }
-        return hrEngine.bpmRange(for: hrZone)
+    /// The HR-zone model a ride started right now would be scored against:
+    /// WHOOP's HRR bands when opted in with both inputs available, else the manual
+    /// LTHR bands. Handed to `Ride.make` at save time so the finished ride carries
+    /// (and keeps) the model it was actually ridden against.
+    var zoning: RideHRZoning {
+        guard useWhoopZones else { return .lthr(lthr) }
+        return RideHRZoning.resolve(maxHR: whoopMaxHR, restingHR: whoopRestingHR, lthr: lthr)
     }
+
+    /// The target HR band for the selected zone, under whichever model is active.
+    /// `hrZone`'s raw value (1–5) maps 1:1 onto `HRRZone`, so the same picker
+    /// selection carries across both models.
+    var targetHRBand: ClosedRange<Int> { zoning.bpmRange(for: hrZone) }
 
     /// Store the two inputs WHOOP derives its zones from and switch the app onto
     /// them. Called by `WhoopModel` after a successful fetch.
