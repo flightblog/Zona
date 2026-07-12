@@ -67,6 +67,8 @@ final class WhoopModel {
     /// must NOT pop an error or knock the user off WHOOP zones — we stay
     /// `.connected` and keep riding the last-fetched values, which remain the zone
     /// model precisely because they're still stored.
+    ///
+    /// The `clearWhoopZones()` in `disconnect` is the only thing that drops them.
     func syncOnAppear(settings: RideSettings) async {
         guard let service else { return }
         // Don't stomp a transient state (authorizing/refreshing/failed) mid-flow.
@@ -126,8 +128,7 @@ final class WhoopModel {
     /// recovery for the readiness display. Shared by connect, refresh, and the
     /// pre-ride sync so all three keep zones and readiness in lockstep from a
     /// single recovery fetch — and all three land on WHOOP's zones, since a stored
-    /// max/resting HR *is* the zone model (`RideSettings.zoning`). Being connected
-    /// to WHOOP is the whole opt-in; disconnecting is how you get back to LTHR.
+    /// max/resting HR *is* the zone model (`RideSettings.zoning`).
     private func fetchZonesAndRecovery(into settings: RideSettings,
                                        service: WhoopService) async throws {
         let result = try await service.fetchZonesAndRecovery()

@@ -169,10 +169,10 @@ final class RideSettings {
 
     /// The HR-zone model a ride started right now would be scored against: WHOOP's
     /// HRR bands whenever both WHOOP inputs are on hand, else the manual LTHR
-    /// bands. WHOOP is the better model — measured max and a freshly-rescored
-    /// resting HR beat a hand-typed threshold — so holding its numbers is itself
-    /// the decision to use them; there's no separate opt-in to fall out of sync.
-    /// LTHR is what you ride to only until WHOOP is connected.
+    /// bands. Holding WHOOP's numbers *is* the decision to use them — measured max
+    /// and a freshly-rescored resting HR beat a hand-typed threshold — so LTHR is
+    /// what you ride to only until WHOOP is connected, and disconnecting (which
+    /// clears them) is what reverts you.
     ///
     /// Handed to `Ride.make` at ride start so the finished ride carries (and keeps)
     /// the model it was actually ridden against, and asked by the setup screen
@@ -188,10 +188,10 @@ final class RideSettings {
     var targetHRBand: ClosedRange<Int> { zoning.bpmRange(for: hrZone) }
 
     /// Store the two inputs WHOOP derives its zones from. Called on every WHOOP
-    /// fetch — connect, Refresh, and the pre-ride sync alike — and, because holding
-    /// the numbers is what makes them the zone model, each of those equally puts
-    /// the rider on WHOOP's zones. Freshening a stale resting HR therefore keeps
-    /// the model it already had; there's no opt-in flag left for it to disturb.
+    /// fetch — connect, Refresh, and the pre-ride sync alike — each of which
+    /// equally puts the rider on WHOOP's zones, since holding the numbers is what
+    /// makes them the model. A pre-ride refresh of a stale resting HR therefore
+    /// only moves the band edges, never which model is in play.
     func storeWhoopInputs(maxHR: Int, restingHR: Int) {
         whoopMaxHRRaw = maxHR
         whoopRestingHRRaw = restingHR
