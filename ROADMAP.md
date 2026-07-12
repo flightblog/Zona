@@ -99,6 +99,18 @@ persisted R-R intervals).
   OAuth, tokens in the Keychain, cloned from the Strava plumbing. Requires a WHOOP
   dev app (redirect `zona://whoop-auth`) and the privacy policy at
   <https://flightblog.github.io/Zona/privacy-policy>.
+- **Per-ride HR-zone model (WHOOP vs. LTHR).** ✅ _Shipped (PR #61 model, PR #62
+  the WHOOP-always-wins rule); verified in-app._ Which HR-zone model a ride is
+  scored against is now a **fact about the ride**, not a re-reading of today's
+  settings: a finished ride stores the model it was actually ridden under
+  (`RideHRZoning` in ZonaKit, `.lthr` / `.whoopHRR`), so connecting WHOOP no longer
+  retroactively rescores old LTHR rides and disconnecting it no longer restates
+  WHOOP ones. `RideView` latches the model at ride start, so a mid-ride refresh
+  can't move the target band under you. And the live rule is now simply **holding
+  WHOOP's max + resting HR *is* the model** — there's no separate opt-in flag to
+  fall out of step with it (there used to be, and it could leave you connected to
+  WHOOP while still scoring against a hand-typed LTHR). LTHR is the fallback until
+  WHOOP is connected; **Disconnect** clears the numbers and is what reverts you.
 - **HRV-guided target suggestions.** Combine the stored ride R-R / HRV history with
   the WHOOP recovery readiness (now available) to suggest an FTP% or zone for the
   session — a richer, auto-applied version of the current advisory.
