@@ -34,6 +34,8 @@ struct RideView: View {
 
     var body: some View {
         VStack(spacing: 24) {
+            HRZoneBar(bpm: controller.metrics.heartRateBpm, zoning: rideZoning)
+
             // Tick once a second off a periodic clock so the timer advances on
             // its own, independent of whether new trainer metrics have arrived.
             // Reading `context.date` is what makes SwiftUI re-render each tick.
@@ -205,6 +207,96 @@ struct RideView: View {
     /// gives the same in-zone/push/ease cue as BPM and Watts.
     private var cadenceBand: ClosedRange<Int> { 80...100 }
 
+}
+
+/// Six-zone horizontal HR readout for the top of the ride screen: current BPM
+/// plus a segmented bar (Zone 0 = below Z1, through Zone 5 = VO2 Max) with a
+/// handle showing where the live reading sits. Distinct from the `ZoneGauge`
+/// dials below it, which show value-vs-target-band rather than which named
+/// zone the rider is currently in. Colors mirror the Z1–Z5 ramp
+/// `AllTimeStatsView.zoneColor` uses, with gray added for the Zone 0
+/// catch-all so the two zone displays read consistently across the app.
+private struct HRZoneBar: View {
+    let bpm: Int?
+    let zoning: RideHRZoning
+
+    private static let colors: [Color] = [.gray, .blue, .green, .yellow, .orange, .red]
+    private static let labels = ["Zone 0", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"]
+
+    /// BPM ranges for the 6 buckets: index 0 is the synthetic "below Z1"
+    /// catch-all (0 up to Z1's floor — non-empty under WHOOP's HRR model,
+    /// which reserves 0–40% HRR below Z1; collapses to just 0 under the LTHR
+    /// model, whose Z1 floor is 0). Indices 1–5 mirror `HRZone.allCases`.
+    private var ranges: [ClosedRange<Int>] {
+        let z1Low = zoning.bpmRange(for: .z1Recovery).lowerBound
+        return [0...max(z1Low - 1, 0)] + HRZone.allCases.map { zoning.bpmRange(for: $0) }
+    }
+
+    /// Which of the 6 buckets the live BPM falls in: first range whose
+    /// ceiling reaches the value, falling back to the last (Zone 5) for
+    /// anything above it. Mirrors `HRZoneEngine.zone(forHR:)`'s scan.
+    private func activeIndex(in ranges: [ClosedRange<Int>]) -> Int {
+        let value = bpm ?? 0
+        for (i, range) in ranges.enumerated() where value <= range.upperBound {
+            return i
+        }
+        return ranges.count - 1
+    }
+
+    /// How far across its own bucket the live BPM sits, for positioning the
+    /// handle within the active segment rather than always at its start.
+    private func fraction(of value: Int, in range: ClosedRange<Int>) -> Double {
+        let span = Double(max(range.upperBound - range.lowerBound, 1))
+        return min(max((Double(value) - Double(range.lowerBound)) / span, 0), 1)
+    }
+
+    var body: some View {
+        let zoneRanges = ranges
+        let active = activeIndex(in: zoneRanges)
+        let handleFraction = fraction(of: bpm ?? 0, in: zoneRanges[active])
+
+        VStack(alignment: .leading, spacing: 10) {
+            Text("HEART RATE")
+                .font(.caption.weight(.bold))
+                .tracking(1)
+                .foregroundStyle(.secondary)
+
+            Text(bpm.map { "\($0)" } ?? "0")
+                .font(.system(size: 40, weight: .bold, design: .rounded).monospacedDigit())
+                .contentTransition(.numericText())
+
+            GeometryReader { geo in
+                let segmentWidth = geo.size.width / CGFloat(zoneRanges.count)
+                let handleX = segmentWidth * (CGFloat(active) + CGFloat(handleFraction))
+
+                ZStack(alignment: .leading) {
+                    HStack(spacing: 3) {
+                        ForEach(0..<zoneRanges.count, id: \.self) { i in
+                            Capsule()
+                                .fill(i == active ? Color.primary : Self.colors[i].opacity(0.18))
+                        }
+                    }
+                    .frame(height: 8)
+
+                    Circle()
+                        .fill(Color.primary)
+                        .frame(width: 18, height: 18)
+                        .offset(x: handleX - 9)
+                        .animation(.easeOut(duration: 0.3), value: handleX)
+                }
+            }
+            .frame(height: 18)
+
+            HStack(spacing: 0) {
+                ForEach(0..<Self.labels.count, id: \.self) { i in
+                    Text(Self.labels[i])
+                        .font(.caption.weight(i == active ? .bold : .regular))
+                        .foregroundStyle(i == active ? Color.primary : Self.colors[i].opacity(0.7))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
 }
 
 /// Where a live reading sits relative to its target band, and the correction it
