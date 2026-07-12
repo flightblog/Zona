@@ -42,9 +42,9 @@ persisted R-R intervals).
 
 - **Quarq/SRAM as a selectable power source.** 🚧 _Display half code-complete
   (PR #36)._ A connected SRAM/Quarq now shows its live
-  watts on the ride screen as a display-only secondary readout (its own
-  `powerMeterW` field, deliberately never merged into the trainer's `powerW`, so
-  it can't skew recording, zone math, or the Strava export). Note a real Quarq
+  watts and cadence on the ride screen as a display-only secondary readout (its
+  own `powerMeterW` field, deliberately never merged into the trainer's `powerW`,
+  so it can't skew recording, zone math, or the Strava export). Note a real Quarq
   reads a few watts higher than the Kickr by design (direct crank torque vs.
   flywheel estimate + drivetrain loss; see the `RideMetrics.powerMeterW` doc
   comment), so a small gap on-device confirms correct behavior rather than a bug.

@@ -72,8 +72,8 @@ deliberately removed — don't reintroduce it without discussion.
 `powerMeter`), each using its standard GATT service (FTMS `0x1826`, Heart Rate
 `0x180D`, Cycling Power `0x1818`). The trainer is the source of truth for ride
 data; a connected SRAM/Quarq power meter is a **display-only** secondary readout
-(power, cadence derived from its crank revolutions, and L/R balance) that is
-never recorded, exported, or fed to ERG — see `RideMetrics.powerMeterW`. Notable
+(power, and cadence derived from its crank revolutions) that is never recorded,
+exported, or fed to ERG — see `RideMetrics.powerMeterW`. Notable
 behaviors baked into it, worth knowing before touching connection logic:
 - Scans are **unfiltered** (`services: nil`) and devices are classified by their
   actual GATT services after connecting — some sensors (Garmin HRM 200 included)
