@@ -332,8 +332,10 @@ Shipped since the first cut (all verified on device unless noted):
 - **Quarq/SRAM display readout** — a connected SRAM/Quarq power meter shows its
   live watts and cadence on the ride screen as a **display-only** secondary
   readout (its own `powerMeterW` field, never merged into the trainer's power, so
-  it can't skew recording, zone math, or export). _Not yet verified against a
-  physical meter._
+  it can't skew recording, zone math, or export). Expect it to read a few watts
+  *above* the trainer for the same effort — the Quarq measures crank torque
+  directly while the Kickr estimates from its flywheel, so a small steady gap is
+  the two working correctly, not a fault.
 
 Still open / optional:
 
