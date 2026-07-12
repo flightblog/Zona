@@ -41,21 +41,15 @@ persisted R-R intervals).
 ## Tier 2 — Rounds out the ride experience
 
 - **Quarq/SRAM as a selectable power source.** 🚧 _Display half code-complete
-  (PR #36); NOT yet hardware-verified._ A connected SRAM/Quarq now shows its live
+  (PR #36)._ A connected SRAM/Quarq now shows its live
   watts on the ride screen as a display-only secondary readout (its own
   `powerMeterW` field, deliberately never merged into the trainer's `powerW`, so
-  it can't skew recording, zone math, or the Strava export). Verified so far only
-  in code: `swift test` (isolation suite) and a macOS app build pass; the byte
-  decode matches the SIG spec. **Still unverified against a real Quarq:** that it
-  advertises/exposes `0x1818`, connects and pins via the device picker, and
-  streams plausible live watts on-device. Blocked on a *signed* macOS build (team
-  `C8L5R65JK5` — unsigned builds crash at launch in CloudKit setup) plus the
-  physical meter. Note a real Quarq reads a few watts higher than the Kickr by
-  design (direct crank torque vs. flywheel estimate + drivetrain loss; see the
-  `RideMetrics.powerMeterW` doc comment), so a small gap on-device confirms
-  correct behavior rather than a bug. Still to do beyond verification: make it a
-  *recorded* source (true leg power alongside the ERG-held trainer power), plus
-  L/R balance.
+  it can't skew recording, zone math, or the Strava export). Note a real Quarq
+  reads a few watts higher than the Kickr by design (direct crank torque vs.
+  flywheel estimate + drivetrain loss; see the `RideMetrics.powerMeterW` doc
+  comment), so a small gap on-device confirms correct behavior rather than a bug.
+  Still to do: make it a *recorded* source (true leg power alongside the
+  ERG-held trainer power), plus L/R balance.
 - **Audio / haptic zone cues.** Optional voice or haptic feedback ("push," "ease,"
   "back in zone") so you can ride heads-down without watching the gauges.
 - **Auto-pause / coasting detection.** When you stop pedaling (watts=0) the timer
