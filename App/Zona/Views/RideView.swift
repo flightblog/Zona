@@ -76,6 +76,15 @@ struct RideView: View {
             }
             .frame(maxWidth: .infinity)
 
+            // Which HR zone the current effort is in, on the model this ride is
+            // scored against. It sits directly under the dials, above the smaller
+            // Speed/Distance/SRAM line: mid-ride you're steering to a zone, not
+            // reading a trend, so this belongs with the primary readouts rather
+            // than below the secondary ones. (It replaced a live watts/BPM
+            // time-series, which was answering a question — "how have I drifted?"
+            // — better asked afterwards; the summary still plots the full ride.)
+            HRZoneBar(bpm: controller.metrics.heartRateBpm, zoning: rideZoning)
+
             // Speed, Distance, and the secondary SRAM/Quarq readout (power +
             // cadence) all share one line. The SRAM tiles only appear when the
             // meter is connected and reporting; when it is, four tiles have to
@@ -91,19 +100,12 @@ struct RideView: View {
                        unit: "km")
                 if let meterW = controller.metrics.powerMeterW {
                     Metric(title: "SRAM", value: "\(meterW)", unit: "W")
-                    Metric(title: "Cadence",
+                    Metric(title: "SRAM",
                            value: controller.metrics.powerMeterCadenceRpm.map { "\($0)" } ?? "—",
-                           unit: "rpm")
+                           unit: "RPM")
                 }
             }
             .frame(maxWidth: .infinity)
-
-            // Which HR zone the current effort is in, on the model this ride is
-            // scored against. This sits where the live watts/BPM time-series used
-            // to: mid-ride you're steering to a zone, not reading a trend, and the
-            // chart was answering a question ("how have I drifted?") that's better
-            // asked afterwards — the summary still plots the full ride.
-            HRZoneBar(bpm: controller.metrics.heartRateBpm, zoning: rideZoning)
 
             TargetAdjuster()
 
@@ -201,14 +203,14 @@ struct RideView: View {
 
 }
 
-/// Live "which zone am I in right now" readout for the top of the ride screen: a
-/// segmented Z1–Z5 bar with a handle marking where the current reading sits inside
-/// its zone. Complements the `ZoneGauge` dials below it — those answer "am I inside
-/// my *target* band?", this answers "which zone is this effort, on the model this
+/// Live "which zone am I in right now" readout for the ride screen: a segmented
+/// Z1–Z5 bar with a handle marking where the current reading sits inside its zone.
+/// Complements the `ZoneGauge` dials above it — those answer "am I inside my
+/// *target* band?", this answers "which zone is this effort, on the model this
 /// ride is being scored against?".
 ///
-/// Deliberately shows no BPM number of its own: the BPM `ZoneGauge` below already
-/// gives the live figure with its in-zone/push/ease colouring, so a second copy here
+/// Deliberately shows no BPM number of its own: the BPM `ZoneGauge` already gives
+/// the live figure with its in-zone/push/ease colouring, so a second copy here
 /// was just noise competing with it. This is the *zone* readout; the gauge is the
 /// *number* readout.
 ///
