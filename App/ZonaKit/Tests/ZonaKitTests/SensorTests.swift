@@ -197,6 +197,22 @@ struct PowerMeterIsolationTests {
         #expect(hub.metrics.powerMeterW == 202)   // refreshed by the new reading
     }
 
+    /// The reading expires *at* the freshness window, not a second past it. The
+    /// sweep only runs when some sensor reports, so an exclusive `>` comparison
+    /// let the value survive to the next tick — a 3 s window banking 4 s of
+    /// coasted watts. Pin the boundary: still fresh just under, gone exactly at.
+    @Test func powerMeterExpiresAtTheWindowNotAfterIt() {
+        let hub = SensorHub()
+        let t0 = ContinuousClock.now
+        hub.applyForTesting(SensorReading(powerMeterW: 250), at: t0)
+
+        hub.applyForTesting(SensorReading(powerW: 0), at: t0 + .milliseconds(2_999))
+        #expect(hub.metrics.powerMeterW == 250)   // just inside the window
+
+        hub.applyForTesting(SensorReading(powerW: 0), at: t0 + .seconds(3))
+        #expect(hub.metrics.powerMeterW == nil)   // exactly at it: stale
+    }
+
     /// A meter that drops mid-ride clears immediately, without waiting for another
     /// sensor's reading to trigger the freshness check.
     @Test func disconnectedPowerMeterClearsItsValues() {

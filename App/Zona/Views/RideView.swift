@@ -89,8 +89,9 @@ struct RideView: View {
             // cadence) all share one line. The SRAM tiles only appear when the
             // meter is connected and reporting; when it is, four tiles have to
             // fit across a phone, so the row scales its font down to keep them on
-            // one line. The SRAM values are informational: none of it is
-            // recorded, exported, or used by ERG (see `RideMetrics.powerMeterW`).
+            // one line. The meter's watts are recorded as leg power on their own
+            // channel (its cadence stays display-only), but neither is exported or
+            // fed to ERG — the trainer drives those (see `RideMetrics.powerMeterW`).
             HStack(spacing: 16) {
                 Metric(title: "Speed",
                        value: controller.metrics.speedKph.map { String(format: "%.1f", $0) } ?? "—",

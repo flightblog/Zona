@@ -204,9 +204,14 @@ public final class SensorHub {
     /// Drop the power meter's watts/cadence once they're older than
     /// `powerMeterFreshness`, so a coasting or dropped meter reads as absent
     /// rather than frozen at its last value.
+    ///
+    /// `>=`, not `>`: a reading exactly at the window is already stale. With `>`
+    /// the value survived a whole extra second (the sweep only runs when some
+    /// sensor reports, so the next chance to drop it came a second later), which
+    /// let a 3 s window bank 4 s of coasted watts.
     private func expireStalePowerMeter(at now: ContinuousClock.Instant) {
         guard let last = lastPowerMeterAt else { return }
-        guard last.duration(to: now) > powerMeterFreshness else { return }
+        guard last.duration(to: now) >= powerMeterFreshness else { return }
         clearPowerMeter()
     }
 
