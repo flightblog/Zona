@@ -17,7 +17,7 @@ extension Ride {
                 heartRateBpm: $0.heartRateBpm
             )
         }
-        return TCXExporter.makeTCX(start: date, samples: tcxSamples)
+        return TCXExporter.makeTCX(start: date, samples: tcxSamples, durationSeconds: durationSec)
     }
 
     /// The Strava activity title for this ride, e.g. `Zona Z2 Endurance`.

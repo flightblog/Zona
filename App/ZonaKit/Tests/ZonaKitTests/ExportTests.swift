@@ -79,6 +79,23 @@ struct TCXExportTests {
         #expect(tcx.contains("<TotalTimeSeconds>3</TotalTimeSeconds>"))
     }
 
+    @Test func totalTimeSecondsPrefersRecordedDuration() {
+        // The last sample only reaches second 2 (a dropped notification right
+        // before the rider stopped), but the ride actually ran 9s — the
+        // recorded duration should win so Strava's import matches Zona.
+        let tcx = TCXExporter.makeTCX(start: start,
+                                      samples: [sample(0), sample(1), sample(2)],
+                                      durationSeconds: 9)
+        #expect(tcx.contains("<TotalTimeSeconds>9</TotalTimeSeconds>"))
+    }
+
+    @Test func totalTimeSecondsFallsBackWhenDurationIsZero() {
+        let tcx = TCXExporter.makeTCX(start: start,
+                                      samples: [sample(0), sample(1), sample(2)],
+                                      durationSeconds: 0)
+        #expect(tcx.contains("<TotalTimeSeconds>3</TotalTimeSeconds>"))
+    }
+
     @Test func sportAttributeAndActivityId() {
         let tcx = TCXExporter.makeTCX(start: start, samples: [sample(0, hr: 120)])
         #expect(tcx.contains("<Activity Sport=\"Biking\">"))

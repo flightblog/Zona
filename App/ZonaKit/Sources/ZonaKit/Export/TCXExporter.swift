@@ -30,16 +30,27 @@ public struct TCXSample: Sendable, Equatable {
 public enum TCXExporter {
     /// Build a TCX document. `start` is the activity start; each sample's time is
     /// `start + secondsFromStart`. `sport` is the TCX Sport attribute.
+    /// `durationSeconds` is the ride's true wall-clock length (`RideRecording
+    /// .durationSeconds` / `Ride.durationSec`) and, when positive, is what's
+    /// written as `<TotalTimeSeconds>` — this is what Strava imports as the
+    /// activity's duration, so it must agree with what Zona itself shows,
+    /// not with the last sample's index (samples can lag the actual stop
+    /// time by a second or more, e.g. on a dropped BLE notification). Falls
+    /// back to the last-sample derivation only when no duration was recorded
+    /// (0, the same convention `RideSummary` uses).
     public static func makeTCX(start: Date,
                                samples: [TCXSample],
-                               sport: String = "Biking") -> String {
+                               sport: String = "Biking",
+                               durationSeconds: Int = 0) -> String {
         let iso = ISO8601DateFormatter()
         iso.timeZone = TimeZone(identifier: "UTC")
         iso.formatOptions = [.withInternetDateTime]  // e.g. 2026-07-01T07:30:00Z
 
         let ordered = samples.sorted { $0.secondsFromStart < $1.secondsFromStart }
         let startId = iso.string(from: start)
-        let totalSeconds = ordered.last.map { $0.secondsFromStart + 1 } ?? 0
+        let totalSeconds = durationSeconds > 0
+            ? durationSeconds
+            : ordered.last.map { $0.secondsFromStart + 1 } ?? 0
 
         // Running distance (metres) at each trackpoint, integrated from speed:
         // each sample's speed is held over the gap to the next (step
