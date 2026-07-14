@@ -213,6 +213,49 @@ struct PowerMeterIsolationTests {
         #expect(hub.metrics.powerMeterW == nil)   // exactly at it: stale
     }
 
+    /// Expiry must not depend on *other* sensors still talking. The sweep inside
+    /// `apply` only runs when some sensor reports, so if the trainer drops or
+    /// stalls too, nothing would clear the meter and the 1 Hz recorder would bank
+    /// its last wattage forever. An explicit sweep — driven by the ride screen's
+    /// own clock — expires it with zero sensor traffic.
+    @Test func sweepExpiresPowerMeterWithNoOtherSensorTraffic() {
+        let hub = SensorHub()
+        let t0 = ContinuousClock.now
+        hub.applyForTesting(SensorReading(powerMeterW: 250, powerMeterCadenceRpm: 90), at: t0)
+        #expect(hub.metrics.powerMeterW == 250)
+
+        // Nothing reports — not the meter, not the trainer, nothing.
+        hub.sweepStalePowerMeter(at: t0 + .seconds(1))
+        #expect(hub.metrics.powerMeterW == 250)   // still inside the window
+
+        hub.sweepStalePowerMeter(at: t0 + .seconds(3))
+        #expect(hub.metrics.powerMeterW == nil)   // expired on the sweep's own clock
+        #expect(hub.metrics.powerMeterCadenceRpm == nil)
+    }
+
+    /// The sweep republishes metrics only when it actually expires something —
+    /// a no-op sweep (no meter, or a still-fresh one) mustn't spam `onMetricsChange`
+    /// and churn SwiftUI every second.
+    @Test func sweepOnlyPublishesWhenItClears() {
+        let hub = SensorHub()
+        var publishes = 0
+        hub.onMetricsChange = { _ in publishes += 1 }
+        let t0 = ContinuousClock.now
+
+        hub.sweepStalePowerMeter(at: t0)          // no meter ever seen
+        #expect(publishes == 0)
+
+        hub.applyForTesting(SensorReading(powerMeterW: 250), at: t0)
+        publishes = 0
+        hub.sweepStalePowerMeter(at: t0 + .seconds(1))   // still fresh
+        #expect(publishes == 0)
+
+        hub.sweepStalePowerMeter(at: t0 + .seconds(3))   // expires
+        #expect(publishes == 1)
+        hub.sweepStalePowerMeter(at: t0 + .seconds(4))   // already gone: no-op
+        #expect(publishes == 1)
+    }
+
     /// A meter that drops mid-ride clears immediately, without waiting for another
     /// sensor's reading to trigger the freshness check.
     @Test func disconnectedPowerMeterClearsItsValues() {

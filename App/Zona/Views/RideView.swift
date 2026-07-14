@@ -148,6 +148,12 @@ struct RideView: View {
             let clock = ContinuousClock()
             while !Task.isCancelled {
                 try? await clock.sleep(for: .seconds(1))
+                // Expire a quiet power meter *before* banking the second, so a
+                // coast records nil rather than the meter's last wattage. This
+                // tick is the only clock that keeps running when the whole BLE
+                // bus goes silent, which is exactly when the hub's own
+                // sweep-on-reading can't fire (see `sweepStalePowerMeter`).
+                controller.sweepStalePowerMeter()
                 recorder.ingest(controller.metrics)
             }
         }

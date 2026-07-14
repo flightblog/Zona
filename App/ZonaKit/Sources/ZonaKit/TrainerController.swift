@@ -117,8 +117,9 @@ public final class TrainerController {
     /// Start a ride session: scan for the trainer, the power meter, plus HR if
     /// required. The power meter is always scanned for but never required — it
     /// connects silently if present and is simply absent otherwise (same pattern
-    /// as an HR strap when HR isn't required). It only ever feeds the ride
-    /// screen's secondary watts readout; the ride starts on the trainer alone.
+    /// as an HR strap when HR isn't required). It feeds the ride screen's
+    /// secondary readout and records leg power on its own channel, but never
+    /// drives ERG or the zone math; the ride starts on the trainer alone.
     public func connect() {
         var kinds: Set<SensorKind> = [.trainer, .powerMeter]
         if requiresHeartRate { kinds.insert(.heartRate) }
@@ -126,6 +127,12 @@ public final class TrainerController {
     }
 
     public func setTargetPower(_ watts: Int) { hub.setTargetPower(watts) }
+
+    /// Expire the power meter's reading if it has gone stale — see
+    /// `SensorHub.sweepStalePowerMeter`. Driven by the ride screen's 1 Hz
+    /// recording tick, so a quiet meter clears on its own clock rather than
+    /// depending on some other sensor still reporting to sweep it.
+    public func sweepStalePowerMeter() { hub.sweepStalePowerMeter() }
 
     // MARK: - Device browsing & preferred selection
 

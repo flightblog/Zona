@@ -69,6 +69,27 @@ public final class SensorHub {
         states[kind] ?? .disconnected
     }
 
+    /// Drop the power meter's reading if it has gone stale, publishing the change.
+    /// Safe to call at any cadence; a no-op unless the meter has actually fallen
+    /// silent past `powerMeterFreshness`.
+    ///
+    /// Expiry otherwise rides along inside `apply`, which only runs when *some*
+    /// sensor reports — so a quiet meter needs another sensor's traffic to get
+    /// swept. That normally holds (the trainer streams Indoor Bike Data at ~1 Hz
+    /// throughout), but it makes correctness of the recorded data depend on an
+    /// unrelated device still talking: if the trainer also drops or stalls, the
+    /// meter's last wattage would sit in `metrics` indefinitely and the 1 Hz
+    /// recorder would keep banking it. A caller with its own clock (the ride
+    /// screen's recording tick) calls this so the meter expires on time no matter
+    /// what the rest of the bus is doing.
+    public func sweepStalePowerMeter(at now: ContinuousClock.Instant = ContinuousClock.now) {
+        guard lastPowerMeterAt != nil else { return }
+        expireStalePowerMeter(at: now)
+        // Only publish if the sweep actually cleared something — `lastPowerMeterAt`
+        // is nil'd by `clearPowerMeter`, so this reads as "it just expired".
+        if lastPowerMeterAt == nil { onMetricsChange?(metrics) }
+    }
+
     // MARK: - Control surface
 
     /// Begin scanning for the given sensor kinds and connect them.

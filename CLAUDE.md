@@ -78,7 +78,13 @@ the trainer alone drives ERG, the zone math, and the Strava/TCX upload. Its
 cadence stays display-only. Unlike the trainer's fields the meter's values are
 **expired after a few seconds** without a reading (and cleared on disconnect): a
 quiet crank meter sends nothing rather than a 0 W frame, and the 1 Hz recorder
-would otherwise bank a frozen value all ride. See `RideMetrics.powerMeterW`.
+would otherwise bank a frozen value all ride. Because that expiry must not depend
+on some *other* sensor still reporting to trigger it, the ride screen's 1 Hz tick
+calls `sweepStalePowerMeter()` off its own clock before each ingest — so a coast
+expires on time even if the trainer drops too. `RideRecorder.ingest` also assigns
+`powerMeterW` outright (nil included) rather than nil-skipping it like the other
+scalars, so an expired meter clears the second instead of freezing it. See
+`RideMetrics.powerMeterW`.
 Notable behaviors baked into it, worth knowing before touching connection logic:
 - Scans are **unfiltered** (`services: nil`) and devices are classified by their
   actual GATT services after connecting — some sensors (Garmin HRM 200 included)
