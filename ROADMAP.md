@@ -10,8 +10,8 @@ plus the SwiftUI target) is now the sole codebase — the retired Phase-0
 `WahooFTMSPrototype` CLI that validated FTMS trainer control before the app
 existed has been removed. Several of the
 items below build on infrastructure that already exists but isn't yet fully
-surfaced (persisted R-R intervals; a Quarq's per-second leg power, now recorded
-and summarized but not yet charted).
+surfaced (persisted R-R intervals; a Quarq's per-second leg power, recorded and
+summarized but not charted).
 
 ## Tier 1 — Highest value, plumbing largely exists
 
@@ -40,20 +40,25 @@ and summarized but not yet charted).
 
 ## Tier 2 — Rounds out the ride experience
 
-- **Quarq/SRAM as a recorded power source.** 🚧 _Display shipped (PR #36, verified
-  on a physical meter); recording now shipped._ A connected SRAM/Quarq shows its
-  live watts and cadence on the ride screen, and its watts are now **recorded**
-  per-second alongside the trainer's (`RideSample.powerMeterW` →
-  `RideSampleModel.powerMeterW`), summarized into avg/max leg power, and shown as
-  their own summary tiles on rides ridden with a meter.
+- **Quarq/SRAM as a recorded power source.** ✅ _Shipped (PR #36 display, PR #70
+  recording); verified on a physical meter._ A connected SRAM/Quarq shows its live
+  watts and cadence on the ride screen, and its watts are **recorded** per-second
+  alongside the trainer's (`RideSample.powerMeterW` → `RideSampleModel.powerMeterW`),
+  summarized into avg/max leg power, and shown as their own summary tiles on rides
+  ridden with a meter.
   It stays a **parallel channel, not a replacement**: the trainer's `powerW` is
   still the single source of truth for ERG, zone math, and the TCX/Strava export,
   so leg power can never skew a recorded or uploaded ride. As expected, a real
   Quarq reads a few watts higher than the Kickr (direct crank torque vs. flywheel
   estimate + drivetrain loss; see the `RideMetrics.powerMeterW` doc comment) — that
   small gap is the two meters working correctly, not a bug to reconcile.
-  Still to do: L/R balance (the decoder currently skips that byte), and — if ever
-  wanted — charting leg power as a third series on the summary chart.
+  **L/R balance is deliberately out of scope** — a tile existed and was removed in
+  PR #52. A spider-based Quarq can only *estimate* the split (it measures total
+  torque at one point and infers the legs from where in the stroke torque peaks),
+  and the number isn't actionable for steady-zone riding. The decoder still skips
+  that byte so the crank data behind it stays at the right offset; don't re-add the
+  field without a concrete use for it. Charting leg power as a third series on the
+  summary chart remains possible — the per-second data is stored — but isn't planned.
 - **Audio / haptic zone cues.** Optional voice or haptic feedback ("push," "ease,"
   "back in zone") so you can ride heads-down without watching the gauges.
 - **Auto-pause / coasting detection.** When you stop pedaling (watts=0) the timer
@@ -155,5 +160,5 @@ and summarized but not yet charted).
   already trusted.
 - **HRV chart + SDNN** is the cheapest high-value win — the raw data is already
   stored.
-- **Quarq** now both displays (PR #36) and records leg power alongside the
-  trainer's; L/R balance is what's left of that item.
+- **Quarq** is done: it both displays (PR #36) and records leg power alongside the
+  trainer's (PR #70). L/R balance was considered and dropped — see the item above.
