@@ -496,7 +496,15 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
                 self.central?.cancelPeripheralConnection(p)
                 self.peripherals[kind] = nil
                 self.kindForPeripheral[id] = nil
-                self.toOwner { $0.note("\(kind.displayName): connect timed out, rescanning") }
+                // Put the row back to `.scanning`. Without this it stays latched at
+                // the `.connecting` set when we dialled the device, so a stall that
+                // is in fact looping (cancel → rescan → re-attach → stall) reads as
+                // one live, patient connection attempt — the UI hides exactly the
+                // failure the watchdog exists to catch.
+                self.toOwner {
+                    $0.setState(.scanning, for: kind)
+                    $0.note("\(kind.displayName): connect timed out, rescanning")
+                }
             } else if let p = self.pendingByIdentifier[id] {
                 self.central?.cancelPeripheralConnection(p)
                 self.pendingByIdentifier[id] = nil
@@ -637,6 +645,13 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        // Distinct from a drop: the connection never came up at all. CoreBluetooth's
+        // error is the only clue why (a meter already held by another app or head
+        // unit typically surfaces here), and `handleDrop`'s retry path doesn't log
+        // it — so record it before falling into the shared reconnect handling.
+        let name = advertisedNames[peripheral.identifier] ?? peripheral.name ?? "sensor"
+        let reason = error?.localizedDescription ?? "no reason given"
+        toOwner { $0.note("⚠️ \(name): connect failed — \(reason)") }
         handleDrop(peripheral, error: error)
     }
 
@@ -654,11 +669,19 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             connectingIdentifiers.remove(id)
             return
         }
-        // A peripheral that dropped before we could identify its kind: just
-        // forget it and keep scanning.
+        // A peripheral that dropped before we could identify its kind: forget it
+        // and keep scanning. There's no kind to put back to `.scanning`, but say so
+        // in the log — silently dropping it leaves a sensor that repeatedly fails
+        // mid-connect with no trace at all, which is a miserable thing to debug.
         guard let kind = kindForPeripheral[peripheral.identifier] else {
             if pendingByIdentifier[peripheral.identifier] != nil {
                 pendingByIdentifier[peripheral.identifier] = nil
+                connectingIdentifiers.remove(peripheral.identifier)
+                let name = advertisedNames[id] ?? peripheral.name ?? "unidentified sensor"
+                let reason = error?.localizedDescription
+                toOwner {
+                    $0.note("\(name) dropped before it identified itself\(reason.map { ": \($0)" } ?? "")")
+                }
                 rescanForMissing()
             }
             return
