@@ -5,8 +5,7 @@ holds your Wahoo Kickr Core 2 at a steady power (ERG) while you aim for a target
 **heart-rate zone**, records the ride, and keeps a local history.
 
 Status: **verified on real hardware** (Kickr Core 2 + Garmin HRM 200) on iOS and
-macOS. Extensible to more BLE sensors (a SRAM/Quarq power meter and Whoop are the
-next planned sources).
+macOS, along with a SRAM/Quarq power meter and Whoop as additional BLE sources.
 
 ## What it does
 
@@ -69,7 +68,7 @@ App/
 │   │   ├── Sensors/
 │   │   │   ├── SensorKind.swift            # trainer / heartRate / powerMeter
 │   │   │   ├── HeartRateMeasurement.swift  # 0x2A37 decode
-│   │   │   ├── CyclingPowerMeasurement.swift # 0x2A63 decode (Quarq-ready)
+│   │   │   ├── CyclingPowerMeasurement.swift # 0x2A63 decode (SRAM/Quarq)
 │   │   │   └── SensorHub.swift             # multi-peripheral BLE manager
 │   │   ├── Export/
 │   │   │   └── TCXExporter.swift  # ride → TCX (TrainingCenterDatabase v2) string
@@ -276,9 +275,20 @@ new plumbing.
   unrelated peripherals.
 - **Connect watchdog.** CoreBluetooth's `connect(_:)` never times out, so a stale
   remembered peripheral would hang forever. An 8s watchdog cancels a stalled
-  connect and rescans.
+  connect and rescans, putting the sensor's row back to *Scanning* — otherwise a
+  connect that is in fact looping (stall → cancel → rescan → stall) reads in the
+  UI as one patient "Connecting…", hiding the very failure the watchdog exists to
+  catch.
 - **Auto-reconnect.** HR straps disconnect on idle to save battery; a dropped
   still-wanted sensor is transparently reconnected rather than abandoned.
+- **The power meter's values expire; the trainer's don't.** A crank meter that
+  goes quiet (coasting, slept, dropped) sends *nothing*, where the trainer's FTMS
+  stream keeps pushing a real 0 W. Since the ride screen re-ingests metrics once a
+  second, a last-write-wins value left frozen would bank fabricated leg power for
+  the rest of a coast — so the meter's watts/cadence are dropped after a few
+  seconds without a reading, and cleared outright on disconnect. The ride screen's
+  own 1 Hz tick drives that expiry (`sweepStalePowerMeter`), so it doesn't depend
+  on some *other* sensor still reporting to fire.
 - **HR required to ride.** A ride won't start until both the trainer (in ERG) and
   an HR strap are connected. Once started, the session **latches** — a transient
   mid-ride sensor drop won't eject you back to setup.
@@ -338,21 +348,20 @@ Shipped since the first cut (all verified on device unless noted):
   personal bests, a **time-in-each-HR-zone** breakdown (Z1–Z5, recomputed from each
   ride's stored HR samples), and a weekly in-zone trend, all rolled up by a pure
   `RideHistoryStats` reducer in `ZonaKit`.
-- **Quarq/SRAM display readout** — a connected SRAM/Quarq power meter shows its
-  live watts and cadence on the ride screen as a **display-only** secondary
-  readout (its own `powerMeterW` field, never merged into the trainer's power, so
-  it can't skew recording, zone math, or export). Expect it to read a few watts
-  *above* the trainer for the same effort — the Quarq measures crank torque
-  directly while the Kickr estimates from its flywheel, so a small steady gap is
-  the two working correctly, not a fault.
+- **Quarq/SRAM leg power** — a connected SRAM/Quarq power meter shows its live
+  watts and cadence on the ride screen, and its watts are **recorded** per-second
+  as the rider's *leg* power (`RideSample.powerMeterW`), summarized into avg/max
+  leg power on the ride summary. It's a **parallel channel, not a replacement**:
+  the trainer's `powerW` remains the single source of truth for ERG, the zone
+  math, and the TCX/Strava export, so leg power can never skew a recorded or
+  uploaded ride. (The meter's *cadence* stays display-only.) Expect it to read a
+  few watts *above* the trainer for the same effort — the Quarq measures crank
+  torque directly while the Kickr estimates from its flywheel, so a small steady
+  gap is the two working correctly, not a fault. Its readings **expire** when the
+  crank goes quiet, so a coast doesn't record fabricated watts — see *Sensors &
+  connection behavior* above.
 
 Still open / optional:
-
-- **Quarq power meter** as a *recorded, selectable* power source — the display
-  readout above already exists; the open work is recording its watts alongside
-  the ERG-held trainer power and adding L/R balance (decoder + `powerMeter`
-  SensorKind already built; kept display-only because HR-based zones use the
-  Kickr's power).
 - Direct **Strava OAuth upload** if the manual TCX Share export proves too clunky.
 - Further **HRV** follow-ons now that R-R is stored — SDNN, and an HRV time-series
   chart (which can reuse the dual-axis chart + downsampler already shipped).
