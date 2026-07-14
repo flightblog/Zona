@@ -89,8 +89,9 @@ struct RideView: View {
             // cadence) all share one line. The SRAM tiles only appear when the
             // meter is connected and reporting; when it is, four tiles have to
             // fit across a phone, so the row scales its font down to keep them on
-            // one line. The SRAM values are informational: none of it is
-            // recorded, exported, or used by ERG (see `RideMetrics.powerMeterW`).
+            // one line. The meter's watts are recorded as leg power on their own
+            // channel (its cadence stays display-only), but neither is exported or
+            // fed to ERG — the trainer drives those (see `RideMetrics.powerMeterW`).
             HStack(spacing: 16) {
                 Metric(title: "Speed",
                        value: controller.metrics.speedKph.map { String(format: "%.1f", $0) } ?? "—",
@@ -147,6 +148,12 @@ struct RideView: View {
             let clock = ContinuousClock()
             while !Task.isCancelled {
                 try? await clock.sleep(for: .seconds(1))
+                // Expire a quiet power meter *before* banking the second, so a
+                // coast records nil rather than the meter's last wattage. This
+                // tick is the only clock that keeps running when the whole BLE
+                // bus goes silent, which is exactly when the hub's own
+                // sweep-on-reading can't fire (see `sweepStalePowerMeter`).
+                controller.sweepStalePowerMeter()
                 recorder.ingest(controller.metrics)
             }
         }

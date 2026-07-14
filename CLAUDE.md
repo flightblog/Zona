@@ -71,10 +71,21 @@ deliberately removed — don't reintroduce it without discussion.
 `CBCentralManager`**, keyed by `SensorKind` (`trainer` / `heartRate` /
 `powerMeter`), each using its standard GATT service (FTMS `0x1826`, Heart Rate
 `0x180D`, Cycling Power `0x1818`). The trainer is the source of truth for ride
-data; a connected SRAM/Quarq power meter is a **display-only** secondary readout
-(power, and cadence derived from its crank revolutions) that is never recorded,
-exported, or fed to ERG — see `RideMetrics.powerMeterW`. Notable
-behaviors baked into it, worth knowing before touching connection logic:
+data; a connected SRAM/Quarq power meter is a **secondary** readout whose watts
+are recorded on their own channel (as the rider's leg power, surfaced on the ride
+summary) but are never merged into the trainer's power, exported, or fed to ERG —
+the trainer alone drives ERG, the zone math, and the Strava/TCX upload. Its
+cadence stays display-only. Unlike the trainer's fields the meter's values are
+**expired after a few seconds** without a reading (and cleared on disconnect): a
+quiet crank meter sends nothing rather than a 0 W frame, and the 1 Hz recorder
+would otherwise bank a frozen value all ride. Because that expiry must not depend
+on some *other* sensor still reporting to trigger it, the ride screen's 1 Hz tick
+calls `sweepStalePowerMeter()` off its own clock before each ingest — so a coast
+expires on time even if the trainer drops too. `RideRecorder.ingest` also assigns
+`powerMeterW` outright (nil included) rather than nil-skipping it like the other
+scalars, so an expired meter clears the second instead of freezing it. See
+`RideMetrics.powerMeterW`.
+Notable behaviors baked into it, worth knowing before touching connection logic:
 - Scans are **unfiltered** (`services: nil`) and devices are classified by their
   actual GATT services after connecting — some sensors (Garmin HRM 200 included)
   don't advertise their service UUID, so a filtered scan would miss them.

@@ -50,6 +50,15 @@ final class Ride {
     /// Optional keeps it CloudKit-safe (no default needed, migrates old rides).
     var hrvRMSSDms: Int?
 
+    // Leg power from a SRAM/Quarq crank meter, when one was paired — recorded
+    // alongside the trainer's power columns above, never merged into them: the
+    // trainer stays the source of truth for zone math and the Strava/TCX export,
+    // and the meter's few-watts-higher reading is drivetrain loss, not error (see
+    // `RideMetrics.powerMeterW`). nil on rides ridden without a meter, which is
+    // also what old rides lightweight-migrate to (same pattern as `hrvRMSSDms`).
+    var avgPowerMeterW: Int?
+    var maxPowerMeterW: Int?
+
     /// Strava activity id once this ride has been uploaded, else nil. Optional
     /// (no default) keeps it CloudKit-safe and lightweight-migrates old rides
     /// (same pattern as `hrvRMSSDms`). Powers the "View on Strava" link and the
@@ -79,6 +88,8 @@ final class Ride {
          whoopMaxHR: Int? = nil,
          whoopRestingHR: Int? = nil,
          hrvRMSSDms: Int? = nil,
+         avgPowerMeterW: Int? = nil,
+         maxPowerMeterW: Int? = nil,
          stravaActivityId: Int64? = nil,
          stravaUploadedAt: Date? = nil) {
         self.id = id
@@ -99,6 +110,8 @@ final class Ride {
         self.whoopMaxHR = whoopMaxHR
         self.whoopRestingHR = whoopRestingHR
         self.hrvRMSSDms = hrvRMSSDms
+        self.avgPowerMeterW = avgPowerMeterW
+        self.maxPowerMeterW = maxPowerMeterW
         self.stravaActivityId = stravaActivityId
         self.stravaUploadedAt = stravaUploadedAt
     }
@@ -133,6 +146,11 @@ final class RideSampleModel {
     var cadenceRpm: Int?
     var speedKph: Double?
     var heartRateBpm: Int?
+    /// Watts from a paired SRAM/Quarq crank meter this second (nil without one).
+    /// Stored per-second so leg power can be charted or re-summarized later
+    /// without re-riding — the trainer's `powerW` above stays the recorded source
+    /// of truth. Optional keeps it CloudKit-safe and migrates existing rides.
+    var powerMeterW: Int?
     /// Raw R-R (beat-to-beat) intervals in seconds captured during this second,
     /// kept so HRV can be recomputed later (a different filter, SDNN, an HRV
     /// chart) without re-riding. nil when the strap reported no R-R this second.
@@ -147,12 +165,14 @@ final class RideSampleModel {
          cadenceRpm: Int? = nil,
          speedKph: Double? = nil,
          heartRateBpm: Int? = nil,
+         powerMeterW: Int? = nil,
          rrIntervalsSec: [Double]? = nil) {
         self.secondsFromStart = secondsFromStart
         self.powerW = powerW
         self.cadenceRpm = cadenceRpm
         self.speedKph = speedKph
         self.heartRateBpm = heartRateBpm
+        self.powerMeterW = powerMeterW
         self.rrIntervalsSec = rrIntervalsSec
     }
 }
@@ -196,7 +216,9 @@ extension Ride {
             timeInHRZoneSec: recording.timeInHRZone(hrZone, zoning: zoning),
             whoopMaxHR: zoning.storedWhoopMaxHR,
             whoopRestingHR: zoning.storedWhoopRestingHR,
-            hrvRMSSDms: summary.hrvRMSSDms
+            hrvRMSSDms: summary.hrvRMSSDms,
+            avgPowerMeterW: summary.averagePowerMeterW,
+            maxPowerMeterW: summary.maxPowerMeterW
         )
         ride.samples = recording.samples.map {
             RideSampleModel(
@@ -205,6 +227,7 @@ extension Ride {
                 cadenceRpm: $0.cadenceRpm,
                 speedKph: $0.speedKph,
                 heartRateBpm: $0.heartRateBpm,
+                powerMeterW: $0.powerMeterW,
                 rrIntervalsSec: $0.rrIntervalsSec
             )
         }

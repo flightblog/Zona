@@ -44,12 +44,50 @@ public final class SensorHub {
     @ObservationIgnored private let memory: SensorMemory
     @ObservationIgnored private lazy var ble = MultiBLEManager(owner: self, memory: memory)
 
+    /// When the power meter last reported watts. Used to expire a stale reading —
+    /// see `powerMeterFreshness`. nil until the first reading arrives.
+    @ObservationIgnored private var lastPowerMeterAt: ContinuousClock.Instant?
+
+    /// How long a power-meter reading stays valid. A crank meter that has gone
+    /// quiet — the rider is coasting, or the meter dropped/slept — sends *nothing*
+    /// rather than a 0 W frame, unlike the trainer's FTMS stream (which keeps
+    /// pushing Indoor Bike Data with a real 0). Since `metrics.powerMeterW` is
+    /// last-write-wins like the other scalars, without an expiry the last-seen
+    /// wattage would stick indefinitely, and the 1 Hz recorder would bank it once
+    /// a second for the rest of the ride — fabricating leg power out of a coast.
+    /// So a reading older than this is treated as absent (nil), not held.
+    ///
+    /// 3 s is comfortably above a meter's ~1 Hz notify rate (so normal pedalling
+    /// never flickers) and short enough that a coast stops recording promptly.
+    @ObservationIgnored private let powerMeterFreshness: Duration = .seconds(3)
+
     public init(memory: SensorMemory = EphemeralSensorMemory()) {
         self.memory = memory
     }
 
     public func state(for kind: SensorKind) -> SensorConnectionState {
         states[kind] ?? .disconnected
+    }
+
+    /// Drop the power meter's reading if it has gone stale, publishing the change.
+    /// Safe to call at any cadence; a no-op unless the meter has actually fallen
+    /// silent past `powerMeterFreshness`.
+    ///
+    /// Expiry otherwise rides along inside `apply`, which only runs when *some*
+    /// sensor reports — so a quiet meter needs another sensor's traffic to get
+    /// swept. That normally holds (the trainer streams Indoor Bike Data at ~1 Hz
+    /// throughout), but it makes correctness of the recorded data depend on an
+    /// unrelated device still talking: if the trainer also drops or stalls, the
+    /// meter's last wattage would sit in `metrics` indefinitely and the 1 Hz
+    /// recorder would keep banking it. A caller with its own clock (the ride
+    /// screen's recording tick) calls this so the meter expires on time no matter
+    /// what the rest of the bus is doing.
+    public func sweepStalePowerMeter(at now: ContinuousClock.Instant = ContinuousClock.now) {
+        guard lastPowerMeterAt != nil else { return }
+        expireStalePowerMeter(at: now)
+        // Only publish if the sweep actually cleared something — `lastPowerMeterAt`
+        // is nil'd by `clearPowerMeter`, so this reads as "it just expired".
+        if lastPowerMeterAt == nil { onMetricsChange?(metrics) }
     }
 
     // MARK: - Control surface
@@ -129,6 +167,14 @@ public final class SensorHub {
         case .disconnected:         append("\(kind.displayName): disconnected")
         case .scanning:             append("\(kind.displayName): scanning…")
         }
+        // A dropped power meter must not leave its last watts frozen in `metrics`
+        // — they'd keep being recorded once a second. (The freshness check in
+        // `apply` also catches this, but only while *some* sensor is still
+        // reporting; clearing here doesn't depend on that.)
+        if kind == .powerMeter, case .disconnected = state {
+            clearPowerMeter()
+            onMetricsChange?(metrics)
+        }
         onStateChange?()
     }
 
@@ -149,22 +195,53 @@ public final class SensorHub {
         onDiscoveryChange?(discovered)
     }
 
-    fileprivate func apply(_ reading: SensorReading) {
+    fileprivate func apply(_ reading: SensorReading,
+                           at now: ContinuousClock.Instant = ContinuousClock.now) {
         if let p = reading.powerW { metrics.powerW = p }
         if let c = reading.cadenceRpm { metrics.cadenceRpm = c }
         if let s = reading.speedKph { metrics.speedKph = s }
         if let hr = reading.heartRateBpm { metrics.heartRateBpm = hr }
         // Power-meter values (watts, cadence) are tracked separately from the
-        // trainer's (see `powerMeterW`); only the ride screen's secondary readout
-        // reads them — never recorded, exported, or fed to ERG.
-        if let pm = reading.powerMeterW { metrics.powerMeterW = pm }
+        // trainer's (see `powerMeterW`): they're shown as the ride screen's
+        // secondary readout and recorded on their own channel, but never exported
+        // or fed to ERG — the trainer stays the source of truth.
+        if let pm = reading.powerMeterW {
+            metrics.powerMeterW = pm
+            lastPowerMeterAt = now
+        }
         if let pc = reading.powerMeterCadenceRpm { metrics.powerMeterCadenceRpm = pc }
+        // Expire a meter reading the rider has pedalled away from: a quiet meter
+        // sends nothing at all, so without this the last value would stick and the
+        // recorder would keep banking it every second. See `powerMeterFreshness`.
+        expireStalePowerMeter(at: now)
         // R-R is bursty and must not stick across seconds: attach it only for the
         // publish that carried it, then clear it so a later reading (e.g. the next
         // Indoor Bike Data with no R-R) doesn't re-record the same beats.
         metrics.rrIntervalsSec = reading.rrIntervalsSec
         onMetricsChange?(metrics)
         metrics.rrIntervalsSec = nil
+    }
+
+    /// Drop the power meter's watts/cadence once they're older than
+    /// `powerMeterFreshness`, so a coasting or dropped meter reads as absent
+    /// rather than frozen at its last value.
+    ///
+    /// `>=`, not `>`: a reading exactly at the window is already stale. With `>`
+    /// the value survived a whole extra second (the sweep only runs when some
+    /// sensor reports, so the next chance to drop it came a second later), which
+    /// let a 3 s window bank 4 s of coasted watts.
+    private func expireStalePowerMeter(at now: ContinuousClock.Instant) {
+        guard let last = lastPowerMeterAt else { return }
+        guard last.duration(to: now) >= powerMeterFreshness else { return }
+        clearPowerMeter()
+    }
+
+    /// Forget the power meter's live values entirely (it disconnected, or its
+    /// reading went stale). Leaves the trainer's fields untouched.
+    private func clearPowerMeter() {
+        metrics.powerMeterW = nil
+        metrics.powerMeterCadenceRpm = nil
+        lastPowerMeterAt = nil
     }
 
     fileprivate func setTrainerReady() {
@@ -180,7 +257,12 @@ public final class SensorHub {
     #if DEBUG
     /// Test seam: fold a reading into `metrics` exactly as a live sensor would,
     /// without a CoreBluetooth central. Used to assert power-meter isolation.
-    func applyForTesting(_ reading: SensorReading) { apply(reading) }
+    /// `now` drives the power meter's freshness window (see `powerMeterFreshness`)
+    /// so a stale-reading test needn't sleep.
+    func applyForTesting(_ reading: SensorReading,
+                         at now: ContinuousClock.Instant = ContinuousClock.now) {
+        apply(reading, at: now)
+    }
 
     /// Test seam: set desired kinds and their initial per-kind states exactly
     /// as `connect(_:)` would, without starting a CoreBluetooth scan.
@@ -414,7 +496,15 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
                 self.central?.cancelPeripheralConnection(p)
                 self.peripherals[kind] = nil
                 self.kindForPeripheral[id] = nil
-                self.toOwner { $0.note("\(kind.displayName): connect timed out, rescanning") }
+                // Put the row back to `.scanning`. Without this it stays latched at
+                // the `.connecting` set when we dialled the device, so a stall that
+                // is in fact looping (cancel → rescan → re-attach → stall) reads as
+                // one live, patient connection attempt — the UI hides exactly the
+                // failure the watchdog exists to catch.
+                self.toOwner {
+                    $0.setState(.scanning, for: kind)
+                    $0.note("\(kind.displayName): connect timed out, rescanning")
+                }
             } else if let p = self.pendingByIdentifier[id] {
                 self.central?.cancelPeripheralConnection(p)
                 self.pendingByIdentifier[id] = nil
@@ -555,6 +645,13 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        // Distinct from a drop: the connection never came up at all. CoreBluetooth's
+        // error is the only clue why (a meter already held by another app or head
+        // unit typically surfaces here), and `handleDrop`'s retry path doesn't log
+        // it — so record it before falling into the shared reconnect handling.
+        let name = advertisedNames[peripheral.identifier] ?? peripheral.name ?? "sensor"
+        let reason = error?.localizedDescription ?? "no reason given"
+        toOwner { $0.note("⚠️ \(name): connect failed — \(reason)") }
         handleDrop(peripheral, error: error)
     }
 
@@ -572,11 +669,19 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             connectingIdentifiers.remove(id)
             return
         }
-        // A peripheral that dropped before we could identify its kind: just
-        // forget it and keep scanning.
+        // A peripheral that dropped before we could identify its kind: forget it
+        // and keep scanning. There's no kind to put back to `.scanning`, but say so
+        // in the log — silently dropping it leaves a sensor that repeatedly fails
+        // mid-connect with no trace at all, which is a miserable thing to debug.
         guard let kind = kindForPeripheral[peripheral.identifier] else {
             if pendingByIdentifier[peripheral.identifier] != nil {
                 pendingByIdentifier[peripheral.identifier] = nil
+                connectingIdentifiers.remove(peripheral.identifier)
+                let name = advertisedNames[id] ?? peripheral.name ?? "unidentified sensor"
+                let reason = error?.localizedDescription
+                toOwner {
+                    $0.note("\(name) dropped before it identified itself\(reason.map { ": \($0)" } ?? "")")
+                }
                 rescanForMissing()
             }
             return
@@ -778,13 +883,13 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
 
         case (.powerMeter, _):
             guard let p = CyclingPowerMeasurement(data) else { return }
-            // Route to `powerMeterW`/cadence, NOT the trainer fields: the power
-            // meter is a display-only secondary readout and must not overwrite the
-            // trainer's power (which drives ERG, recording, and the Strava
-            // export). The meter's watts read differently from the trainer's by
-            // design — see `RideMetrics.powerMeterW` for why (direct crank torque
-            // vs. the trainer's flywheel estimate; the drivetrain loss between
-            // them).
+            // Route to `powerMeterW`/cadence, NOT the trainer fields: the meter is
+            // a secondary readout (recorded as leg power on its own channel) and
+            // must not overwrite the trainer's power, which drives ERG, the zone
+            // math, and the Strava export. The meter's watts read differently from
+            // the trainer's by design — see `RideMetrics.powerMeterW` for why
+            // (direct crank torque vs. the trainer's flywheel estimate; the
+            // drivetrain loss between them).
             let cadence = powerMeterCadence(from: p)
             let reading = SensorReading(powerMeterW: p.instantaneousPowerW,
                                         powerMeterCadenceRpm: cadence)

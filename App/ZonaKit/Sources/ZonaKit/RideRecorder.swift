@@ -10,6 +10,19 @@ public struct RideSample: Sendable, Equatable {
     public var cadenceRpm: Int?
     public var speedKph: Double?
     public var heartRateBpm: Int?
+    /// Watts from a connected SRAM/Quarq crank meter this second, when one was
+    /// paired — the rider's *leg* power, recorded alongside (never merged into)
+    /// the trainer's `powerW`. nil on every sample of a ride ridden without a
+    /// meter, and on any second the meter didn't report — including a coast,
+    /// where `ingest` actively clears this back to nil rather than letting the
+    /// last-seen wattage stick (see the assignment in `ingest`).
+    ///
+    /// This is a second, parallel channel: `powerW` remains the ride's source of
+    /// truth (it is what ERG held, what the zone math scores, and what the TCX
+    /// export ships), so nothing downstream of the summary reads this. It exists
+    /// so a ride can be reviewed against true crank power after the fact. The two
+    /// differ by a few watts by design — see `RideMetrics.powerMeterW` for why.
+    public var powerMeterW: Int?
     /// Every R-R interval (seconds) captured during this second — *accumulated*
     /// across the second's HR notifications (a second can hold 1–3 beats), unlike
     /// the last-write-wins scalar fields. nil when the strap reports no R-R. Feeds
@@ -21,12 +34,14 @@ public struct RideSample: Sendable, Equatable {
                 cadenceRpm: Int? = nil,
                 speedKph: Double? = nil,
                 heartRateBpm: Int? = nil,
+                powerMeterW: Int? = nil,
                 rrIntervalsSec: [Double]? = nil) {
         self.secondsFromStart = secondsFromStart
         self.powerW = powerW
         self.cadenceRpm = cadenceRpm
         self.speedKph = speedKph
         self.heartRateBpm = heartRateBpm
+        self.powerMeterW = powerMeterW
         self.rrIntervalsSec = rrIntervalsSec
     }
 }
@@ -137,6 +152,15 @@ public final class RideRecorder {
         if let c = metrics.cadenceRpm { sample.cadenceRpm = c }
         if let s = metrics.speedKph { sample.speedKph = s }
         if let hr = metrics.heartRateBpm { sample.heartRateBpm = hr }
+        // The meter's watts are assigned outright, nil included — unlike the
+        // fields above, which skip a nil so a reading that carries only *some*
+        // fields doesn't wipe the rest. Those sensors stream continuously, so
+        // their nil only ever means "not in this frame". The meter's doesn't: a
+        // quiet crank sends nothing, and `SensorHub` expires the stale value to
+        // nil (see `RideMetrics.powerMeterW`). Skipping that nil would let the
+        // second keep its last wattage, and the 1 Hz re-ingest would bank
+        // fabricated leg power through every coast. nil means "no live reading".
+        sample.powerMeterW = metrics.powerMeterW
         // R-R accumulates within the second (multiple notifications, several beats
         // each) rather than overwriting — every interval matters for HRV.
         if let rr = metrics.rrIntervalsSec, !rr.isEmpty {

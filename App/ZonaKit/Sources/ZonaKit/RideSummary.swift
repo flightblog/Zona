@@ -18,6 +18,18 @@ public struct RideSummary: Sendable, Equatable {
     /// intervals, or nil when the strap reported too few beats (or none). See
     /// `HRV.rmssd`. nil is surfaced as "—", never a misleading 0.
     public let hrvRMSSDms: Int?
+    /// Average watts from the SRAM/Quarq crank meter, or nil when no meter was
+    /// paired for the ride. Unlike the trainer's `averagePowerW` (which is 0 for a
+    /// ride with no power at all), a meterless ride has *no* leg power to average,
+    /// so nil distinguishes "no meter" from "zero watts" and surfaces as "—".
+    /// Averages only the seconds the meter actually reported — a coasting meter
+    /// records nothing rather than a stale value (see `RideMetrics.powerMeterW`),
+    /// so silent seconds aren't counted as 0 W. Reads a few watts above the
+    /// trainer by design — see `RideMetrics.powerMeterW`.
+    public let averagePowerMeterW: Int?
+    /// Peak watts from the SRAM/Quarq crank meter, or nil when no meter was
+    /// paired. Same nil-vs-0 reasoning as `averagePowerMeterW`.
+    public let maxPowerMeterW: Int?
 
     public init(durationSeconds: Int,
                 averagePowerW: Int,
@@ -25,7 +37,9 @@ public struct RideSummary: Sendable, Equatable {
                 normalizedPowerW: Int,
                 timeInZoneSeconds: Int,
                 distanceMeters: Double = 0,
-                hrvRMSSDms: Int? = nil) {
+                hrvRMSSDms: Int? = nil,
+                averagePowerMeterW: Int? = nil,
+                maxPowerMeterW: Int? = nil) {
         self.durationSeconds = durationSeconds
         self.averagePowerW = averagePowerW
         self.maxPowerW = maxPowerW
@@ -33,6 +47,8 @@ public struct RideSummary: Sendable, Equatable {
         self.timeInZoneSeconds = timeInZoneSeconds
         self.distanceMeters = distanceMeters
         self.hrvRMSSDms = hrvRMSSDms
+        self.averagePowerMeterW = averagePowerMeterW
+        self.maxPowerMeterW = maxPowerMeterW
     }
 }
 
@@ -47,6 +63,7 @@ public extension RideRecording {
     /// Compute all summary stats for this recording in one pass-friendly call.
     func summary() -> RideSummary {
         let powers = samples.compactMap(\.powerW)
+        let meterPowers = samples.compactMap(\.powerMeterW)
         let engine = ZoneEngine(ftp: ftp)
         let band = engine.wattRange(for: zone)
 
@@ -59,6 +76,11 @@ public extension RideRecording {
         let np = Self.normalizedPower(powers)
         let inZone = powers.filter { band.contains($0) }.count
 
+        // nil, not 0, when no meter was paired — see `averagePowerMeterW`.
+        let meterAvg = meterPowers.isEmpty
+            ? nil
+            : Int((Double(meterPowers.reduce(0, +)) / Double(meterPowers.count)).rounded())
+
         return RideSummary(
             durationSeconds: duration,
             averagePowerW: avg,
@@ -66,7 +88,9 @@ public extension RideRecording {
             normalizedPowerW: np,
             timeInZoneSeconds: inZone,
             distanceMeters: distanceMeters,
-            hrvRMSSDms: hrvRMSSDms
+            hrvRMSSDms: hrvRMSSDms,
+            averagePowerMeterW: meterAvg,
+            maxPowerMeterW: meterPowers.max()
         )
     }
 
