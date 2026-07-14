@@ -36,10 +36,14 @@ struct RideView: View {
             // Tick once a second off a periodic clock so the timer advances on
             // its own, independent of whether new trainer metrics have arrived.
             // Reading `context.date` is what makes SwiftUI re-render each tick.
+            // Total ride time on the left; time spent in the target HR zone on the
+            // right, so the rider can see at a glance how much of the ride has
+            // actually landed where they were aiming.
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(elapsedText(asOf: context.date))
-                    .font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 28) {
+                    labelledTime("Total", elapsedText(asOf: context.date))
+                    labelledTime("In zone", inZoneText, tint: .green)
+                }
             }
 
             // Three equal gauges: BPM (the target), Watts (the lever), and
@@ -107,6 +111,8 @@ struct RideView: View {
                 }
             }
             .frame(maxWidth: .infinity)
+
+            Spacer()
 
             TargetAdjuster()
 
@@ -195,6 +201,30 @@ struct RideView: View {
     private func elapsedText(asOf _: Date) -> String {
         let s = recorder.isRecording ? recorder.elapsed() : recorder.elapsedSeconds
         return String(format: "%02d:%02d", s / 60, s % 60)
+    }
+
+    /// Seconds so far spent inside the target HR zone, as mm:ss. Each recorded
+    /// second with an HR reading inside the target band counts as one second,
+    /// using the same classifier the finished ride is scored with — so this
+    /// running figure agrees with the summary's time-in-zone. Reading
+    /// `recorder.samples` here ties the recompute to new samples landing.
+    private var inZoneText: String {
+        let bpms = recorder.samples.compactMap(\.heartRateBpm)
+        let s = rideZoning.secondsInZone(settings.hrZone, bpms: bpms)
+        return String(format: "%02d:%02d", s / 60, s % 60)
+    }
+
+    /// One labelled mm:ss readout: the time over a small uppercase caption, so
+    /// Total and In zone read as a matched pair.
+    private func labelledTime(_ label: String, _ time: String, tint: Color = .secondary) -> some View {
+        VStack(spacing: 2) {
+            Text(time)
+                .font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(tint)
+            Text(label.uppercased())
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var wattTarget: Int { controller.metrics.targetW ?? settings.target }
