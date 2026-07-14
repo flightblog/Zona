@@ -185,6 +185,34 @@ struct RideRecorderTests {
         #expect(recording.samples.count == 1)
         #expect(recording.samples[0].rrIntervalsSec == [0.80, 0.81, 0.79])
     }
+
+    /// Crank-meter watts record onto their own field, on the same last-write-wins
+    /// terms as the other scalars — and never bleed into the trainer's `powerW`.
+    @Test func recordsPowerMeterAlongsideTrainerPower() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        rec.ingest(RideMetrics(powerW: 150, powerMeterW: 156), at: t0 + .milliseconds(100))
+        rec.ingest(RideMetrics(powerW: 152, powerMeterW: 159), at: t0 + .milliseconds(900))
+
+        let recording = rec.finish()
+        #expect(recording.samples.count == 1)
+        #expect(recording.samples[0].powerW == 152)        // trainer, untouched
+        #expect(recording.samples[0].powerMeterW == 159)   // meter, its own channel
+    }
+
+    /// A ride with no meter paired leaves every sample's `powerMeterW` nil — the
+    /// trainer's power still records normally.
+    @Test func noPowerMeterLeavesSamplesNil() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        rec.ingest(RideMetrics(powerW: 150), at: t0 + .milliseconds(100))
+
+        let recording = rec.finish()
+        #expect(recording.samples[0].powerW == 150)
+        #expect(recording.samples[0].powerMeterW == nil)
+    }
 }
 
 @Suite("Ride summary")
@@ -217,6 +245,49 @@ struct RideSummaryTests {
 
     @Test func normalizedFallsBackToMeanUnder30Samples() {
         #expect(RideRecording.normalizedPower([100, 200]) == 150)
+    }
+
+    /// Leg power summarizes on its own axis, and — the point of keeping it a
+    /// separate channel — leaves every trainer-derived stat exactly as it would
+    /// be without a meter: avg, max, NP and time-in-zone all still read the
+    /// trainer, even though the meter reports higher watts throughout.
+    @Test func powerMeterSummarizesWithoutSkewingTrainerStats() {
+        // FTP 200 → Z2 band 110…150. Trainer holds 130 (in-band); the Quarq reads
+        // a few watts higher, as it does in reality (drivetrain loss).
+        let samples = (0..<3).map {
+            RideSample(secondsFromStart: $0, powerW: 130, powerMeterW: 136 + $0)
+        }
+        let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
+        let s = rec.summary()
+
+        #expect(s.averagePowerMeterW == 137)   // (136+137+138)/3
+        #expect(s.maxPowerMeterW == 138)
+        // Trainer stats unmoved by the higher meter readings.
+        #expect(s.averagePowerW == 130)
+        #expect(s.maxPowerW == 130)
+        #expect(s.timeInZoneSeconds == 3)      // scored on trainer watts, all in-band
+    }
+
+    /// No meter paired → nil, not 0. A fabricated 0 would read as "you produced
+    /// no leg power"; nil lets the summary show "—".
+    @Test func powerMeterStatsAreNilWithoutAMeter() {
+        let s = steady(130, count: 10).summary()
+        #expect(s.averagePowerMeterW == nil)
+        #expect(s.maxPowerMeterW == nil)
+    }
+
+    /// A meter that drops mid-ride averages over the seconds it actually
+    /// reported, rather than counting the silent seconds as zero watts.
+    @Test func powerMeterAveragesOnlyReportedSeconds() {
+        let samples = [
+            RideSample(secondsFromStart: 0, powerW: 130, powerMeterW: 140),
+            RideSample(secondsFromStart: 1, powerW: 130),                    // meter dropped
+            RideSample(secondsFromStart: 2, powerW: 130, powerMeterW: 150),
+        ]
+        let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
+        let s = rec.summary()
+        #expect(s.averagePowerMeterW == 145)   // (140+150)/2, not /3
+        #expect(s.maxPowerMeterW == 150)
     }
 
     @Test func timeInZoneCountsInBandSeconds() {

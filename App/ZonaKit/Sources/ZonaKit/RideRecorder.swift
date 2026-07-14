@@ -10,6 +10,17 @@ public struct RideSample: Sendable, Equatable {
     public var cadenceRpm: Int?
     public var speedKph: Double?
     public var heartRateBpm: Int?
+    /// Watts from a connected SRAM/Quarq crank meter this second, when one was
+    /// paired — the rider's *leg* power, recorded alongside (never merged into)
+    /// the trainer's `powerW`. nil on every sample of a ride ridden without a
+    /// meter, and on any second the meter didn't report.
+    ///
+    /// This is a second, parallel channel: `powerW` remains the ride's source of
+    /// truth (it is what ERG held, what the zone math scores, and what the TCX
+    /// export ships), so nothing downstream of the summary reads this. It exists
+    /// so a ride can be reviewed against true crank power after the fact. The two
+    /// differ by a few watts by design — see `RideMetrics.powerMeterW` for why.
+    public var powerMeterW: Int?
     /// Every R-R interval (seconds) captured during this second — *accumulated*
     /// across the second's HR notifications (a second can hold 1–3 beats), unlike
     /// the last-write-wins scalar fields. nil when the strap reports no R-R. Feeds
@@ -21,12 +32,14 @@ public struct RideSample: Sendable, Equatable {
                 cadenceRpm: Int? = nil,
                 speedKph: Double? = nil,
                 heartRateBpm: Int? = nil,
+                powerMeterW: Int? = nil,
                 rrIntervalsSec: [Double]? = nil) {
         self.secondsFromStart = secondsFromStart
         self.powerW = powerW
         self.cadenceRpm = cadenceRpm
         self.speedKph = speedKph
         self.heartRateBpm = heartRateBpm
+        self.powerMeterW = powerMeterW
         self.rrIntervalsSec = rrIntervalsSec
     }
 }
@@ -137,6 +150,7 @@ public final class RideRecorder {
         if let c = metrics.cadenceRpm { sample.cadenceRpm = c }
         if let s = metrics.speedKph { sample.speedKph = s }
         if let hr = metrics.heartRateBpm { sample.heartRateBpm = hr }
+        if let pm = metrics.powerMeterW { sample.powerMeterW = pm }
         // R-R accumulates within the second (multiple notifications, several beats
         // each) rather than overwriting — every interval matters for HRV.
         if let rr = metrics.rrIntervalsSec, !rr.isEmpty {

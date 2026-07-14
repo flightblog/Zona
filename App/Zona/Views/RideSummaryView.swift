@@ -30,6 +30,16 @@ struct RideSummaryView: View {
                     Stat(label: "Avg power", value: "\(ride.avgPowerW) W")
                     Stat(label: "Normalized", value: "\(ride.normalizedPowerW) W")
                     Stat(label: "Max power", value: "\(ride.maxPowerW) W")
+                    // Crank-meter watts, only for rides ridden with a SRAM/Quarq
+                    // paired. Sits beside the trainer stats rather than replacing
+                    // them — it reads a few watts higher by design, and the
+                    // trainer remains what the zone math and the export use.
+                    if let avgLeg = ride.avgPowerMeterW {
+                        Stat(label: "Avg leg power", value: "\(avgLeg) W")
+                    }
+                    if let maxLeg = ride.maxPowerMeterW {
+                        Stat(label: "Max leg power", value: "\(maxLeg) W")
+                    }
                     Stat(label: "Total Time in \(ride.zone.shortName) (power)",
                          value: minutesSeconds(ride.timeInZoneSec))
                 }
