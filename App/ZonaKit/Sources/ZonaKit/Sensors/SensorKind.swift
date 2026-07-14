@@ -69,12 +69,13 @@ public struct SensorReading: Sendable, Equatable {
     public var heartRateBpm: Int?
     /// Power (W) from a standalone cycling power meter (SRAM/Quarq), kept
     /// deliberately SEPARATE from `powerW`. `powerW` is the trainer's own power —
-    /// it drives ERG, recording, zone math, and the Strava export. The power
-    /// meter is a display-only secondary readout, so it never merges into
-    /// `powerW` and can't contaminate any of that.
+    /// it drives ERG, zone math, and the Strava export. The meter's watts are
+    /// shown on the ride screen and recorded on their own channel (as leg power),
+    /// but they never merge into `powerW`, so they can't contaminate any of that.
     public var powerMeterW: Int?
     /// Cadence (rpm) derived from the power meter's crank-revolution data. Like
-    /// `powerMeterW`, display-only and separate from the trainer's `cadenceRpm`.
+    /// `powerMeterW`, separate from the trainer's `cadenceRpm` — and display-only
+    /// (unlike the meter's watts, cadence isn't recorded).
     public var powerMeterCadenceRpm: Int?
     /// R-R (beat-to-beat) intervals in seconds from this HR notification, if the
     /// strap reports them (many do; the trainer never will). Feeds HRV. Bursty —

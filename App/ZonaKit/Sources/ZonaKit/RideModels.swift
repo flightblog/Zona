@@ -33,10 +33,19 @@ public struct RideMetrics: Equatable, Sendable {
     public var heartRateBpm: Int?
 
     /// Live watts from a connected SRAM/Quarq power meter, shown on the ride
-    /// screen as a secondary readout. Purely informational: `RideRecorder`,
-    /// `RideSummary`, the TCX export, and every zone calculation ignore it — only
-    /// `powerW` (the trainer) feeds those. Keeping it here (not merged into
-    /// `powerW`) is what guarantees the meter can't skew recorded/exported data.
+    /// screen as a secondary readout and recorded as the rider's *leg* power on
+    /// its own channel (`RideSample.powerMeterW`). It is NOT what the ride is
+    /// scored on: the TCX/Strava export, ERG, and every zone calculation read only
+    /// `powerW` (the trainer). Keeping it separate (never merged into `powerW`) is
+    /// what guarantees the meter can't skew exported data or the zone math.
+    ///
+    /// **Not sticky the way the trainer's fields are.** A crank meter that goes
+    /// quiet — the rider is coasting, or it dropped — sends *nothing*, unlike the
+    /// trainer's FTMS stream (which keeps pushing a real 0 W). `SensorHub` expires
+    /// this value after a few seconds without a reading (and clears it on
+    /// disconnect), because the 1 Hz recorder re-ingests metrics every second and
+    /// a frozen value would otherwise bank fabricated watts for the rest of the
+    /// ride. Treat nil as "no live meter reading", not "0 W".
     ///
     /// Why this reads DIFFERENTLY from `powerW`, and why that's expected:
     /// The two devices measure different physical quantities at different points

@@ -163,6 +163,53 @@ struct PowerMeterIsolationTests {
         #expect(hub.metrics.powerW == 205)
         #expect(hub.metrics.powerMeterW == 195)
     }
+
+    /// A meter that goes quiet (the rider coasts) must not leave its last watts
+    /// frozen in `metrics`. It sends *nothing* rather than a 0 W frame, unlike the
+    /// trainer's FTMS stream — and since the recorder re-ingests metrics every
+    /// second, a stuck value would bank fabricated leg power for the rest of the
+    /// ride. The trainer's own power is unaffected and keeps flowing.
+    @Test func stalePowerMeterReadingExpires() {
+        let hub = SensorHub()
+        let t0 = ContinuousClock.now
+        hub.applyForTesting(SensorReading(powerMeterW: 250, powerMeterCadenceRpm: 90), at: t0)
+        #expect(hub.metrics.powerMeterW == 250)
+
+        // Rider stops pedalling: the trainer keeps streaming (0 W on the flywheel),
+        // the Quarq says nothing at all. Past the freshness window its reading is
+        // dropped rather than held.
+        hub.applyForTesting(SensorReading(powerW: 0), at: t0 + .seconds(4))
+        #expect(hub.metrics.powerMeterW == nil)
+        #expect(hub.metrics.powerMeterCadenceRpm == nil)
+        #expect(hub.metrics.powerW == 0)   // trainer untouched
+    }
+
+    /// Normal pedalling (a meter notifying at ~1 Hz) must never flicker to nil —
+    /// the freshness window sits comfortably above the notify rate.
+    @Test func steadyPowerMeterReadingsStayFresh() {
+        let hub = SensorHub()
+        let t0 = ContinuousClock.now
+        hub.applyForTesting(SensorReading(powerMeterW: 200), at: t0)
+        hub.applyForTesting(SensorReading(powerW: 195), at: t0 + .seconds(1))
+        #expect(hub.metrics.powerMeterW == 200)   // 1 s old: still fresh
+        hub.applyForTesting(SensorReading(powerMeterW: 202), at: t0 + .seconds(2))
+        hub.applyForTesting(SensorReading(powerW: 196), at: t0 + .seconds(3))
+        #expect(hub.metrics.powerMeterW == 202)   // refreshed by the new reading
+    }
+
+    /// A meter that drops mid-ride clears immediately, without waiting for another
+    /// sensor's reading to trigger the freshness check.
+    @Test func disconnectedPowerMeterClearsItsValues() {
+        let hub = SensorHub()
+        hub.applyForTesting(SensorReading(powerW: 200))
+        hub.applyForTesting(SensorReading(powerMeterW: 210, powerMeterCadenceRpm: 88))
+        #expect(hub.metrics.powerMeterW == 210)
+
+        hub.setStateForTesting(.disconnected, for: .powerMeter)
+        #expect(hub.metrics.powerMeterW == nil)
+        #expect(hub.metrics.powerMeterCadenceRpm == nil)
+        #expect(hub.metrics.powerW == 200)   // trainer untouched
+    }
 }
 
 @Suite("HR zones (LTHR)")

@@ -20,10 +20,12 @@ public struct RideSummary: Sendable, Equatable {
     public let hrvRMSSDms: Int?
     /// Average watts from the SRAM/Quarq crank meter, or nil when no meter was
     /// paired for the ride. Unlike the trainer's `averagePowerW` (which is 0 for a
-    /// ride with no power at all), a rideless-meter ride has *no* leg power to
-    /// average, so nil distinguishes "no meter" from "zero watts" and surfaces as
-    /// "—". Reads a few watts above the trainer by design — see
-    /// `RideMetrics.powerMeterW`.
+    /// ride with no power at all), a meterless ride has *no* leg power to average,
+    /// so nil distinguishes "no meter" from "zero watts" and surfaces as "—".
+    /// Averages only the seconds the meter actually reported — a coasting meter
+    /// records nothing rather than a stale value (see `RideMetrics.powerMeterW`),
+    /// so silent seconds aren't counted as 0 W. Reads a few watts above the
+    /// trainer by design — see `RideMetrics.powerMeterW`.
     public let averagePowerMeterW: Int?
     /// Peak watts from the SRAM/Quarq crank meter, or nil when no meter was
     /// paired. Same nil-vs-0 reasoning as `averagePowerMeterW`.
