@@ -18,6 +18,18 @@ struct RideSummaryView: View {
             VStack(spacing: 24) {
                 TimeInZoneHeadline(ride: ride)
 
+                // Total ride time beside time spent in the target HR zone, the
+                // same matched pair the live ride screen shows at its top — so a
+                // ride reads the same during and after. "In zone" is the persisted
+                // HR-in-target-zone figure the headline above expands on, not the
+                // power-zone total in the grid below.
+                HStack(spacing: 28) {
+                    LabelledTime(label: "Total", time: durationText)
+                    LabelledTime(label: "In zone",
+                                 time: minutesSeconds(ride.timeInHRZoneSec),
+                                 tint: .green)
+                }
+
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     Stat(label: "Duration", value: durationText)
                     Stat(label: "Distance", value: distanceText)
@@ -202,6 +214,25 @@ private struct Stat: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// One labelled mm:ss readout: the time over a small uppercase caption, matching
+/// the live ride screen's Total / In-zone pair so the two screens read alike.
+private struct LabelledTime: View {
+    let label: String
+    let time: String
+    var tint: Color = .secondary
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(time)
+                .font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(tint)
+            Text(label.uppercased())
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
