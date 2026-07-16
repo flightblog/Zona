@@ -146,6 +146,20 @@ struct RideHRZoningTests {
         }
     }
 
+    @Test func secondsInZoneClassifiesLikeSecondsPerZoneUnderWhoop() {
+        // The same agreement must hold on the WHOOP/HRR path, whose bands round
+        // differently from Friel's. With max 190 / resting 50 (reserve 140) the Z2
+        // band tops out at 70% HRR = 148 bpm, so 148 is Z2 but 149 (70.7%) is Z3.
+        // Band membership would drift here just as it does under LTHR.
+        let zoning = RideHRZoning.whoopHRR(maxHR: 190, restingHR: 50, lthr: 160)
+        let bpms = [134, 148, 149, 163]     // Z1, Z2, Z3, Z4 by the classifier
+        #expect(zoning.secondsInZone(.z2Endurance, bpms: bpms) == 1)
+        let perZone = zoning.secondsPerZone(bpms: bpms)
+        for zone in HRZone.allCases {
+            #expect(zoning.secondsInZone(zone, bpms: bpms) == (perZone[zone.rawValue] ?? 0))
+        }
+    }
+
     // MARK: Persistence round-trip
 
     @Test func whoopZoningRoundTripsThroughStoredColumns() {
