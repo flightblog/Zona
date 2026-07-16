@@ -3,8 +3,9 @@
 Possible new features, grouped by value and by how much of the plumbing already
 exists. Zona today holds a Kickr Core 2 at a steady ERG wattage while you aim for
 a target HR zone, records the ride to SwiftData, computes summaries
-(avg/NP/max power, time-in-zone, distance, RMSSD), charts watts and HR over time
-both live and post-ride, exports TCX, uploads directly to Strava, and syncs
+(avg/NP/max power, time-in-zone, distance, RMSSD), shows a live HR-zone bar and a
+running Total / In-zone timer pair, charts watts and HR over time post-ride,
+exports TCX, uploads directly to Strava, and syncs
 across devices via iCloud/CloudKit. The `App/` project (the `ZonaKit` package
 plus the SwiftUI target) is now the sole codebase — the retired Phase-0
 `WahooFTMSPrototype` CLI that validated FTMS trainer control before the app
@@ -100,6 +101,14 @@ summarized but not charted).
   floor is 0, so a band-scan lands on the wrong zone (it shipped that way in #65's
   first commit and put a 160 bpm Z4 effort in Zone 5); `zone(forHR:)` is the only
   classifier. Pinned by a regression test.
+- **Total / In-zone timer pair.** ✅ _Shipped (PR #74 live, PR #75 summary);
+  verified in-app._ A running **In-zone** mm:ss timer sits beside the **Total** ride
+  timer atop `RideView`, counting seconds of HR-in-target-zone through the same
+  `RideHRZoning.secondsInZone` classifier the summary scores with — so the live
+  figure can't disagree with the finished ride (it's HR-in-zone, *not* the ±8 W
+  power window). The same Total / In-zone pair is mirrored onto `RideSummaryView`
+  below the green headline, reading from the persisted `durationSec` and
+  `timeInHRZoneSec`, so the two screens read alike.
 
 ## Tier 3 — Connectivity & sync (known deferred items)
 
@@ -153,6 +162,44 @@ summarized but not charted).
   on hardware.
 - **FTP / LTHR test protocols.** Guided ramp or 20-min tests to set the two
   numbers the whole app depends on, instead of typing them in.
+
+## New ideas — worth considering
+
+Fresh candidates not yet on the tiers above, roughly ordered by value-to-effort.
+
+- **Ride notes / tags / RPE.** A free-text note and a 1–10 perceived-effort rating
+  captured at ride end and stored on the ride, so the history is searchable by how
+  a session *felt*, not just its numbers. Small SwiftData field + a summary-screen
+  input; feeds the trends dashboard and any future HRV-guided suggestions.
+- **Manual pause / resume control.** A user-driven pause button on the ride screen
+  (distinct from the proposed auto-pause coasting detection) for bathroom/phone
+  breaks, so total vs. in-zone timers and time-in-zone math stay honest. Pairs with
+  the recorder's existing 1 Hz tick.
+- **Cadence target range.** The Kickr's cadence is already parsed, recorded, and
+  shown live (`metrics.cadenceRpm`, from Indoor Bike Data). The net-new piece is an
+  optional target-cadence band with a visual/audio cue when you drift out of it, so
+  steady-zone riders can hold a consistent spin, not just a wattage — reusing the
+  same tolerance-window pattern the HR zone bar uses.
+- **Configurable ERG / zone tolerance.** The ±8 W in-zone window and the ERG target
+  are fixed constants today. Expose them as preferences (per-rider comfort) so the
+  in-zone timer and cues reflect how tightly *you* want to hold the number.
+- **Export beyond Strava (.fit / .tcx share sheet, Apple Health).** Zona exports TCX
+  to Strava only. A generic share-sheet export of the finished ride's TCX/FIT, plus
+  writing the workout (duration, avg HR, energy) to Apple Health via HealthKit,
+  makes rides portable to TrainingPeaks, intervals.icu, etc.
+- **Apple Health as an HR source.** Beyond exporting, read live HR from HealthKit /
+  a paired Apple Watch as an alternative to a BLE strap — dovetails with the Tier 4
+  Apple Watch companion but is a smaller first step.
+- **Warmup / cooldown auto-segments.** Even without a full workout builder, auto-tag
+  the opening and closing minutes as warmup/cooldown and exclude them from
+  time-in-zone scoring, so a session's "quality" isn't diluted by ramp-up.
+- **Multiple rider / FTP profiles.** One set of FTP/LTHR numbers today. Named
+  profiles (or a guest mode) would let a second rider use the same install without
+  clobbering the primary rider's settings and history.
+- **Post-ride Strava-upload retry queue.** If the Strava upload fails (offline,
+  token expired), the finished ride currently isn't re-attempted automatically.
+  A small pending-upload queue that retries on next launch / reconnect would make
+  the integration robust to a flaky network at ride end.
 
 ## Suggested next steps
 
