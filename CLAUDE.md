@@ -97,6 +97,14 @@ Notable behaviors baked into it, worth knowing before touching connection logic:
 - A ride won't *start* without both the trainer (in ERG) and an HR strap
   connected, but once started the session latches — a transient mid-ride sensor
   drop doesn't eject back to setup.
+- Kind resolution (from an advertised service, or from the full GATT service
+  list once connected) always tries `.trainer` first, in `SensorKind.allCases`
+  order — never `desired`'s Set order, which varies by process. Some trainers
+  (the Kickr included) also implement the legacy Cycling Power Service for
+  compatibility with power-only head units, so a single peripheral can satisfy
+  both `.trainer` and `.powerMeter`; resolving it to `.powerMeter` would let the
+  trainer itself grab that slot (and, via `SensorMemoryStore.remember`,
+  permanently lock the real standalone meter out of it on every future ride).
 
 **Concurrency (Swift 6, strict).** `SensorHub` / `TrainerController` are
 `@MainActor @Observable`. All CoreBluetooth objects (`CBCentralManager`,

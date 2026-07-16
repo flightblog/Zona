@@ -86,6 +86,67 @@ struct PreferredGatingTests {
     }
 }
 
+@Suite("Kind resolution from exposed services")
+struct ResolveKindTests {
+    let kickr = UUID()
+    let quarq = UUID()
+    let garmin = UUID()
+
+    /// A Kickr-like trainer that also implements the legacy Cycling Power
+    /// Service (for power-only head units) must resolve to `.trainer`, not
+    /// `.powerMeter` — reproducing the bug where the trainer stole the
+    /// power-meter slot and a real SRAM/Quarq meter never got to connect.
+    @Test func trainerWinsOverPowerMeterWhenBothServicesPresent() {
+        let kind = resolveKind(candidate: kickr,
+                               exposedServices: [SensorKind.trainer.serviceUUID,
+                                                 SensorKind.powerMeter.serviceUUID],
+                               eligibleKinds: [.trainer, .heartRate, .powerMeter],
+                               preferred: { _ in nil })
+        #expect(kind == .trainer)
+    }
+
+    /// Once the trainer has claimed `.trainer`, a real standalone power meter
+    /// (only the Cycling Power service) must still resolve to `.powerMeter`.
+    @Test func realPowerMeterResolvesOnceTrainerSlotIsTaken() {
+        let kind = resolveKind(candidate: quarq,
+                               exposedServices: [SensorKind.powerMeter.serviceUUID],
+                               eligibleKinds: [.heartRate, .powerMeter],   // .trainer already filled
+                               preferred: { _ in nil })
+        #expect(kind == .powerMeter)
+    }
+
+    /// A device exposing only the HR service resolves to `.heartRate`
+    /// regardless of ordering.
+    @Test func heartRateResolvesNormally() {
+        let kind = resolveKind(candidate: garmin,
+                               exposedServices: [SensorKind.heartRate.serviceUUID],
+                               eligibleKinds: [.trainer, .heartRate, .powerMeter],
+                               preferred: { _ in nil })
+        #expect(kind == .heartRate)
+    }
+
+    /// No exposed service matches any eligible kind: no resolution.
+    @Test func noMatchResolvesToNil() {
+        let kind = resolveKind(candidate: garmin,
+                               exposedServices: [SensorKind.heartRate.serviceUUID],
+                               eligibleKinds: [.trainer, .powerMeter],
+                               preferred: { _ in nil })
+        #expect(kind == nil)
+    }
+
+    /// A pinned preferred device for `.powerMeter` still gates correctly even
+    /// when the candidate also happens to expose the trainer's service.
+    @Test func preferredGatingStillAppliesWhenTrainerServiceAlsoPresent() {
+        let kind = resolveKind(candidate: kickr,
+                               exposedServices: [SensorKind.trainer.serviceUUID,
+                                                 SensorKind.powerMeter.serviceUUID],
+                               eligibleKinds: [.powerMeter],   // .trainer already filled elsewhere
+                               preferred: { $0 == .powerMeter ? quarq : nil })
+        // Kickr isn't the pinned power meter, so it must not be attached as one.
+        #expect(kind == nil)
+    }
+}
+
 @Suite("Cycling power decode")
 struct CyclingPowerMeasurementTests {
     @Test func decodesInstantaneousPower() {
