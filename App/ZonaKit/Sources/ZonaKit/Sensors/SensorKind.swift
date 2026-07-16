@@ -60,6 +60,29 @@ public func shouldAttach(candidate: UUID,
     return candidate == preferred
 }
 
+/// Which of `eligibleKinds` does a candidate's exposed services satisfy? Pure
+/// decision, factored out of the CoreBluetooth delegate (same reasoning as
+/// `shouldAttach`) so it's unit-tested without a live central.
+///
+/// Tries `.trainer` first, in `SensorKind.allCases` order — never
+/// `eligibleKinds`' Set order, which varies by process. Some trainers (the
+/// Kickr included) also implement the legacy Cycling Power Service for
+/// compatibility with power-only head units, so a single peripheral's service
+/// list can satisfy both `.trainer` and `.powerMeter`. Resolving it to
+/// `.powerMeter` would let the trainer itself grab that slot — and, via
+/// `SensorMemoryStore.remember`, permanently lock the real standalone meter out
+/// of it on every future ride.
+public func resolveKind(candidate: UUID,
+                        exposedServices: [CBUUID],
+                        eligibleKinds: Set<SensorKind>,
+                        preferred: (SensorKind) -> UUID?) -> SensorKind? {
+    SensorKind.allCases.first { kind in
+        eligibleKinds.contains(kind)
+            && exposedServices.contains(kind.serviceUUID)
+            && shouldAttach(candidate: candidate, forKind: kind, preferred: preferred(kind))
+    }
+}
+
 /// A source-agnostic decoded update. Any sensor produces one of these; the hub
 /// folds the non-nil fields into the live `RideMetrics`.
 public struct SensorReading: Sendable, Equatable {

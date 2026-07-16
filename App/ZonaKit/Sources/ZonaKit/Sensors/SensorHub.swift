@@ -436,18 +436,28 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
         guard let central else { return }
 
         // Connect directly (no scan) to a known device: the user's pinned
-        // preferred device wins; otherwise the last-remembered one.
-        for kind in desired {
-            if let id = memory.preferredIdentifier(for: kind) ?? memory.rememberedIdentifier(for: kind),
-               let known = central.retrievePeripherals(withIdentifiers: [id]).first,
-               peripherals[kind] == nil {
-                attach(known, as: kind)
-                let name = known.name ?? kind.displayName
-                toOwner { $0.setState(.connecting(name: name), for: kind) }
-                connectingIdentifiers.insert(known.identifier)
-                central.connect(known)
-                armConnectTimeout(known.identifier)
-            }
+        // preferred device wins; otherwise the last-remembered one. Iterate kinds
+        // in a fixed, trainer-first order (`SensorKind.allCases`, not `desired`'s
+        // Set order, which varies by process) and refuse an identifier already
+        // claimed by an earlier kind this pass. Some trainers (e.g. the Kickr)
+        // also implement the legacy Cycling Power Service for compatibility with
+        // power-only head units, so a stale `rememberedIdentifier(for:
+        // .powerMeter)` can point at the trainer's own UUID if it was ever
+        // misattached that way (see the matching guard in `didDiscoverServices`).
+        // Without this, the trainer would grab the power-meter slot too,
+        // permanently shutting the real standalone meter out of it.
+        for kind in SensorKind.allCases where desired.contains(kind) {
+            guard peripherals[kind] == nil,
+                  let id = memory.preferredIdentifier(for: kind) ?? memory.rememberedIdentifier(for: kind),
+                  !peripherals.values.contains(where: { $0.identifier == id }),
+                  let known = central.retrievePeripherals(withIdentifiers: [id]).first
+            else { continue }
+            attach(known, as: kind)
+            let name = known.name ?? kind.displayName
+            toOwner { $0.setState(.connecting(name: name), for: kind) }
+            connectingIdentifiers.insert(known.identifier)
+            central.connect(known)
+            armConnectTimeout(known.identifier)
         }
 
         // Scan for any not-yet-connected kinds. We scan with `nil` services
@@ -578,10 +588,13 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
 
         // If the user pinned a preferred device for a kind, only that exact
         // device may take the slot; ignore other candidates for that kind.
-        let matchedKind = desired.first {
-            peripherals[$0] == nil && advertised.contains($0.serviceUUID)
-                && shouldAttach(candidate: id, forKind: $0, preferred: memory.preferredIdentifier(for: $0))
-        }
+        // `resolveKind` tries `.trainer` first (see its doc comment) so a device
+        // advertising both FTMS and the legacy Cycling Power Service (e.g. a
+        // Kickr) resolves to `.trainer`, never lets the trainer's own
+        // advertisement satisfy `.powerMeter` too.
+        let matchedKind = resolveKind(candidate: id, exposedServices: advertised,
+                                      eligibleKinds: Set(desired.filter { peripherals[$0] == nil }),
+                                      preferred: { memory.preferredIdentifier(for: $0) })
 
         if let kind = matchedKind {
             // Advertised a desired service — connect and set the kind now.
@@ -749,11 +762,16 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             // Match a still-open kind whose service this device exposes — and,
             // if the user pinned a preferred device for that kind, require this
             // to BE it (otherwise a non-preferred strap could grab the slot).
-            let resolved = desired.first { k in
-                peripherals[k] == nil && services.contains { $0.uuid == k.serviceUUID }
-                    && shouldAttach(candidate: id, forKind: k,
-                                    preferred: memory.preferredIdentifier(for: k))
-            }
+            // `resolveKind` tries `.trainer` first (see its doc comment) so a
+            // device whose full GATT profile satisfies both `.trainer` and
+            // `.powerMeter` (e.g. a Kickr also exposing the legacy Cycling Power
+            // Service) resolves to the trainer — never lets the trainer's own
+            // service list masquerade as the standalone power meter and steal
+            // that slot (which then also gets it wrongly `remember`-ed below,
+            // permanently locking the real meter out on every future ride).
+            let resolved = resolveKind(candidate: id, exposedServices: services.map(\.uuid),
+                                       eligibleKinds: Set(desired.filter { peripherals[$0] == nil }),
+                                       preferred: { memory.preferredIdentifier(for: $0) })
             pendingByIdentifier[peripheral.identifier] = nil
             guard let resolved else {
                 // Not a device we want (or not the preferred one) — let it go.
