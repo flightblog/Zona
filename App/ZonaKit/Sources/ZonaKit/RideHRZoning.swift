@@ -96,9 +96,14 @@ public enum RideHRZoning: Sendable, Equatable {
         return buckets
     }
 
-    /// Seconds of `bpms` falling inside the target zone's band.
+    /// Seconds of `bpms` classified into the target zone. Uses `zone(forHR:)`
+    /// rather than testing membership of the rounded `bpmRange`, so this agrees to
+    /// the beat with `secondsPerZone`, the live Z1–Z5 zone bar, and the BPM dial's
+    /// in-zone state — all of which classify by the raw fraction. Band membership
+    /// would drift by a beat at every edge (the band edges are independently
+    /// rounded BPMs), double-counting boundary reads the classifier assigns to a
+    /// neighbouring zone.
     public func secondsInZone(_ zone: HRZone, bpms: [Int]) -> Int {
-        let band = bpmRange(for: zone)
-        return bpms.filter { band.contains($0) }.count
+        bpms.filter { self.zone(forHR: $0) == zone }.count
     }
 }
