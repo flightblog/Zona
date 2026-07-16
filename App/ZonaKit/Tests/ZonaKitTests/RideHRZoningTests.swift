@@ -129,6 +129,37 @@ struct RideHRZoningTests {
         #expect(zoning.secondsInZone(.z2Endurance, bpms: []) == 0)
     }
 
+    @Test func secondsInZoneClassifiesLikeSecondsPerZone() {
+        // `secondsInZone` must count exactly the beats `secondsPerZone` (and the
+        // live zone bar / BPM dial) put in that zone — it classifies via
+        // `zone(forHR:)`, not membership of the rounded band. Under LTHR 160 the
+        // Z2 band rounds to 136…142, but 136 is 85% of LTHR and classifies to Z1,
+        // and 142 is 88.75% and classifies to Z2. A band-membership count would
+        // wrongly include 136 (an edge the neighbouring zone owns).
+        let zoning = RideHRZoning.lthr(160)
+        let bpms = [136, 137, 142, 143]     // Z1, Z2, Z2, Z3 by the classifier
+        #expect(zoning.secondsInZone(.z2Endurance, bpms: bpms) == 2)
+        // Agreement with the per-zone bucketer, beat for beat, across all zones.
+        let perZone = zoning.secondsPerZone(bpms: bpms)
+        for zone in HRZone.allCases {
+            #expect(zoning.secondsInZone(zone, bpms: bpms) == (perZone[zone.rawValue] ?? 0))
+        }
+    }
+
+    @Test func secondsInZoneClassifiesLikeSecondsPerZoneUnderWhoop() {
+        // The same agreement must hold on the WHOOP/HRR path, whose bands round
+        // differently from Friel's. With max 190 / resting 50 (reserve 140) the Z2
+        // band tops out at 70% HRR = 148 bpm, so 148 is Z2 but 149 (70.7%) is Z3.
+        // Band membership would drift here just as it does under LTHR.
+        let zoning = RideHRZoning.whoopHRR(maxHR: 190, restingHR: 50, lthr: 160)
+        let bpms = [134, 148, 149, 163]     // Z1, Z2, Z3, Z4 by the classifier
+        #expect(zoning.secondsInZone(.z2Endurance, bpms: bpms) == 1)
+        let perZone = zoning.secondsPerZone(bpms: bpms)
+        for zone in HRZone.allCases {
+            #expect(zoning.secondsInZone(zone, bpms: bpms) == (perZone[zone.rawValue] ?? 0))
+        }
+    }
+
     // MARK: Persistence round-trip
 
     @Test func whoopZoningRoundTripsThroughStoredColumns() {

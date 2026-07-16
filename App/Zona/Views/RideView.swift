@@ -68,7 +68,13 @@ struct RideView: View {
                     icon: "heart.fill",
                     // HR is the target the rider chases, so give the center dial a
                     // couple extra points over Watts/RPM to draw the eye.
-                    ringSize: 120
+                    ringSize: 120,
+                    // Green/push/ease from the zone classifier (not the rounded
+                    // band), so this dial and the Z1–Z5 bar below never name a
+                    // different zone for the same beat.
+                    stateOverride: ZoneState(bpm: controller.metrics.heartRateBpm,
+                                             target: settings.hrZone,
+                                             zoning: rideZoning)
                 )
                 ZoneGauge(
                     value: controller.metrics.cadenceRpm,
@@ -335,6 +341,21 @@ private enum ZoneState {
         else { self = .inZone }
     }
 
+    /// HR variant: judge in/below/above by which *zone* the reading classifies
+    /// into, not by whether it falls inside the rounded target band. The two can
+    /// disagree by a beat at every band edge because `bpmRange` rounds each edge
+    /// independently while `zone(forHR:)` compares the raw fraction — and it's
+    /// `zone(forHR:)` the ride is actually scored on. Routing the BPM dial's green
+    /// state through the classifier keeps it, the Z1–Z5 zone bar, and the summary's
+    /// time-in-zone in exact agreement (see `RideHRZoning.zone(forHR:)`).
+    init(bpm: Int?, target: HRZone, zoning: RideHRZoning) {
+        guard let bpm else { self = .noData; return }
+        let zone = zoning.zone(forHR: bpm)
+        if zone.rawValue < target.rawValue { self = .below }
+        else if zone.rawValue > target.rawValue { self = .above }
+        else { self = .inZone }
+    }
+
     var tint: Color {
         switch self {
         case .noData: return .gray
@@ -371,8 +392,12 @@ private struct ZoneGauge: View {
     /// every ring rendered the same size. Sizing the ring directly lets the
     /// center HR dial actually render a couple points larger than Watts/RPM.
     var ringSize: CGFloat = 104
+    /// Optional pre-computed state. The HR dial passes one derived from the zone
+    /// *classifier* so its green/push/ease cue agrees to the beat with the zone
+    /// bar; watts and cadence leave this nil and fall back to band membership.
+    var stateOverride: ZoneState?
 
-    private var state: ZoneState { ZoneState(value: value, band: band) }
+    private var state: ZoneState { stateOverride ?? ZoneState(value: value, band: band) }
 
     /// Map the value across the band with 40% padding on each side so the ring
     /// isn't pinned to the edges the moment you're in zone — the band occupies
