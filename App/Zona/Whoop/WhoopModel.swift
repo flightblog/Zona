@@ -26,13 +26,13 @@ final class WhoopModel {
     private(set) var recovery: WhoopRecovery?
 
     private let service: WhoopService?
-    private let authenticator = WhoopAuthenticator()
+    private let authenticator = OAuthAuthenticator()
     private let config: WhoopOAuthConfig?
 
     init() {
         self.config = WhoopSecrets.config
         if let config {
-            self.service = WhoopService(config: config, tokens: KeychainWhoopTokenStore())
+            self.service = WhoopService(config: config, tokens: KeychainTokenStore.whoop())
             // We can't touch the actor's `isConnected` synchronously here; start
             // `.disconnected` and let `.task { await syncOnAppear(settings:) }`
             // upgrade it to `.connected` if tokens already exist.
@@ -97,7 +97,17 @@ final class WhoopModel {
         do {
             if await service.isConnected == false {
                 state = .authorizing
-                let code = try await authenticator.authorize(config: config)
+                // WHOOP requires a per-attempt CSRF `state`, bound into both the
+                // authorize URL and the callback verification.
+                let csrfState = WhoopOAuth.makeState()
+                let code = try await authenticator.authorize(
+                    authorizeURL: WhoopOAuth.authorizeURL(config: config, state: csrfState),
+                    callbackScheme: config.redirectScheme,
+                    parseCallback: { url in
+                        guard let url else { return .failure(WhoopAuthError.malformedCallback) }
+                        return WhoopOAuth.parseCallback(url, expectedState: csrfState).mapError { $0 as Error }
+                    },
+                    cancelledError: WhoopAuthError.userCancelled)
                 try await service.exchange(code: code)
             }
             state = .refreshing
