@@ -66,162 +66,127 @@ struct ZonaApp: App {
     }
 }
 
-/// User-tunable ride inputs, persisted with @AppStorage-backed defaults.
+/// User-tunable ride inputs, persisted to `UserDefaults`.
+///
+/// A thin `@Observable` wrapper over `ZonaKit`'s pure `RideSettingsState`, which
+/// holds all the decision logic (zone-sync, WHOOP-vs-LTHR zoning, target band)
+/// and is unit-tested there. This layer only loads the state on launch and
+/// writes it back whenever it changes — the same split as `TrainerController`
+/// over `SensorHub`, but without a protocol seam: `UserDefaults` is directly
+/// testable, so unlike `SensorMemory`/`TokenStore` it needs no fake.
+///
+/// The `UserDefaults` keys are load-bearing — existing installs read their
+/// settings from these exact strings, so renaming any wipes them. WHOOP's
+/// max/resting HR persist as 0-means-unset integers, mapped to/from the state's
+/// optionals here (the one bit of decoding this glue owns).
 @Observable
 final class RideSettings {
+    @ObservationIgnored private let defaults: UserDefaults
+
+    /// The pure state. Mutating any exposed field goes through `state`, then
+    /// `persist()` writes the whole thing back — cheap for eight `UserDefaults`
+    /// keys, and it means there's exactly one place to keep read and write in
+    /// sync (`load`/`persist`) instead of eight parallel `didSet`s.
+    private var state: RideSettingsState {
+        didSet { persist() }
+    }
+
     var ftp: Int {
-        didSet { UserDefaults.standard.set(ftp, forKey: "ftp") }
+        get { state.ftp }
+        set { state.ftp = newValue }
     }
     var zone: PowerZone {
-        didSet {
-            UserDefaults.standard.set(zone.rawValue, forKey: "zone")
-            // The Hold zone is the single zone the rider picks; the target HR zone
-            // tracks it 1:1 (both share raw values 1–5) so the Ride View's BPM
-            // gauge reflects the zone that was selected rather than a stale
-            // independent default.
-            syncHRZoneToHoldZone()
-        }
+        get { state.zone }
+        // The Hold zone is the single zone the rider picks; the target HR zone
+        // tracks it 1:1 (both share raw values 1–5) so the Ride View's BPM gauge
+        // reflects the selected zone rather than a stale independent default.
+        set { state.zone = newValue; state.syncHRZoneToHoldZone() }
     }
-    /// Where in the zone band to hold, 0…1 (0.5 = middle).
     var bandPosition: Double {
-        didSet { UserDefaults.standard.set(bandPosition, forKey: "bandPosition") }
+        get { state.bandPosition }
+        set { state.bandPosition = newValue }
     }
-
-    // Heart-rate side: zones are HR-based (LTHR). The trainer still holds a
-    // steady power (ERG) target; HR defines the zone the rider aims for.
     var lthr: Int {
-        didSet { UserDefaults.standard.set(lthr, forKey: "lthr") }
+        get { state.lthr }
+        set { state.lthr = newValue }
     }
-    /// The target HR zone. Not picked independently — it mirrors `zone` (the Hold
-    /// zone) via `syncHRZoneToHoldZone()`. Still stored so `targetHRBand`, ride
-    /// records, and summaries can read it directly.
     var hrZone: HRZone {
-        didSet { UserDefaults.standard.set(hrZone.rawValue, forKey: "hrZone") }
+        get { state.hrZone }
+        set { state.hrZone = newValue }
     }
-
-    // WHOOP source-of-truth zones. WHOOP defines HR zones from max HR + resting
-    // HR via Heart Rate Reserve; whenever we hold those two numbers they *are* the
-    // zone model, and the manual LTHR bands are only the fallback for when we
-    // don't. 0 means "not fetched" (see `whoopMaxHR`/`whoopRestingHR` below).
-    private var whoopMaxHRRaw: Int {
-        didSet { UserDefaults.standard.set(whoopMaxHRRaw, forKey: "whoopMaxHR") }
-    }
-    private var whoopRestingHRRaw: Int {
-        didSet { UserDefaults.standard.set(whoopRestingHRRaw, forKey: "whoopRestingHR") }
-    }
-
-    /// Light/dark appearance. `.system` follows the OS setting; the others force
-    /// the app one way regardless. Applied via `.preferredColorScheme` at the
-    /// root of the view tree.
     var appearance: Appearance {
-        didSet { UserDefaults.standard.set(appearance.rawValue, forKey: "appearance") }
+        get { state.appearance }
+        set { state.appearance = newValue }
     }
 
-    init() {
-        let storedFTP = UserDefaults.standard.integer(forKey: "ftp")
-        ftp = storedFTP == 0 ? 200 : storedFTP
-        let storedZone = UserDefaults.standard.integer(forKey: "zone")
-        zone = PowerZone(rawValue: storedZone) ?? .z2Endurance
-        let storedPos = UserDefaults.standard.double(forKey: "bandPosition")
-        bandPosition = storedPos == 0 ? 0.5 : storedPos
-        let storedLTHR = UserDefaults.standard.integer(forKey: "lthr")
-        lthr = storedLTHR == 0 ? 160 : storedLTHR
-        let storedHRZone = UserDefaults.standard.integer(forKey: "hrZone")
-        hrZone = HRZone(rawValue: storedHRZone) ?? .z2Endurance
-        whoopMaxHRRaw = UserDefaults.standard.integer(forKey: "whoopMaxHR")        // 0 = unset
-        whoopRestingHRRaw = UserDefaults.standard.integer(forKey: "whoopRestingHR") // 0 = unset
-        let storedAppearance = UserDefaults.standard.integer(forKey: "appearance")
-        appearance = Appearance(rawValue: storedAppearance) ?? .system  // default .system
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        self.state = RideSettings.load(from: defaults)
         // The Hold zone is the source of truth; realign the target HR zone to it
-        // in case a previously stored value diverged (e.g. from the old separate
-        // HR-zone picker). `didSet` doesn't fire during init, so do it explicitly.
-        syncHRZoneToHoldZone()
+        // in case a stored value diverged (e.g. from the old separate HR-zone
+        // picker). This runs before the first `persist()`, so it doesn't churn.
+        state.syncHRZoneToHoldZone()
     }
 
-    /// Point the target HR zone at the selected Hold zone. `PowerZone` and
-    /// `HRZone` share raw values 1–5 for the same zones, so the mapping is by
-    /// raw value; if the power zone has no HR counterpart the HR zone is left
-    /// unchanged (can't happen for the Z1/Z2 the picker offers).
-    private func syncHRZoneToHoldZone() {
-        guard let matched = HRZone(rawValue: zone.rawValue), matched != hrZone else { return }
-        hrZone = matched
-    }
+    // MARK: Read-through logic (all lives on RideSettingsState)
 
-    var engine: ZoneEngine { ZoneEngine(ftp: ftp) }
-    var target: Int { engine.steadyTarget(for: zone, position: bandPosition) }
+    var engine: ZoneEngine { state.engine }
+    var target: Int { state.target }
+    var whoopMaxHR: Int? { state.whoopMaxHR }
+    var whoopRestingHR: Int? { state.whoopRestingHR }
+    var hrrEngine: HRRZoneEngine? { state.hrrEngine }
+    /// The HR-zone model a ride started right now would be scored against. Handed
+    /// to `Ride.make` at ride start and asked by the setup screen. Mirrors
+    /// `Ride.zoning`.
+    var zoning: RideHRZoning { state.zoning }
+    var targetHRBand: ClosedRange<Int> { state.targetHRBand }
 
-    // MARK: HR zones (LTHR fallback vs WHOOP source-of-truth)
-
-    /// Max HR fetched from WHOOP, or nil if never fetched.
-    var whoopMaxHR: Int? { whoopMaxHRRaw > 0 ? whoopMaxHRRaw : nil }
-    /// Resting HR fetched from WHOOP, or nil if never fetched.
-    var whoopRestingHR: Int? { whoopRestingHRRaw > 0 ? whoopRestingHRRaw : nil }
-
-    /// The HRR (WHOOP) zone engine, non-nil only once both inputs are present.
-    /// Only for *listing* all five WHOOP bands on the setup screen — scoring goes
-    /// through `zoning`, which is the one place that decides which model applies.
-    var hrrEngine: HRRZoneEngine? {
-        guard let maxHR = whoopMaxHR, let restingHR = whoopRestingHR, maxHR > restingHR else {
-            return nil
-        }
-        return HRRZoneEngine(maxHR: maxHR, restingHR: restingHR)
-    }
-
-    /// The HR-zone model a ride started right now would be scored against: WHOOP's
-    /// HRR bands whenever both WHOOP inputs are on hand, else the manual LTHR
-    /// bands. Holding WHOOP's numbers *is* the decision to use them — measured max
-    /// and a freshly-rescored resting HR beat a hand-typed threshold — so LTHR is
-    /// what you ride to only until WHOOP is connected, and disconnecting (which
-    /// clears them) is what reverts you.
-    ///
-    /// Handed to `Ride.make` at ride start so the finished ride carries (and keeps)
-    /// the model it was actually ridden against, and asked by the setup screen
-    /// (`zoning.isWhoop`) to decide whether the LTHR stepper applies. Mirrors
-    /// `Ride.zoning`, which resolves a *stored* ride from the same two columns.
-    var zoning: RideHRZoning {
-        RideHRZoning.resolve(maxHR: whoopMaxHR, restingHR: whoopRestingHR, lthr: lthr)
-    }
-
-    /// The target HR band for the selected zone, under whichever model is active.
-    /// `hrZone`'s raw value (1–5) maps 1:1 onto `HRRZone`, so the same picker
-    /// selection carries across both models.
-    var targetHRBand: ClosedRange<Int> { zoning.bpmRange(for: hrZone) }
-
-    /// Store the two inputs WHOOP derives its zones from. Called on every WHOOP
-    /// fetch — connect, Refresh, and the pre-ride sync alike — each of which
-    /// equally puts the rider on WHOOP's zones, since holding the numbers is what
-    /// makes them the model. A pre-ride refresh of a stale resting HR therefore
-    /// only moves the band edges, never which model is in play.
     func storeWhoopInputs(maxHR: Int, restingHR: Int) {
-        whoopMaxHRRaw = maxHR
-        whoopRestingHRRaw = restingHR
+        state.storeWhoopInputs(maxHR: maxHR, restingHR: restingHR)
     }
 
-    /// Forget the WHOOP inputs and revert to manual LTHR zones ("Disconnect").
-    /// Dropping the numbers is what reverts the model — see `zoning`.
-    func clearWhoopZones() {
-        whoopMaxHRRaw = 0
-        whoopRestingHRRaw = 0
+    func clearWhoopZones() { state.clearWhoopZones() }
+
+    // MARK: UserDefaults glue
+
+    /// Read a `RideSettingsState` from `defaults`, applying the launch defaults
+    /// for any unset key (a still-zero integer). The 0-means-unset mapping for
+    /// the WHOOP inputs lives here, keeping `RideSettingsState` free of the
+    /// sentinel.
+    private static func load(from defaults: UserDefaults) -> RideSettingsState {
+        let storedFTP = defaults.integer(forKey: "ftp")
+        let storedPos = defaults.double(forKey: "bandPosition")
+        let storedLTHR = defaults.integer(forKey: "lthr")
+        let storedMax = defaults.integer(forKey: "whoopMaxHR")            // 0 = unset
+        let storedResting = defaults.integer(forKey: "whoopRestingHR")    // 0 = unset
+        return RideSettingsState(
+            ftp: storedFTP == 0 ? 200 : storedFTP,
+            zone: PowerZone(rawValue: defaults.integer(forKey: "zone")) ?? .z2Endurance,
+            bandPosition: storedPos == 0 ? 0.5 : storedPos,
+            lthr: storedLTHR == 0 ? 160 : storedLTHR,
+            hrZone: HRZone(rawValue: defaults.integer(forKey: "hrZone")) ?? .z2Endurance,
+            whoopMaxHR: storedMax > 0 ? storedMax : nil,
+            whoopRestingHR: storedResting > 0 ? storedResting : nil,
+            appearance: Appearance(rawValue: defaults.integer(forKey: "appearance")) ?? .system)
+    }
+
+    /// Write the whole state back under the load-bearing keys. WHOOP's optionals
+    /// map back to 0-means-unset integers.
+    private func persist() {
+        defaults.set(state.ftp, forKey: "ftp")
+        defaults.set(state.zone.rawValue, forKey: "zone")
+        defaults.set(state.bandPosition, forKey: "bandPosition")
+        defaults.set(state.lthr, forKey: "lthr")
+        defaults.set(state.hrZone.rawValue, forKey: "hrZone")
+        defaults.set(state.whoopMaxHR ?? 0, forKey: "whoopMaxHR")
+        defaults.set(state.whoopRestingHR ?? 0, forKey: "whoopRestingHR")
+        defaults.set(state.appearance.rawValue, forKey: "appearance")
     }
 }
 
-/// App appearance choice. Raw values are persisted, so keep them stable.
-enum Appearance: Int, CaseIterable, Identifiable {
-    case system = 0
-    case light = 1
-    case dark = 2
-
-    var id: Int { rawValue }
-
-    var name: String {
-        switch self {
-        case .system: return "System"
-        case .light:  return "Light"
-        case .dark:   return "Dark"
-        }
-    }
-
-    /// The scheme to force, or `nil` for `.system` (follow the OS).
+extension Appearance {
+    /// The scheme to force, or `nil` for `.system` (follow the OS). Lives in the
+    /// app target because `ColorScheme` is SwiftUI; the enum itself is in ZonaKit.
     var colorScheme: ColorScheme? {
         switch self {
         case .system: return nil
