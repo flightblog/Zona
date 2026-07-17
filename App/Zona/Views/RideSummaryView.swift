@@ -49,6 +49,9 @@ struct RideSummaryView: View {
                     if let avgLeg = ride.avgPowerMeterW {
                         Stat(label: "Avg leg power", value: "\(avgLeg) W")
                     }
+                    if let npLeg = ride.normalizedPowerMeterW {
+                        Stat(label: "Normalized leg power", value: "\(npLeg) W")
+                    }
                     if let maxLeg = ride.maxPowerMeterW {
                         Stat(label: "Max leg power", value: "\(maxLeg) W")
                     }

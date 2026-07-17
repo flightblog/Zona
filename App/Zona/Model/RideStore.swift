@@ -58,6 +58,7 @@ final class Ride {
     // also what old rides lightweight-migrate to (same pattern as `hrvRMSSDms`).
     var avgPowerMeterW: Int?
     var maxPowerMeterW: Int?
+    var normalizedPowerMeterW: Int?
 
     /// Strava activity id once this ride has been uploaded, else nil. Optional
     /// (no default) keeps it CloudKit-safe and lightweight-migrates old rides
@@ -90,6 +91,7 @@ final class Ride {
          hrvRMSSDms: Int? = nil,
          avgPowerMeterW: Int? = nil,
          maxPowerMeterW: Int? = nil,
+         normalizedPowerMeterW: Int? = nil,
          stravaActivityId: Int64? = nil,
          stravaUploadedAt: Date? = nil) {
         self.id = id
@@ -112,6 +114,7 @@ final class Ride {
         self.hrvRMSSDms = hrvRMSSDms
         self.avgPowerMeterW = avgPowerMeterW
         self.maxPowerMeterW = maxPowerMeterW
+        self.normalizedPowerMeterW = normalizedPowerMeterW
         self.stravaActivityId = stravaActivityId
         self.stravaUploadedAt = stravaUploadedAt
     }
@@ -218,7 +221,8 @@ extension Ride {
             whoopRestingHR: zoning.storedWhoopRestingHR,
             hrvRMSSDms: summary.hrvRMSSDms,
             avgPowerMeterW: summary.averagePowerMeterW,
-            maxPowerMeterW: summary.maxPowerMeterW
+            maxPowerMeterW: summary.maxPowerMeterW,
+            normalizedPowerMeterW: summary.normalizedPowerMeterW
         )
         ride.samples = recording.samples.map {
             RideSampleModel(
