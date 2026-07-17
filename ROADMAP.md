@@ -9,7 +9,11 @@ exports TCX, uploads directly to Strava, and syncs
 across devices via iCloud/CloudKit. The `App/` project (the `ZonaKit` package
 plus the SwiftUI target) is now the sole codebase — the retired Phase-0
 `WahooFTMSPrototype` CLI that validated FTMS trainer control before the app
-existed has been removed. Several of the
+existed has been removed. The pure-core / app-glue split now extends to the
+settings layer too: the ride-input decision logic (zone-sync, WHOOP-vs-LTHR
+zoning) lives in a unit-tested `RideSettingsState` in `ZonaKit`, with
+`RideSettings` a thin `@Observable` wrapper that just persists it to
+`UserDefaults` (PR #84). Several of the
 items below build on infrastructure that already exists but isn't yet fully
 surfaced (persisted R-R intervals; a Quarq's per-second leg power, recorded and
 summarized but not charted).

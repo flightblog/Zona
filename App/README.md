@@ -59,6 +59,7 @@ App/
 │   │   ├── Zones.swift            # FTP → Coggan power zones
 │   │   ├── HeartRateZones.swift   # LTHR → HR zones (HRZone / HRZoneEngine), the manual fallback
 │   │   ├── RideHRZoning.swift     # which model a ride is scored against: .lthr / .whoopHRR
+│   │   ├── RideSettingsState.swift # pure ride-input state + logic (zone-sync, zoning); app persists it
 │   │   ├── RideModels.swift       # ConnectionState, RideMetrics
 │   │   ├── RideRecorder.swift     # 1 Hz sample capture during a ride
 │   │   ├── RideSummary.swift      # avg/NP/max power, avg/max HR, time-in-(HR)zone
@@ -85,7 +86,7 @@ App/
 │   │       └── WhoopTokenStore.swift # token persistence seam
 │   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests, WhoopTests, HRRZonesTests, RideHRZoningTests, ChartDownsamplingTests
 └── Zona/                    # App target
-    ├── ZonaApp.swift        # @main, RideSettings (FTP/zone/LTHR/HR zone), modelContainer
+    ├── ZonaApp.swift        # @main, RideSettings (thin @Observable + UserDefaults over RideSettingsState), modelContainer
     ├── Model/
     │   ├── RideStore.swift          # SwiftData @Model: Ride, RideSampleModel
     │   ├── RideExport.swift         # Ride → .tcx temp file for the Share sheet
