@@ -30,13 +30,13 @@ final class StravaUploadModel {
     private(set) var state: StravaUploadState
 
     private let service: StravaService?
-    private let authenticator = StravaAuthenticator()
+    private let authenticator = OAuthAuthenticator()
     private let config: StravaOAuthConfig?
 
     init(ride: Ride) {
         self.config = StravaSecrets.config
         if let config {
-            self.service = StravaService(config: config, tokens: KeychainTokenStore())
+            self.service = StravaService(config: config, tokens: KeychainTokenStore.strava())
         } else {
             self.service = nil
         }
@@ -60,7 +60,14 @@ final class StravaUploadModel {
             // Connect on first use.
             if await service.isConnected == false {
                 state = .authorizing
-                let code = try await authenticator.authorize(config: config)
+                let code = try await authenticator.authorize(
+                    authorizeURL: StravaOAuth.authorizeURL(config: config),
+                    callbackScheme: config.redirectScheme,
+                    parseCallback: { url in
+                        guard let url else { return .failure(StravaAuthError.malformedCallback) }
+                        return StravaOAuth.parseCallback(url).mapError { $0 as Error }
+                    },
+                    cancelledError: StravaAuthError.userCancelled)
                 _ = try await service.exchange(code: code)
             }
 

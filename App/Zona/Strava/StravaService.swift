@@ -18,10 +18,10 @@ enum StravaServiceError: Error {
 /// both refresh and clobber each other's rotated refresh token.
 actor StravaService {
     private let config: StravaOAuthConfig
-    private let tokens: TokenStore
+    private let tokens: any TokenStore<StravaTokens>
     private let session: URLSession
 
-    init(config: StravaOAuthConfig, tokens: TokenStore, session: URLSession = .shared) {
+    init(config: StravaOAuthConfig, tokens: any TokenStore<StravaTokens>, session: URLSession = .shared) {
         self.config = config
         self.tokens = tokens
         self.session = session

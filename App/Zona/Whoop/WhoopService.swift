@@ -19,12 +19,12 @@ enum WhoopServiceError: Error {
 /// `StravaService`).
 actor WhoopService {
     private let config: WhoopOAuthConfig
-    private let tokens: WhoopTokenStore
+    private let tokens: any TokenStore<WhoopTokens>
     private let session: URLSession
 
     private static let apiBase = URL(string: "https://api.prod.whoop.com/developer")!
 
-    init(config: WhoopOAuthConfig, tokens: WhoopTokenStore, session: URLSession = .shared) {
+    init(config: WhoopOAuthConfig, tokens: any TokenStore<WhoopTokens>, session: URLSession = .shared) {
         self.config = config
         self.tokens = tokens
         self.session = session
