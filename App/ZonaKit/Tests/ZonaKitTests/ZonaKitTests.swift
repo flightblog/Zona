@@ -299,6 +299,7 @@ struct RideSummaryTests {
 
         #expect(s.averagePowerMeterW == 137)   // (136+137+138)/3
         #expect(s.maxPowerMeterW == 138)
+        #expect(s.normalizedPowerMeterW == RideRecording.normalizedPower([136, 137, 138]))
         // Trainer stats unmoved by the higher meter readings.
         #expect(s.averagePowerW == 130)
         #expect(s.maxPowerW == 130)
@@ -311,6 +312,20 @@ struct RideSummaryTests {
         let s = steady(130, count: 10).summary()
         #expect(s.averagePowerMeterW == nil)
         #expect(s.maxPowerMeterW == nil)
+        #expect(s.normalizedPowerMeterW == nil)
+    }
+
+    /// Meter NP is computed over the meter's own watts, independent of the
+    /// trainer's — a steady meter reading normalizes to itself over the 30s
+    /// window, same as the trainer's NP does.
+    @Test func normalizedPowerMeterEqualsAverageForSteadyPower() {
+        let samples = (0..<40).map {
+            RideSample(secondsFromStart: $0, powerW: 130, powerMeterW: 136)
+        }
+        let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
+        let s = rec.summary()
+        #expect(s.averagePowerMeterW == 136)
+        #expect(s.normalizedPowerMeterW == 136)
     }
 
     /// A meter that drops mid-ride averages over the seconds it actually

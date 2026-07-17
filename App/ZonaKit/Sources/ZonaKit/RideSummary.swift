@@ -30,6 +30,12 @@ public struct RideSummary: Sendable, Equatable {
     /// Peak watts from the SRAM/Quarq crank meter, or nil when no meter was
     /// paired. Same nil-vs-0 reasoning as `averagePowerMeterW`.
     public let maxPowerMeterW: Int?
+    /// Normalized Power (Coggan) computed over the crank meter's own watts, or
+    /// nil when no meter was paired. Same nil-vs-0 reasoning as
+    /// `averagePowerMeterW` — a meterless ride has no leg-power series to
+    /// normalize. Uses only the seconds the meter actually reported, same as
+    /// `averagePowerMeterW`.
+    public let normalizedPowerMeterW: Int?
 
     public init(durationSeconds: Int,
                 averagePowerW: Int,
@@ -39,7 +45,8 @@ public struct RideSummary: Sendable, Equatable {
                 distanceMeters: Double = 0,
                 hrvRMSSDms: Int? = nil,
                 averagePowerMeterW: Int? = nil,
-                maxPowerMeterW: Int? = nil) {
+                maxPowerMeterW: Int? = nil,
+                normalizedPowerMeterW: Int? = nil) {
         self.durationSeconds = durationSeconds
         self.averagePowerW = averagePowerW
         self.maxPowerW = maxPowerW
@@ -49,6 +56,7 @@ public struct RideSummary: Sendable, Equatable {
         self.hrvRMSSDms = hrvRMSSDms
         self.averagePowerMeterW = averagePowerMeterW
         self.maxPowerMeterW = maxPowerMeterW
+        self.normalizedPowerMeterW = normalizedPowerMeterW
     }
 }
 
@@ -81,6 +89,9 @@ public extension RideRecording {
             ? nil
             : Int((Double(meterPowers.reduce(0, +)) / Double(meterPowers.count)).rounded())
 
+        // nil, not 0, when no meter was paired — see `normalizedPowerMeterW`.
+        let meterNP = meterPowers.isEmpty ? nil : Self.normalizedPower(meterPowers)
+
         return RideSummary(
             durationSeconds: duration,
             averagePowerW: avg,
@@ -90,7 +101,8 @@ public extension RideRecording {
             distanceMeters: distanceMeters,
             hrvRMSSDms: hrvRMSSDms,
             averagePowerMeterW: meterAvg,
-            maxPowerMeterW: meterPowers.max()
+            maxPowerMeterW: meterPowers.max(),
+            normalizedPowerMeterW: meterNP
         )
     }
 
