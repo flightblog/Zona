@@ -24,9 +24,10 @@ summarized but not charted).
   rider-triggered interval block._ A small pre-authored library
   (`IntervalSession` — `repeats × (work, rest)`, `Z3`-and-up work zones typical,
   authored in a new Setup "Interval sessions" editor) can be triggered mid-ride,
-  typically near the end of a Z2 session; `IntervalScheduler` steps the ERG
-  target through it via the ride screen's existing 1 Hz `.task` loop, only
-  calling `setTargetPower` at a step boundary. A running block can be stopped
+  typically near the end of a Z2 session; choosing one opens a short 15s "get
+  ready" countdown (cancelable) before the first block drives ERG, then
+  `IntervalScheduler` steps the ERG target through it via the ride screen's
+  existing 1 Hz `.task` loop, only calling `setTargetPower` at a step boundary. A running block can be stopped
   early from a HUD that replaces the manual `TargetAdjuster` while it's active;
   ending (naturally or via Stop) reverts to the steady target. No TCX laps,
   `RideHRZoning`/`RideSummary` changes, or closed-loop HR control — the ride is
