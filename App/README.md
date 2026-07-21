@@ -371,7 +371,9 @@ Shipped since the first cut (all verified on device unless noted):
 - **Interval sessions (v1)** — a small pre-authored library of `repeats ×
   (work, rest)` blocks, built in a Setup "Interval sessions" editor and
   triggered mid-ride (typically near the end of a Z2 ride) from a sheet on the
-  ride screen. `IntervalScheduler` steps the ERG target through the block via
+  ride screen. Choosing a session opens a short "get ready" countdown (15s, with
+  a Cancel) before its first block starts driving ERG, so the power doesn't snap
+  up the instant the picker dismisses. `IntervalScheduler` steps the ERG target through the block via
   the ride screen's existing 1 Hz loop, calling `setTargetPower` only at a step
   boundary; a HUD replaces the manual adjuster while a block runs and can stop
   it early. Ending — naturally or via Stop — reverts to the steady target. The

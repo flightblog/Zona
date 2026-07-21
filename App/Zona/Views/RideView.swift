@@ -41,6 +41,17 @@ struct RideView: View {
     /// `settings.target`), so reverting to the computed steady value would
     /// silently discard their adjustment.
     @State private var preIntervalTargetW: Int?
+    /// A session chosen from the picker but not yet running: it sits in a short
+    /// "get ready" countdown so the rider has time to settle before the first
+    /// work block snaps the ERG up. Held here until `countdownRemaining` hits 0,
+    /// then handed to `startInterval`. Nil whenever no countdown is in progress.
+    @State private var pendingIntervalSession: IntervalSession?
+    /// Seconds left in the pre-session countdown, decremented by the 1 Hz tick.
+    @State private var countdownRemaining: Int = 0
+
+    /// How long the rider gets to settle after choosing a session before its
+    /// first block starts driving ERG.
+    private let intervalCountdownSeconds = 15
     /// The HR-zone model this ride is being ridden against, latched from settings
     /// at ride start (`.onAppear`) rather than read again at save time. The rider
     /// chases the band this view shows, so that band — not whatever settings hold
@@ -144,8 +155,13 @@ struct RideView: View {
 
             // The scheduler owns the target while a block is running, so the
             // manual adjuster (which would fight it) is swapped for a compact
-            // HUD showing progress and a way to stop early.
-            if let state = currentIntervalState, let session = activeIntervalSession {
+            // HUD showing progress and a way to stop early. Before that, a chosen
+            // session sits in a "get ready" countdown with its own HUD.
+            if let session = pendingIntervalSession {
+                IntervalCountdownHUD(secondsRemaining: countdownRemaining,
+                                     sessionName: session.name,
+                                     onCancel: cancelCountdown)
+            } else if let state = currentIntervalState, let session = activeIntervalSession {
                 IntervalHUD(state: state, sessionName: session.name, onStop: endInterval)
             } else {
                 TargetAdjuster()
@@ -203,11 +219,12 @@ struct RideView: View {
                 // sweep-on-reading can't fire (see `sweepStalePowerMeter`).
                 controller.sweepStalePowerMeter()
                 recorder.ingest(controller.metrics)
+                tickCountdown()
                 tickIntervalScheduling()
             }
         }
         .sheet(isPresented: $showingIntervalPicker) {
-            IntervalPickerSheet(sessions: intervalLibrary.sessions, onSelect: startInterval)
+            IntervalPickerSheet(sessions: intervalLibrary.sessions, onSelect: beginCountdown)
         }
         .sheet(item: $savedRide) { ride in
             NavigationStack {
@@ -219,6 +236,33 @@ struct RideView: View {
                     }
             }
         }
+    }
+
+    /// Arm a chosen session with a short "get ready" countdown rather than
+    /// starting it outright, so the first work block doesn't snap the ERG up the
+    /// instant the picker dismisses. The 1 Hz tick counts it down and starts the
+    /// session when it reaches 0.
+    private func beginCountdown(_ session: IntervalSession) {
+        pendingIntervalSession = session
+        countdownRemaining = intervalCountdownSeconds
+    }
+
+    /// Decrement the pre-session countdown once per tick; at 0, hand the pending
+    /// session to `startInterval`.
+    private func tickCountdown() {
+        guard let session = pendingIntervalSession else { return }
+        countdownRemaining -= 1
+        if countdownRemaining <= 0 {
+            pendingIntervalSession = nil
+            countdownRemaining = 0
+            startInterval(session)
+        }
+    }
+
+    /// Abandon a countdown before it fires, leaving the steady target untouched.
+    private func cancelCountdown() {
+        pendingIntervalSession = nil
+        countdownRemaining = 0
     }
 
     /// Start a saved session immediately (no separate "queued" step).
@@ -627,6 +671,31 @@ private struct IntervalHUD: View {
 
     private func mmss(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// "Get ready" HUD shown after a session is chosen but before its first block
+/// starts driving ERG: a short countdown so the rider can settle, with a way to
+/// back out before it fires.
+private struct IntervalCountdownHUD: View {
+    let secondsRemaining: Int
+    let sessionName: String
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(sessionName)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text("Starting in \(secondsRemaining)")
+                .font(.title2.weight(.bold).monospacedDigit())
+                .foregroundStyle(.orange)
+                .contentTransition(.numericText())
+            Button(role: .cancel, action: onCancel) {
+                Text("Cancel")
+            }
+            .buttonStyle(.bordered)
+        }
     }
 }
 
