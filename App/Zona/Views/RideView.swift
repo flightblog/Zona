@@ -170,20 +170,25 @@ struct RideView: View {
             Spacer()
 
             // Add intervals (blue) and End ride (red) share one line, equal
-            // width. The interval picker is only reachable outside a running/
-            // pending block, so the button is disabled while one is active (or
-            // when the library is empty).
+            // width. Intervals are only offered on a Zone 2 ride — Zone 1 is
+            // recovery-steady and has no interval mode — so on a Zone 1 ride the
+            // button is hidden entirely and End ride spans the row on its own.
+            // When shown, the interval picker is only reachable outside a
+            // running/pending block, so the button is disabled while one is
+            // active (or when the library is empty).
             HStack(spacing: 12) {
-                Button {
-                    showingIntervalPicker = true
-                } label: {
-                    Label("Add intervals", systemImage: "timer").frame(maxWidth: .infinity)
+                if settings.zone == .z2Endurance {
+                    Button {
+                        showingIntervalPicker = true
+                    } label: {
+                        Label("Add intervals", systemImage: "timer").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                    .disabled(intervalLibrary.sessions.isEmpty
+                              || activeIntervalSession != nil
+                              || pendingIntervalSession != nil)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.blue)
-                .disabled(intervalLibrary.sessions.isEmpty
-                          || activeIntervalSession != nil
-                          || pendingIntervalSession != nil)
 
                 Button(role: .destructive) { confirmingEnd = true } label: {
                     Text("End ride").frame(maxWidth: .infinity)
