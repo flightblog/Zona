@@ -137,6 +137,41 @@ struct RideRecorderTests {
         #expect(rec.elapsedSeconds == 5)  // seconds 0…4 → 5 elapsed
     }
 
+    /// `elapsed(at:)` ticks off the monotonic start instant directly, unlike
+    /// `elapsedSeconds` (which only advances on `ingest`) — so a UI timer can
+    /// keep counting from its own periodic clock even while the trainer is
+    /// silent and nothing has been ingested yet.
+    @Test func elapsedAtReflectsWallClockWithoutIngest() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        #expect(rec.elapsed(at: t0 + .seconds(7) + .milliseconds(200)) == 7)
+    }
+
+    /// Once recording stops, `elapsed(at:)` must return the frozen
+    /// `elapsedSeconds` rather than keep computing from the (now stale) start
+    /// instant — otherwise a UI timer still ticking after `finish()` would show
+    /// live time drifting past the ride's actual duration.
+    @Test func elapsedAtFreezesAfterFinish() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        rec.ingest(RideMetrics(powerW: 100), at: t0 + .seconds(3))
+        rec.finish(at: t0 + .seconds(5))
+        #expect(rec.elapsed(at: t0 + .seconds(60)) == 5)   // ignores the later instant
+    }
+
+    /// A negative second (an `at:` before `start`'s clock instant — e.g. clock
+    /// skew) must be dropped rather than recorded under a bogus bucket or
+    /// crash on the dictionary lookup.
+    @Test func ingestIgnoresInstantBeforeStart() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        rec.ingest(RideMetrics(powerW: 999), at: t0 - .seconds(1))
+        #expect(rec.finish().samples.isEmpty)
+    }
+
     /// Duration is wall-clock elapsed, not sample count: a steady ride where
     /// only two seconds happened to capture a fresh sample but 60 s of real time
     /// passed must report 60 s, so the summary matches the live timer.
