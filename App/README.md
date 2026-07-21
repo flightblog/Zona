@@ -66,6 +66,10 @@ App/
 │   │   ├── RideHistoryStats.swift # all-time rollup: totals, bests, per-zone time, weekly trend
 │   │   ├── ChartDownsampling.swift # ChartPoint + bucket-average downsampler for the ride charts
 │   │   ├── TrainerController.swift # app-facing facade over SensorHub
+│   │   ├── Intervals/
+│   │   │   ├── IntervalSession.swift      # IntervalStep/IntervalSession: repeats × (work, rest)
+│   │   │   ├── IntervalScheduler.swift    # elapsed-seconds → IntervalTargetState (watts via ZoneEngine)
+│   │   │   └── IntervalLibraryState.swift # pure add/update/remove; app persists it
 │   │   ├── Sensors/
 │   │   │   ├── SensorKind.swift            # trainer / heartRate / powerMeter
 │   │   │   ├── HeartRateMeasurement.swift  # 0x2A37 decode
@@ -84,13 +88,14 @@ App/
 │   │       ├── WhoopToken.swift    # token decode + expiry
 │   │       ├── WhoopProfile.swift  # body-measurement + recovery DTOs
 │   │       └── WhoopTokenStore.swift # token persistence seam
-│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests, WhoopTests, HRRZonesTests, RideHRZoningTests, ChartDownsamplingTests
+│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests, WhoopTests, HRRZonesTests, RideHRZoningTests, ChartDownsamplingTests, IntervalSchedulerTests, IntervalSessionTests, IntervalLibraryStateTests
 └── Zona/                    # App target
-    ├── ZonaApp.swift        # @main, RideSettings (thin @Observable + UserDefaults over RideSettingsState), modelContainer
+    ├── ZonaApp.swift        # @main, RideSettings (thin @Observable + UserDefaults over RideSettingsState), IntervalLibrary, modelContainer
     ├── Model/
     │   ├── RideStore.swift          # SwiftData @Model: Ride, RideSampleModel
     │   ├── RideExport.swift         # Ride → .tcx temp file for the Share sheet
-    │   └── SensorMemoryStore.swift  # UserDefaults-backed SensorMemory
+    │   ├── SensorMemoryStore.swift  # UserDefaults-backed SensorMemory
+    │   └── IntervalLibrary.swift    # thin @Observable + UserDefaults (JSON) over IntervalLibraryState
     ├── Strava/                      # app-side I/O glue for Strava upload
     │   ├── StravaService.swift      # URLSession: exchange, refresh, upload + poll
     │   ├── StravaAuthenticator.swift # ASWebAuthenticationSession OAuth login
@@ -108,7 +113,8 @@ App/
     ├── Views/
     │   ├── ContentView.swift    # setup ↔ ride router + History link
     │   ├── SetupView.swift       # FTP, LTHR/WHOOP zones, sensor rows, connect, Diagnostics
-    │   ├── RideView.swift        # HR readout, power dial, live Z1–Z5 zone bar, record, End ride
+    │   ├── IntervalEditorView.swift # Setup-side interval session library: add/edit/delete
+    │   ├── RideView.swift        # HR readout, power dial, live Z1–Z5 zone bar, record, interval HUD, End ride
     │   ├── HRZoneColor.swift     # shared Z1–Z5 cool→warm ramp (HRZone.color)
     │   ├── RideSummaryView.swift # per-ride summary + dual-axis watts/HR chart + Strava upload / Export
     │   ├── HistoryView.swift     # past rides list + All-Time Stats link
@@ -361,6 +367,17 @@ Shipped since the first cut (all verified on device unless noted):
   gap is the two working correctly, not a fault. Its readings **expire** when the
   crank goes quiet, so a coast doesn't record fabricated watts — see *Sensors &
   connection behavior* above.
+
+- **Interval sessions (v1)** — a small pre-authored library of `repeats ×
+  (work, rest)` blocks, built in a Setup "Interval sessions" editor and
+  triggered mid-ride (typically near the end of a Z2 ride) from a sheet on the
+  ride screen. `IntervalScheduler` steps the ERG target through the block via
+  the ride screen's existing 1 Hz loop, calling `setTargetPower` only at a step
+  boundary; a HUD replaces the manual adjuster while a block runs and can stop
+  it early. Ending — naturally or via Stop — reverts to the steady target. The
+  ride is still scored end-to-end as one block: no TCX laps or
+  `RideHRZoning`/`RideSummary` changes. A general step-list model (warmups,
+  ramps, pyramids) and workout import/export remain open follow-ons.
 
 Still open / optional:
 - Direct **Strava OAuth upload** if the manual TCX Share export proves too clunky.
