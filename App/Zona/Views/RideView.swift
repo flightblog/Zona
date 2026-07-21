@@ -165,21 +165,32 @@ struct RideView: View {
                 IntervalHUD(state: state, sessionName: session.name, onStop: endInterval)
             } else {
                 TargetAdjuster()
-                Button {
-                    showingIntervalPicker = true
-                } label: {
-                    Label("Add intervals", systemImage: "timer")
-                }
-                .buttonStyle(.bordered)
-                .disabled(intervalLibrary.sessions.isEmpty)
             }
 
             Spacer()
 
-            Button(role: .destructive) { confirmingEnd = true } label: {
-                Text("End ride").frame(maxWidth: .infinity)
+            // Add intervals (blue) and End ride (red) share one line, equal
+            // width. The interval picker is only reachable outside a running/
+            // pending block, so the button is disabled while one is active (or
+            // when the library is empty).
+            HStack(spacing: 12) {
+                Button {
+                    showingIntervalPicker = true
+                } label: {
+                    Label("Add intervals", systemImage: "timer").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .disabled(intervalLibrary.sessions.isEmpty
+                          || activeIntervalSession != nil
+                          || pendingIntervalSession != nil)
+
+                Button(role: .destructive) { confirmingEnd = true } label: {
+                    Text("End ride").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
             }
-            .buttonStyle(.borderedProminent)
         }
         .padding()
         // Keep the screen awake for the whole ride: it's watched, not touched,
