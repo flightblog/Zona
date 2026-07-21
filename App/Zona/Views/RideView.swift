@@ -35,6 +35,12 @@ struct RideView: View {
     /// write + event-log append, see `SensorHub.setTargetPower`) rather than
     /// every second.
     @State private var lastCommandedIntervalWatts: Int?
+    /// The ERG target that was in force the instant the block started, so ending
+    /// reverts to *that* — not `settings.target`. The rider can trim the target
+    /// mid-ride with `TargetAdjuster` (which only moves `metrics.targetW`, never
+    /// `settings.target`), so reverting to the computed steady value would
+    /// silently discard their adjustment.
+    @State private var preIntervalTargetW: Int?
     /// The HR-zone model this ride is being ridden against, latched from settings
     /// at ride start (`.onAppear`) rather than read again at save time. The rider
     /// chases the band this view shows, so that band — not whatever settings hold
@@ -221,6 +227,10 @@ struct RideView: View {
         intervalStartSecond = recorder.elapsed()
         lastCommandedIntervalWatts = nil
         currentIntervalState = nil
+        // Remember whatever the ERG was holding when the block began — including
+        // any mid-ride trim the rider made via `TargetAdjuster` — so ending the
+        // block restores it rather than snapping back to the computed steady value.
+        preIntervalTargetW = controller.metrics.targetW ?? settings.target
         // Apply the first step's target right away rather than waiting up to a
         // second for the next tick.
         tickIntervalScheduling()
@@ -245,14 +255,17 @@ struct RideView: View {
     }
 
     /// End the active block, whether it finished on its own or the rider
-    /// stopped it early from the HUD — both revert the ERG target to the steady
-    /// setting and restore the manual `TargetAdjuster`.
+    /// stopped it early from the HUD — both revert the ERG target to whatever
+    /// was in force when the block started (captured in `preIntervalTargetW`,
+    /// which preserves any manual trim) and restore the manual `TargetAdjuster`.
     private func endInterval() {
+        let revertTarget = preIntervalTargetW ?? settings.target
         activeIntervalSession = nil
         intervalStartSecond = nil
         currentIntervalState = nil
         lastCommandedIntervalWatts = nil
-        controller.setTargetPower(settings.target)
+        preIntervalTargetW = nil
+        controller.setTargetPower(revertTarget)
     }
 
     private func endRide() {
