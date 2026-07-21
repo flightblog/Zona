@@ -52,13 +52,23 @@ with a signing team set handles this; from the CLI pass
 
 **`ZonaKit` (pure, no UI, unit-tested) vs. the `Zona` app target (I/O + SwiftUI).**
 This split is the main thing to preserve: BLE decoding, zone math, ride
-recording/summarizing, TCX export, and the pure OAuth/token logic for Strava and
-WHOOP all live in `ZonaKit` and are unit-tested. The app target supplies the
-networking, Keychain, and UI glue around that pure core (e.g. `StravaService`
-wraps `ZonaKit`'s `StravaUpload` state machine with `URLSession`; `WhoopService`
-does the same for WHOOP). When adding a new integration, keep protocol/parsing
-logic testable in `ZonaKit` and put `URLSession`/`Keychain`/`ASWebAuthentication`
-calls in the app target.
+recording/summarizing, TCX export, HRV (RMSSD), and the pure OAuth/token logic
+for Strava and WHOOP all live in `ZonaKit` and are unit-tested. The app target
+supplies the networking, Keychain, and UI glue around that pure core (e.g.
+`StravaService` wraps `ZonaKit`'s `StravaUpload` state machine with
+`URLSession`; `WhoopService` does the same for WHOOP). When adding a new
+integration, keep protocol/parsing logic testable in `ZonaKit` and put
+`URLSession`/`Keychain`/`ASWebAuthentication` calls in the app target.
+
+**The same "pure decision logic in ZonaKit, thin `@Observable` wrapper in the
+app" shape recurs three times** — worth recognizing before adding a fourth:
+`TrainerController` wraps `SensorHub`, `RideSettings` wraps `RideSettingsState`
+(all ride-input decisions — FTP/zone targets, zone-sync, WHOOP-vs-LTHR
+resolution via `RideSettingsState.zoning` — live in the pure struct; the app
+class just persists it to `UserDefaults` on every mutation), and
+`StravaUploadModel`/`WhoopModel` wrap the `StravaUpload`/WHOOP state machines.
+Put new decision logic in the `ZonaKit` half so it's unit-testable without
+running the app; the wrapper should do little more than persist/publish it.
 
 **Design: HR defines the target zone, power does the controlling.** The trainer
 can only hold a *power* setpoint (FTMS ERG, from FTP); HR lags and drifts too
@@ -120,13 +130,21 @@ freeze the UI on stale values — don't reintroduce one.
 **Two optional OAuth integrations follow the same shape**, each with a pure
 `ZonaKit` half and an app-target I/O half: Strava (upload finished rides) and
 WHOOP (use its HR zones, reconstructed from max/resting HR via HRR/Karvonen, as
-the ride target instead of manual LTHR). Both need credentials in the gitignored
-`App/Zona/Config/Secrets.xcconfig` (copy from `Secrets.example.xcconfig`); the
-corresponding UI section simply hides when credentials aren't configured. Both
-store OAuth tokens in the Keychain, per-device (no iCloud sync of tokens). Both
-accept a client secret baked into the binary (no PKCE on either provider's
-token endpoint) — acceptable for a personal single-user build, not for public
-distribution.
+the ride target instead of manual LTHR; also surfaces today's recovery as an
+advisory zone suggestion, `WhoopReadiness` — never changes settings). Both need
+credentials in the gitignored `App/Zona/Config/Secrets.xcconfig` (copy from
+`Secrets.example.xcconfig`); the corresponding UI section simply hides when
+credentials aren't configured. The interactive OAuth leg and the Keychain
+storage are **shared, provider-agnostic code**, not duplicated per provider:
+`OAuthAuthenticator` drives `ASWebAuthenticationSession` given just an
+authorize URL and a callback parser, and `KeychainTokenStore<Tokens>` is one
+generic Keychain-backed store keyed by a per-provider `service` string
+(`org.flightblog.zona.strava` / `.whoop` — load-bearing, existing users' tokens
+live under those exact strings). Tokens are per-device (no iCloud sync — the
+refresh token rotates on every use, so syncing it would let two devices
+invalidate each other's). Both accept a client secret baked into the binary (no
+PKCE on either provider's token endpoint) — acceptable for a personal
+single-user build, not for public distribution.
 
 **Data**: rides are stored with SwiftData and synced across the user's own
 devices via a private iCloud/CloudKit container. Outbound networking is limited
