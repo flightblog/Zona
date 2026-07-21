@@ -61,14 +61,18 @@ public struct RideRecording: Sendable, Equatable {
     /// 0 for recordings built by hand (tests) — callers fall back to sample count.
     public let durationSeconds: Int
     public let samples: [RideSample]
+    /// Interval sessions that ran during the ride, in the order they started.
+    /// Empty for a plain steady ride. Powers the summary's interval review.
+    public let intervalRuns: [IntervalRun]
 
     public init(ftp: Int, zone: PowerZone, startedAt: Date, samples: [RideSample],
-                durationSeconds: Int = 0) {
+                durationSeconds: Int = 0, intervalRuns: [IntervalRun] = []) {
         self.ftp = ftp
         self.zone = zone
         self.startedAt = startedAt
         self.durationSeconds = durationSeconds
         self.samples = samples
+        self.intervalRuns = intervalRuns
     }
 }
 
@@ -91,6 +95,8 @@ public final class RideRecorder {
     @ObservationIgnored private var startInstant = ContinuousClock.now
     // Keyed by whole-second bucket; flattened + sorted in `finish()`.
     @ObservationIgnored private var samplesBySecond: [Int: RideSample] = [:]
+    // Interval sessions that ran, in start order — appended via `recordInterval`.
+    @ObservationIgnored private var intervalRuns: [IntervalRun] = []
 
     public init() {}
 
@@ -136,8 +142,21 @@ public final class RideRecorder {
         self.startedAt = now
         self.startInstant = clock
         self.samplesBySecond = [:]
+        self.intervalRuns = []
         self.elapsedSeconds = 0
         self.isRecording = true
+    }
+
+    /// Log that an interval session ran, once it ends (completed or stopped
+    /// early). The view owns the block timing — the recorder just records the
+    /// finished fact — so the caller passes the second it started at and how
+    /// long it actually ran. No-op when not recording, so a stray call after
+    /// `finish()` can't append. Runs are kept in start order for the summary.
+    public func recordInterval(_ session: IntervalSession, startedAtSecond: Int, actualSeconds: Int) {
+        guard isRecording else { return }
+        intervalRuns.append(IntervalRun(session: session,
+                                        startedAtSecond: startedAtSecond,
+                                        actualSeconds: actualSeconds))
     }
 
     /// Fold a live metrics snapshot into the current second's sample.
@@ -181,6 +200,7 @@ public final class RideRecorder {
         elapsedSeconds = duration
         let ordered = samplesBySecond.values.sorted { $0.secondsFromStart < $1.secondsFromStart }
         return RideRecording(ftp: ftp, zone: zone, startedAt: startedAt,
-                             samples: ordered, durationSeconds: duration)
+                             samples: ordered, durationSeconds: duration,
+                             intervalRuns: intervalRuns)
     }
 }

@@ -60,6 +60,12 @@ struct RideSummaryView: View {
                 }
                 .padding(.horizontal)
 
+                // Interval review — only for rides that actually ran a session.
+                if !ride.intervalRuns.isEmpty {
+                    IntervalReview(runs: ride.intervalRuns, ftp: ride.ftp)
+                        .padding(.horizontal)
+                }
+
                 PowerChart(ride: ride)
                     .frame(height: 220)
                     .padding(.horizontal)
@@ -217,6 +223,101 @@ private struct Stat: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// Review of the interval sessions that ran during the ride. One card per run
+/// (rides usually have just one, but stacking supports several): the session's
+/// name and prescription, the work/rest steps with their target watts, and how
+/// much of it the rider actually completed. Only rendered when there was at
+/// least one run — see the guard at the call site.
+private struct IntervalReview: View {
+    let runs: [IntervalRun]
+    /// The ride's FTP, so each step's target watts can be shown the same way ERG
+    /// held them (`ZoneEngine.steadyTarget`) — the runs store zones, not watts.
+    let ftp: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Intervals")
+                .font(.headline)
+            ForEach(runs) { run in
+                IntervalRunCard(run: run, ftp: ftp)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// One run's card: title + planned prescription, a work and a rest row with
+/// target watts, and a completed / stopped-early footer with actual vs planned
+/// time.
+private struct IntervalRunCard: View {
+    let run: IntervalRun
+    let ftp: Int
+
+    private var engine: ZoneEngine { ZoneEngine(ftp: ftp) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(run.session.name).font(.subheadline.weight(.semibold))
+                Text(run.session.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(spacing: 6) {
+                StepRow(label: "Work", step: run.session.work, engine: engine, tint: .orange)
+                StepRow(label: "Rest", step: run.session.rest, engine: engine, tint: .blue)
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: run.completed ? "checkmark.circle.fill" : "stop.circle.fill")
+                    .foregroundStyle(run.completed ? .green : .secondary)
+                Text(run.completed
+                     ? "Completed · \(mmss(run.actualSeconds))"
+                     : "Stopped early · \(mmss(run.actualSeconds)) of \(mmss(run.session.totalDurationSeconds))")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func mmss(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// One work/rest step: a tinted zone chip, the step's duration, and the target
+/// watts ERG held for it (mid-band for the zone at the ride's FTP).
+private struct StepRow: View {
+    let label: String
+    let step: IntervalStep
+    let engine: ZoneEngine
+    let tint: Color
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 44, alignment: .leading)
+            Text(step.zone.shortName)
+                .font(.caption.weight(.bold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(tint.opacity(0.15), in: Capsule())
+            Spacer()
+            Text("\(step.durationSeconds)s")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Text("\(engine.steadyTarget(for: step.zone)) W")
+                .font(.caption.weight(.semibold).monospacedDigit())
+        }
     }
 }
 
