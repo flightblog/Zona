@@ -67,6 +67,16 @@ struct SetupView: View {
                 Text("Heart rate")
             }
 
+            Section {
+                NavigationLink {
+                    IntervalEditorView()
+                } label: {
+                    Label("Interval sessions", systemImage: "timer")
+                }
+            } footer: {
+                Text("Build work/rest interval sessions (e.g. \"4x30/30 VO2\") ahead of time, then trigger one mid-ride — typically near the end of a Z2 ride.")
+            }
+
             if whoop.isConfigured {
                 WhoopSection(whoop: whoop)
             }
@@ -428,4 +438,5 @@ private struct ConnectionStatusText: View {
     NavigationStack { SetupView() }
         .environment(TrainerController())
         .environment(RideSettings())
+        .environment(IntervalLibrary())
 }

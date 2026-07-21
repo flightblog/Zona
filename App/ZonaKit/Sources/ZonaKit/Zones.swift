@@ -58,6 +58,13 @@ public enum PowerZone: Int, CaseIterable, Sendable, Identifiable {
     }
 }
 
+/// Interval sessions (`IntervalStep`) embed `PowerZone` directly in a `Codable`
+/// struct, so it needs to round-trip through JSON. The rest of the codebase
+/// predates this and sidesteps it by persisting `zone.rawValue` as a raw `Int`
+/// (`ZonaApp.swift`, `RideStore.swift`) — this conformance is additive and
+/// doesn't change those call sites.
+extension PowerZone: Codable {}
+
 public struct ZoneEngine: Sendable {
     /// Functional Threshold Power, in watts.
     public let ftp: Int

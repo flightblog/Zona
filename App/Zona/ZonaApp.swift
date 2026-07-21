@@ -13,6 +13,7 @@ struct ZonaApp: App {
         return c
     }()
     @State private var settings = RideSettings()
+    @State private var intervalLibrary = IntervalLibrary()
 
     /// Shared SwiftData store, backed by the user's private CloudKit database so
     /// rides follow them across iPhone/iPad/Mac. The model was built
@@ -58,6 +59,7 @@ struct ZonaApp: App {
             ContentView()
                 .environment(controller)
                 .environment(settings)
+                .environment(intervalLibrary)
         }
         .modelContainer(modelContainer)
         #if os(macOS)

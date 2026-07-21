@@ -20,12 +20,20 @@ summarized but not charted).
 
 ## Tier 1 — Highest value, plumbing largely exists
 
-- **Structured workouts / interval sessions.** A workout builder (or preset
-  library: 2×20 sweet-spot, Z2 endurance blocks, warmup→steady→cooldown ramps)
-  that drives the ERG target automatically over time — turning Zona from "hold one
-  number" into a training tool. The `setTargetPower` lever, `RideRecorder`, and
-  time base already exist; this is mostly a workout model + a scheduler ticking
-  targets, reusing the same 1 Hz `.task` loop the ride screen already runs.
+- **Structured workouts / interval sessions.** ✅ _v1 shipped (issue #88): a
+  rider-triggered interval block._ A small pre-authored library
+  (`IntervalSession` — `repeats × (work, rest)`, `Z3`-and-up work zones typical,
+  authored in a new Setup "Interval sessions" editor) can be triggered mid-ride,
+  typically near the end of a Z2 session; `IntervalScheduler` steps the ERG
+  target through it via the ride screen's existing 1 Hz `.task` loop, only
+  calling `setTargetPower` at a step boundary. A running block can be stopped
+  early from a HUD that replaces the manual `TargetAdjuster` while it's active;
+  ending (naturally or via Stop) reverts to the steady target. No TCX laps,
+  `RideHRZoning`/`RideSummary` changes, or closed-loop HR control — the ride is
+  still scored end-to-end as one block, and the interval only steers watts.
+  Remaining as a natural v2: a general `[IntervalStep]` model for warmups,
+  ramps, and pyramids (today's shape is uniform work/rest only), plus
+  **workout import/export (.zwo / .erg / .mrc)** below.
 - **Workout import/export (.zwo / .erg / .mrc).** Import standard workout files so
   sessions don't all have to be authored in-app. Reuses the XML-handling patterns
   proven in `TCXExporter`.
@@ -207,8 +215,9 @@ Fresh candidates not yet on the tiers above, roughly ordered by value-to-effort.
 
 ## Suggested next steps
 
-- **Structured workouts** is the biggest capability jump and reuses infrastructure
-  already trusted.
+- **Structured workouts** v1 (rider-triggered work/rest block) is done (issue
+  #88); a general step-list model for warmups/ramps/pyramids and workout
+  import/export remain as follow-ons.
 - **HRV chart + SDNN** is the cheapest high-value win — the raw data is already
   stored.
 - **Quarq** is done: it both displays (PR #36) and records leg power alongside the

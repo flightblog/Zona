@@ -13,12 +13,34 @@ import ZonaKit
 struct RideView: View {
     @Environment(TrainerController.self) private var controller
     @Environment(RideSettings.self) private var settings
+    @Environment(IntervalLibrary.self) private var intervalLibrary
     @Environment(\.modelContext) private var modelContext
 
     @State private var recorder = RideRecorder()
     @State private var savedRide: Ride?
     /// Drives the "End ride?" confirmation so a stray tap can't discard a ride.
     @State private var confirmingEnd = false
+    /// Drives the sheet listing the saved interval library.
+    @State private var showingIntervalPicker = false
+    /// The session currently running, and the recorder second it started at —
+    /// `IntervalScheduler` is stateless, so elapsed-since-start (recomputed each
+    /// tick from `recorder.elapsed()`) is all it needs, no extra timer object.
+    @State private var activeIntervalSession: IntervalSession?
+    @State private var intervalStartSecond: Int?
+    /// The block's current step, mirrored into observed state each tick so the
+    /// HUD re-renders. nil whenever no block is running.
+    @State private var currentIntervalState: IntervalTargetState?
+    /// The watts last pushed to the trainer for the active block, so the 1 Hz
+    /// tick only calls `setTargetPower` at a step boundary (an unconditional BLE
+    /// write + event-log append, see `SensorHub.setTargetPower`) rather than
+    /// every second.
+    @State private var lastCommandedIntervalWatts: Int?
+    /// The ERG target that was in force the instant the block started, so ending
+    /// reverts to *that* — not `settings.target`. The rider can trim the target
+    /// mid-ride with `TargetAdjuster` (which only moves `metrics.targetW`, never
+    /// `settings.target`), so reverting to the computed steady value would
+    /// silently discard their adjustment.
+    @State private var preIntervalTargetW: Int?
     /// The HR-zone model this ride is being ridden against, latched from settings
     /// at ride start (`.onAppear`) rather than read again at save time. The rider
     /// chases the band this view shows, so that band — not whatever settings hold
@@ -120,7 +142,21 @@ struct RideView: View {
 
             Spacer()
 
-            TargetAdjuster()
+            // The scheduler owns the target while a block is running, so the
+            // manual adjuster (which would fight it) is swapped for a compact
+            // HUD showing progress and a way to stop early.
+            if let state = currentIntervalState, let session = activeIntervalSession {
+                IntervalHUD(state: state, sessionName: session.name, onStop: endInterval)
+            } else {
+                TargetAdjuster()
+                Button {
+                    showingIntervalPicker = true
+                } label: {
+                    Label("Add intervals", systemImage: "timer")
+                }
+                .buttonStyle(.bordered)
+                .disabled(intervalLibrary.sessions.isEmpty)
+            }
 
             Spacer()
 
@@ -167,7 +203,11 @@ struct RideView: View {
                 // sweep-on-reading can't fire (see `sweepStalePowerMeter`).
                 controller.sweepStalePowerMeter()
                 recorder.ingest(controller.metrics)
+                tickIntervalScheduling()
             }
+        }
+        .sheet(isPresented: $showingIntervalPicker) {
+            IntervalPickerSheet(sessions: intervalLibrary.sessions, onSelect: startInterval)
         }
         .sheet(item: $savedRide) { ride in
             NavigationStack {
@@ -179,6 +219,53 @@ struct RideView: View {
                     }
             }
         }
+    }
+
+    /// Start a saved session immediately (no separate "queued" step).
+    private func startInterval(_ session: IntervalSession) {
+        activeIntervalSession = session
+        intervalStartSecond = recorder.elapsed()
+        lastCommandedIntervalWatts = nil
+        currentIntervalState = nil
+        // Remember whatever the ERG was holding when the block began — including
+        // any mid-ride trim the rider made via `TargetAdjuster` — so ending the
+        // block restores it rather than snapping back to the computed steady value.
+        preIntervalTargetW = controller.metrics.targetW ?? settings.target
+        // Apply the first step's target right away rather than waiting up to a
+        // second for the next tick.
+        tickIntervalScheduling()
+    }
+
+    /// Ask the scheduler for the active block's current step and, only when the
+    /// target wattage actually changed at a step boundary, push it to the
+    /// trainer. Called from the ride screen's existing 1 Hz tick. Ends the block
+    /// (reverting to the steady target) once the scheduler reports it's done.
+    private func tickIntervalScheduling() {
+        guard let session = activeIntervalSession, let startSecond = intervalStartSecond else { return }
+        let scheduler = IntervalScheduler(session: session, ftp: settings.ftp)
+        guard let state = scheduler.target(atSecond: recorder.elapsed() - startSecond) else {
+            endInterval()
+            return
+        }
+        currentIntervalState = state
+        if state.targetWatts != lastCommandedIntervalWatts {
+            controller.setTargetPower(state.targetWatts)
+            lastCommandedIntervalWatts = state.targetWatts
+        }
+    }
+
+    /// End the active block, whether it finished on its own or the rider
+    /// stopped it early from the HUD — both revert the ERG target to whatever
+    /// was in force when the block started (captured in `preIntervalTargetW`,
+    /// which preserves any manual trim) and restore the manual `TargetAdjuster`.
+    private func endInterval() {
+        let revertTarget = preIntervalTargetW ?? settings.target
+        activeIntervalSession = nil
+        intervalStartSecond = nil
+        currentIntervalState = nil
+        lastCommandedIntervalWatts = nil
+        preIntervalTargetW = nil
+        controller.setTargetPower(revertTarget)
     }
 
     private func endRide() {
@@ -514,8 +601,74 @@ private struct TargetAdjuster: View {
     }
 }
 
+/// Compact HUD shown in place of `TargetAdjuster` while an interval block owns
+/// the ERG target: which repeat, work or rest, and time left in the step, plus
+/// a way to end the block early without ending the ride.
+private struct IntervalHUD: View {
+    let state: IntervalTargetState
+    let sessionName: String
+    let onStop: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(sessionName)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text("Interval \(state.repeatIndex + 1) of \(state.totalRepeats) · \(state.isWork ? "WORK" : "REST") · \(mmss(state.secondsRemainingInStep))")
+                .font(.title3.weight(.bold).monospacedDigit())
+                .foregroundStyle(state.isWork ? .orange : .blue)
+                .contentTransition(.numericText())
+            Button(role: .destructive, action: onStop) {
+                Text("Stop intervals")
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    private func mmss(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// Sheet listing the saved interval library. Tapping a session starts it
+/// immediately — there's no separate "queued, then start" step.
+private struct IntervalPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let sessions: [IntervalSession]
+    let onSelect: (IntervalSession) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List(sessions) { session in
+                Button {
+                    onSelect(session)
+                    dismiss()
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(session.name).font(.headline)
+                        Text(session.summary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .tint(.primary)
+            }
+            .navigationTitle("Start intervals")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
 #Preview {
     RideView()
         .environment(TrainerController())
         .environment(RideSettings())
+        .environment(IntervalLibrary())
 }
