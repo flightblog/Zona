@@ -74,11 +74,6 @@ struct TCXExportTests {
         #expect(tcx.contains("<ns3:Speed>10.000</ns3:Speed>"))
     }
 
-    @Test func totalTimeSecondsFromLastSample() {
-        let tcx = TCXExporter.makeTCX(start: start, samples: [sample(0), sample(1), sample(2)])
-        #expect(tcx.contains("<TotalTimeSeconds>3</TotalTimeSeconds>"))
-    }
-
     @Test func totalTimeSecondsPrefersRecordedDuration() {
         // The last sample only reaches second 2 (a dropped notification right
         // before the rider stopped), but the ride actually ran 9s — the
@@ -89,6 +84,8 @@ struct TCXExportTests {
         #expect(tcx.contains("<TotalTimeSeconds>9</TotalTimeSeconds>"))
     }
 
+    /// 0 is the "no recorded duration" sentinel (also `makeTCX`'s default), so
+    /// this falls back to the last-sample derivation rather than writing 0.
     @Test func totalTimeSecondsFallsBackWhenDurationIsZero() {
         let tcx = TCXExporter.makeTCX(start: start,
                                       samples: [sample(0), sample(1), sample(2)],
