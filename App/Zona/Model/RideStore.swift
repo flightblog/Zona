@@ -60,6 +60,15 @@ final class Ride {
     var maxPowerMeterW: Int?
     var normalizedPowerMeterW: Int?
 
+    /// The interval sessions that ran during this ride, JSON-encoded, or nil for
+    /// a plain steady ride. Stored as a single `Data` blob rather than a SwiftData
+    /// relationship: a ride has at most a handful of runs, they're read only as a
+    /// group on the summary, and each `IntervalRun` is already `Codable` — a blob
+    /// keeps it CloudKit-safe (optional, no default) and lightweight-migrates old
+    /// rides to nil, without a second `@Model` and its cascade rules. Read/written
+    /// through `intervalRuns`, never touched directly.
+    var intervalRunsData: Data?
+
     /// Strava activity id once this ride has been uploaded, else nil. Optional
     /// (no default) keeps it CloudKit-safe and lightweight-migrates old rides
     /// (same pattern as `hrvRMSSDms`). Powers the "View on Strava" link and the
@@ -92,6 +101,7 @@ final class Ride {
          avgPowerMeterW: Int? = nil,
          maxPowerMeterW: Int? = nil,
          normalizedPowerMeterW: Int? = nil,
+         intervalRunsData: Data? = nil,
          stravaActivityId: Int64? = nil,
          stravaUploadedAt: Date? = nil) {
         self.id = id
@@ -115,6 +125,7 @@ final class Ride {
         self.avgPowerMeterW = avgPowerMeterW
         self.maxPowerMeterW = maxPowerMeterW
         self.normalizedPowerMeterW = normalizedPowerMeterW
+        self.intervalRunsData = intervalRunsData
         self.stravaActivityId = stravaActivityId
         self.stravaUploadedAt = stravaUploadedAt
     }
@@ -129,6 +140,15 @@ final class Ride {
     /// back against the model the rider was actually aiming at.
     var zoning: RideHRZoning {
         RideHRZoning.resolve(maxHR: whoopMaxHR, restingHR: whoopRestingHR, lthr: lthr)
+    }
+
+    /// The interval sessions that ran during this ride, decoded from
+    /// `intervalRunsData` (empty for a steady ride, or if the blob ever fails to
+    /// decode — the summary just hides the section rather than erroring). Runs are
+    /// stored in start order.
+    var intervalRuns: [IntervalRun] {
+        guard let data = intervalRunsData else { return [] }
+        return (try? JSONDecoder().decode([IntervalRun].self, from: data)) ?? []
     }
 
     var timeInZoneFraction: Double {
@@ -222,7 +242,12 @@ extension Ride {
             hrvRMSSDms: summary.hrvRMSSDms,
             avgPowerMeterW: summary.averagePowerMeterW,
             maxPowerMeterW: summary.maxPowerMeterW,
-            normalizedPowerMeterW: summary.normalizedPowerMeterW
+            normalizedPowerMeterW: summary.normalizedPowerMeterW,
+            // nil (not an empty-array blob) for a steady ride, so the summary's
+            // interval section stays hidden and old rides migrate to "no intervals".
+            intervalRunsData: recording.intervalRuns.isEmpty
+                ? nil
+                : try? JSONEncoder().encode(recording.intervalRuns)
         )
         ride.samples = recording.samples.map {
             RideSampleModel(

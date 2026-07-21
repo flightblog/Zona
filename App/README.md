@@ -69,6 +69,7 @@ App/
 │   │   ├── Intervals/
 │   │   │   ├── IntervalSession.swift      # IntervalStep/IntervalSession: repeats × (work, rest)
 │   │   │   ├── IntervalScheduler.swift    # elapsed-seconds → IntervalTargetState (watts via ZoneEngine)
+│   │   │   ├── IntervalRun.swift          # a session that actually ran: start second + actual vs planned length
 │   │   │   └── IntervalLibraryState.swift # pure add/update/remove; app persists it
 │   │   ├── Sensors/
 │   │   │   ├── SensorKind.swift            # trainer / heartRate / powerMeter
@@ -376,10 +377,14 @@ Shipped since the first cut (all verified on device unless noted):
   up the instant the picker dismisses. `IntervalScheduler` steps the ERG target through the block via
   the ride screen's existing 1 Hz loop, calling `setTargetPower` only at a step
   boundary; a HUD replaces the manual adjuster while a block runs and can stop
-  it early. Ending — naturally or via Stop — reverts to the steady target. The
-  ride is still scored end-to-end as one block: no TCX laps or
-  `RideHRZoning`/`RideSummary` changes. A general step-list model (warmups,
-  ramps, pyramids) and workout import/export remain open follow-ons.
+  it early. Ending — naturally or via Stop — reverts to the steady target.
+  Sessions that ran are recorded per-ride (`IntervalRun`: the session as ridden,
+  its start second, and actual-vs-planned length, persisted as a JSON blob on
+  the `Ride`) and shown in an "Intervals" review on the ride summary. The ride
+  is still *scored* end-to-end as one block: no TCX laps, no
+  `RideHRZoning`/`RideSummary` scoring changes. Per-block achieved power/HR in
+  that review, a general step-list model (warmups, ramps, pyramids), and workout
+  import/export remain open follow-ons (see `ROADMAP.md`).
 
 Still open / optional:
 - Direct **Strava OAuth upload** if the manual TCX Share export proves too clunky.

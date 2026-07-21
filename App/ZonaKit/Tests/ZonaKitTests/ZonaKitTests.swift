@@ -285,6 +285,61 @@ struct RideRecorderTests {
         #expect(recording.samples[0].powerMeterW == nil)
         #expect(recording.samples[0].powerW == 0)
     }
+
+    private func session() -> IntervalSession {
+        IntervalSession(
+            name: "4 x 30/30",
+            repeats: 4,
+            work: IntervalStep(durationSeconds: 30, zone: .z5VO2Max),
+            rest: IntervalStep(durationSeconds: 30, zone: .z1Recovery))
+    }
+
+    /// Interval runs logged during the ride flow into the finished recording, in
+    /// the order they started, carrying the start second and actual length the
+    /// caller passed. A steady ride records none.
+    @Test func recordsIntervalRunsInStartOrder() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        rec.ingest(RideMetrics(powerW: 150), at: t0 + .seconds(1))
+        rec.recordInterval(session(), startedAtSecond: 60, actualSeconds: 240)
+        rec.recordInterval(session(), startedAtSecond: 400, actualSeconds: 90)
+
+        let recording = rec.finish(at: t0 + .seconds(600))
+        #expect(recording.intervalRuns.count == 2)
+        #expect(recording.intervalRuns[0].startedAtSecond == 60)
+        #expect(recording.intervalRuns[0].completed)          // full 240s
+        #expect(recording.intervalRuns[1].startedAtSecond == 400)
+        #expect(!recording.intervalRuns[1].completed)         // stopped at 90s
+    }
+
+    /// A ride that ran no interval session carries an empty `intervalRuns`, so the
+    /// summary hides its interval section.
+    @Test func steadyRideRecordsNoIntervalRuns() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        rec.ingest(RideMetrics(powerW: 150), at: t0 + .seconds(1))
+        #expect(rec.finish(at: t0 + .seconds(2)).intervalRuns.isEmpty)
+    }
+
+    /// `start` clears runs from a prior ride, and a `recordInterval` after
+    /// `finish()` is a no-op (recording is locked), so a stray late call can't
+    /// mutate a finished ride.
+    @Test func startClearsRunsAndRecordIsNoOpAfterFinish() {
+        let rec = RideRecorder()
+        let t0 = ContinuousClock.now
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        rec.recordInterval(session(), startedAtSecond: 10, actualSeconds: 240)
+        let recording = rec.finish(at: t0 + .seconds(300))
+        #expect(recording.intervalRuns.count == 1)
+
+        // After finish: recording locked, so this is dropped.
+        rec.recordInterval(session(), startedAtSecond: 5, actualSeconds: 60)
+        // And a fresh ride starts with no runs carried over.
+        rec.start(ftp: 200, zone: .z2Endurance, clock: t0)
+        #expect(rec.finish(at: t0 + .seconds(1)).intervalRuns.isEmpty)
+    }
 }
 
 @Suite("Ride summary")

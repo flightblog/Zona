@@ -319,6 +319,14 @@ struct RideView: View {
     /// was in force when the block started (captured in `preIntervalTargetW`,
     /// which preserves any manual trim) and restore the manual `TargetAdjuster`.
     private func endInterval() {
+        // Record the finished run before clearing state, so it shows on the
+        // summary. Actual length is elapsed-since-start — which is shorter than
+        // the authored total when the rider stopped it (or ended the ride) early.
+        if let session = activeIntervalSession, let startSecond = intervalStartSecond {
+            recorder.recordInterval(session,
+                                    startedAtSecond: startSecond,
+                                    actualSeconds: recorder.elapsed() - startSecond)
+        }
         let revertTarget = preIntervalTargetW ?? settings.target
         activeIntervalSession = nil
         intervalStartSecond = nil
@@ -329,6 +337,10 @@ struct RideView: View {
     }
 
     private func endRide() {
+        // If a block is still running, record it (as a stopped-early run) before
+        // finishing — `finish()` locks the recording, so an in-progress interval
+        // would otherwise be dropped from the summary.
+        if activeIntervalSession != nil { endInterval() }
         let recording = recorder.finish()
         controller.stop()
         // Only persist rides that actually captured data.

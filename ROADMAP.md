@@ -29,12 +29,22 @@ summarized but not charted).
   `IntervalScheduler` steps the ERG target through it via the ride screen's
   existing 1 Hz `.task` loop, only calling `setTargetPower` at a step boundary. A running block can be stopped
   early from a HUD that replaces the manual `TargetAdjuster` while it's active;
-  ending (naturally or via Stop) reverts to the steady target. No TCX laps,
-  `RideHRZoning`/`RideSummary` changes, or closed-loop HR control — the ride is
-  still scored end-to-end as one block, and the interval only steers watts.
-  Remaining as a natural v2: a general `[IntervalStep]` model for warmups,
-  ramps, and pyramids (today's shape is uniform work/rest only), plus
-  **workout import/export (.zwo / .erg / .mrc)** below.
+  ending (naturally or via Stop) reverts to the steady target. Sessions that ran
+  are now recorded (`IntervalRun` — the session as ridden, its start second, and
+  actual vs. planned length) and reviewed on the summary; the ride is still
+  *scored* end-to-end as one block, and the interval only steers watts (no TCX
+  laps, no `RideHRZoning`/`RideSummary` scoring changes, no closed-loop HR).
+  Remaining as a natural v2:
+  - **Per-block achieved power/HR in the summary review.** Each `IntervalRun`
+    stores `startedAtSecond` and `actualSeconds`, so the samples for a given block
+    can be sliced out and its achieved avg/max watts and HR shown alongside the
+    prescribed target the review already lists — turning "you ran 4×30/30 at Z5"
+    into "…and here's what you actually held each rep". Pure to compute in
+    ZonaKit from `RideRecording.samples` (or `Ride.samples`); the review card
+    (`IntervalReview`/`IntervalRunCard` in `RideSummaryView`) is where it renders.
+  - A general `[IntervalStep]` model for warmups, ramps, and pyramids (today's
+    shape is uniform work/rest only), plus **workout import/export
+    (.zwo / .erg / .mrc)** below.
 - **Workout import/export (.zwo / .erg / .mrc).** Import standard workout files so
   sessions don't all have to be authored in-app. Reuses the XML-handling patterns
   proven in `TCXExporter`.
