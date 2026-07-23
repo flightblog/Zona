@@ -42,23 +42,19 @@ struct RideSummaryView: View {
                     Stat(label: "Avg power", value: "\(ride.avgPowerW) W")
                     Stat(label: "Normalized", value: "\(ride.normalizedPowerW) W")
                     Stat(label: "Max power", value: "\(ride.maxPowerW) W")
-                    // Crank-meter watts, only for rides ridden with a SRAM/Quarq
-                    // paired. Sits beside the trainer stats rather than replacing
-                    // them — it reads a few watts higher by design, and the
-                    // trainer remains what the zone math and the export use.
-                    if let avgLeg = ride.avgPowerMeterW {
-                        Stat(label: "Avg leg power", value: "\(avgLeg) W")
-                    }
-                    if let npLeg = ride.normalizedPowerMeterW {
-                        Stat(label: "Normalized leg power", value: "\(npLeg) W")
-                    }
-                    if let maxLeg = ride.maxPowerMeterW {
-                        Stat(label: "Max leg power", value: "\(maxLeg) W")
-                    }
                     Stat(label: "Total Time in \(ride.zone.shortName) (power)",
                          value: minutesSeconds(ride.timeInZoneSec))
                 }
                 .padding(.horizontal)
+
+                // Crank-meter watts, only for rides ridden with a SRAM/Quarq
+                // paired. Grouped in its own section rather than mixed into the
+                // trainer stats above — it reads a few watts higher by design,
+                // and the trainer remains what the zone math and the export use.
+                if ride.avgPowerMeterW != nil || ride.normalizedPowerMeterW != nil || ride.maxPowerMeterW != nil {
+                    PowerMeterStats(ride: ride)
+                        .padding(.horizontal)
+                }
 
                 // Interval review — only for rides that actually ran a session.
                 if !ride.intervalRuns.isEmpty {
@@ -208,6 +204,33 @@ private struct StravaButton: View {
     private var isFailed: Bool {
         if case .failed = model.state { return true }
         return false
+    }
+}
+
+/// SRAM/Quarq crank-power-meter stats, grouped separately from the trainer's
+/// own power stats above — a labelled section rather than stats mixed into the
+/// main grid, since the meter reads a few watts higher by design and only the
+/// trainer feeds the zone math and export.
+private struct PowerMeterStats: View {
+    let ride: Ride
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Power Meter")
+                .font(.headline)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                if let avgLeg = ride.avgPowerMeterW {
+                    Stat(label: "Avg leg power", value: "\(avgLeg) W")
+                }
+                if let npLeg = ride.normalizedPowerMeterW {
+                    Stat(label: "Normalized leg power", value: "\(npLeg) W")
+                }
+                if let maxLeg = ride.maxPowerMeterW {
+                    Stat(label: "Max leg power", value: "\(maxLeg) W")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
