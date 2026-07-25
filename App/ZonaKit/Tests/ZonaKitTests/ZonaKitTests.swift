@@ -151,4 +151,20 @@ struct RideMetricsTests {
     @Test func powerDeltaNilWithoutTarget() {
         #expect(RideMetrics(powerW: 118).powerDelta == nil)
     }
+
+    /// Dead on target is 0, not nil — the ride screen distinguishes "exactly on
+    /// target" (show a zero delta) from "no reading yet" (show nothing), and both
+    /// existing tests only cover non-zero deltas, so an implementation returning
+    /// nil for a zero difference would pass them.
+    @Test func powerDeltaIsZeroWhenExactlyOnTarget() {
+        #expect(RideMetrics(powerW: 130, targetW: 130).powerDelta == 0)
+    }
+
+    /// The other nil branch: a target is set but the trainer hasn't reported
+    /// power yet (the gap between starting a ride and the first FTMS
+    /// notification). `powerDeltaNilWithoutTarget` covers the mirror case.
+    @Test func powerDeltaNilWithoutPowerReading() {
+        #expect(RideMetrics(targetW: 130).powerDelta == nil)
+        #expect(RideMetrics().powerDelta == nil)   // neither value present
+    }
 }

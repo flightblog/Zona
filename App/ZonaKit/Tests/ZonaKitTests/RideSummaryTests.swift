@@ -257,4 +257,59 @@ struct RideSummaryTests {
         #expect(abs(cum[3] - 30) < 1e-6)
         #expect(abs((cum.last ?? 0) - rec.distanceMeters) < 1e-6)
     }
+
+    /// The running total integrates the *actual* gap between samples, not a
+    /// fixed 1 Hz — the same rule `distanceUsesActualGapAcrossDropouts` pins for
+    /// the scalar total, but per-trackpoint. This matters because
+    /// `cumulativeDistanceMeters` is what stamps `<DistanceMeters>` on each TCX
+    /// trackpoint: assuming 1 s per interval would under-report distance across
+    /// every dropped notification, and Strava would show a short ride.
+    @Test func cumulativeDistanceUsesActualGapAcrossDropouts() {
+        // 18 km/h = 5 m/s. Samples at 0, 2 (a dropped second), 3.
+        // [0→2] 5 × 2 = 10 m; [2→3] 5 × 1 = 5 m; last sample has no next.
+        let rec = ride(speeds: [18, 18, 18], seconds: [0, 2, 3])
+        let cum = rec.cumulativeDistanceMeters()
+        #expect(cum.count == 3)
+        #expect(abs(cum[0] - 10) < 1e-6)   // the 2 s gap, not 5 m
+        #expect(abs(cum[1] - 15) < 1e-6)
+        #expect(abs(cum[2] - 15) < 1e-6)   // final sample contributes nothing
+        // Stays consistent with the scalar total, as the steady case does.
+        #expect(abs((cum.last ?? 0) - rec.distanceMeters) < 1e-6)
+    }
+
+    /// A sample with no speed contributes nothing for its interval, so the
+    /// running total plateaus there rather than back-filling — and the entries
+    /// stay aligned one-to-one with `samples`, which the TCX exporter relies on
+    /// to pair each distance with its trackpoint.
+    @Test func cumulativeDistancePlateausAcrossSamplesWithNoSpeed() {
+        // 10 m/s at 0; no speed at 1; 10 m/s at 3 (last, contributes nothing).
+        // [0→1] 10 × 1 = 10 m; [1→3] no speed = 0 m.
+        let rec = ride(speeds: [36, nil, 36], seconds: [0, 1, 3])
+        let cum = rec.cumulativeDistanceMeters()
+        #expect(cum.count == rec.samples.count)   // one entry per sample
+        #expect(abs(cum[0] - 10) < 1e-6)
+        #expect(abs(cum[1] - 10) < 1e-6)          // plateau, not interpolated
+        #expect(abs(cum[2] - 10) < 1e-6)
+        // Never decreases, whatever the speed gaps look like.
+        #expect(zip(cum, cum.dropFirst()).allSatisfy { $0 <= $1 })
+    }
+
+    /// Samples arriving out of order are sorted before integrating, so the
+    /// running total is monotonic regardless of input order — `distanceMeters`
+    /// and the TCX exporter both depend on this (`sortsUnorderedSamples` pins
+    /// the exporter's side).
+    @Test func cumulativeDistanceSortsUnorderedSamples() {
+        let rec = ride(speeds: [36, 36, 36], seconds: [2, 0, 1])
+        let cum = rec.cumulativeDistanceMeters()
+        #expect(abs(cum[0] - 10) < 1e-6)
+        #expect(abs(cum[1] - 20) < 1e-6)
+        #expect(abs(cum[2] - 20) < 1e-6)
+    }
+
+    /// A recording with no samples yields no entries rather than crashing on the
+    /// empty loop or returning a spurious [0].
+    @Test func cumulativeDistanceIsEmptyForNoSamples() {
+        let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: [])
+        #expect(rec.cumulativeDistanceMeters().isEmpty)
+    }
 }
