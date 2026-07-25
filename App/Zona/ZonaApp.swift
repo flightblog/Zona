@@ -116,6 +116,10 @@ final class RideSettings {
         get { state.hrZone }
         set { state.hrZone = newValue }
     }
+    var weightKg: Double {
+        get { state.weightKg }
+        set { state.weightKg = newValue }
+    }
     var appearance: Appearance {
         get { state.appearance }
         set { state.appearance = newValue }
@@ -136,6 +140,10 @@ final class RideSettings {
     var target: Int { state.target }
     var whoopMaxHR: Int? { state.whoopMaxHR }
     var whoopRestingHR: Int? { state.whoopRestingHR }
+    var whoopWeightKg: Double? { state.whoopWeightKg }
+    /// The weight actually used for watts-per-kilogram: WHOOP's body measurement
+    /// when available, else the manually entered `weightKg`.
+    var effectiveWeightKg: Double { state.effectiveWeightKg }
     var hrrEngine: HRRZoneEngine? { state.hrrEngine }
     /// The HR-zone model a ride started right now would be scored against. Handed
     /// to `Ride.make` at ride start and asked by the setup screen. Mirrors
@@ -146,6 +154,8 @@ final class RideSettings {
     func storeWhoopInputs(maxHR: Int, restingHR: Int) {
         state.storeWhoopInputs(maxHR: maxHR, restingHR: restingHR)
     }
+
+    func storeWhoopWeight(_ kg: Double) { state.storeWhoopWeight(kg) }
 
     func clearWhoopZones() { state.clearWhoopZones() }
 
@@ -161,6 +171,8 @@ final class RideSettings {
         let storedLTHR = defaults.integer(forKey: "lthr")
         let storedMax = defaults.integer(forKey: "whoopMaxHR")            // 0 = unset
         let storedResting = defaults.integer(forKey: "whoopRestingHR")    // 0 = unset
+        let storedWeight = defaults.double(forKey: "weightKg")
+        let storedWhoopWeight = defaults.double(forKey: "whoopWeightKg")  // 0 = unset
         return RideSettingsState(
             ftp: storedFTP == 0 ? 200 : storedFTP,
             zone: PowerZone(rawValue: defaults.integer(forKey: "zone")) ?? .z2Endurance,
@@ -169,11 +181,13 @@ final class RideSettings {
             hrZone: HRZone(rawValue: defaults.integer(forKey: "hrZone")) ?? .z2Endurance,
             whoopMaxHR: storedMax > 0 ? storedMax : nil,
             whoopRestingHR: storedResting > 0 ? storedResting : nil,
+            weightKg: storedWeight == 0 ? 75 : storedWeight,
+            whoopWeightKg: storedWhoopWeight > 0 ? storedWhoopWeight : nil,
             appearance: Appearance(rawValue: defaults.integer(forKey: "appearance")) ?? .system)
     }
 
     /// Write the whole state back under the load-bearing keys. WHOOP's optionals
-    /// map back to 0-means-unset integers.
+    /// map back to 0-means-unset integers (or doubles, for weight).
     private func persist() {
         defaults.set(state.ftp, forKey: "ftp")
         defaults.set(state.zone.rawValue, forKey: "zone")
@@ -182,6 +196,8 @@ final class RideSettings {
         defaults.set(state.hrZone.rawValue, forKey: "hrZone")
         defaults.set(state.whoopMaxHR ?? 0, forKey: "whoopMaxHR")
         defaults.set(state.whoopRestingHR ?? 0, forKey: "whoopRestingHR")
+        defaults.set(state.weightKg, forKey: "weightKg")
+        defaults.set(state.whoopWeightKg ?? 0, forKey: "whoopWeightKg")
         defaults.set(state.appearance.rawValue, forKey: "appearance")
     }
 }

@@ -12,10 +12,23 @@ struct SetupView: View {
         @Bindable var settings = settings
 
         Form {
-            Section("Your fitness") {
+            Section {
                 Stepper(value: $settings.ftp, in: 50...500, step: 5) {
                     LabeledContent("FTP", value: "\(settings.ftp) W")
                 }
+                if let whoopWeight = settings.whoopWeightKg {
+                    // WHOOP is the source of truth once it's supplied a body
+                    // measurement — same read-only shape as the WHOOP HR zones.
+                    LabeledContent("Weight", value: String(format: "%.1f kg · WHOOP", whoopWeight))
+                } else {
+                    Stepper(value: $settings.weightKg, in: 30...200, step: 0.5) {
+                        LabeledContent("Weight", value: String(format: "%.1f kg", settings.weightKg))
+                    }
+                }
+            } header: {
+                Text("Your fitness")
+            } footer: {
+                Text("Weight is used for watts-per-kilogram on the ride screen and summary.")
             }
 
             Section("Ride zone") {

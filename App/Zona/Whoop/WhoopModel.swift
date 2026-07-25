@@ -134,7 +134,8 @@ final class WhoopModel {
         }
     }
 
-    /// Pull max HR + today's recovery in one shot, apply the zones, and store the
+    /// Pull max HR, body weight, and today's recovery in one shot, apply the
+    /// zones, store the weight (when WHOOP has one on file), and store the
     /// recovery for the readiness display. Shared by connect, refresh, and the
     /// pre-ride sync so all three keep zones and readiness in lockstep from a
     /// single recovery fetch — and all three land on WHOOP's zones, since a stored
@@ -146,10 +147,14 @@ final class WhoopModel {
             throw WhoopServiceError.noRestingHR
         }
         settings.storeWhoopInputs(maxHR: result.maxHR, restingHR: restingHR)
+        if let weightKg = result.weightKg {
+            settings.storeWhoopWeight(weightKg)
+        }
         recovery = result.recovery
     }
 
-    /// Forget the WHOOP account and stop using its zones (revert to manual LTHR).
+    /// Forget the WHOOP account and stop using its data (revert to manual LTHR
+    /// zones and manually entered weight).
     func disconnect(settings: RideSettings) async {
         await service?.disconnect()
         settings.clearWhoopZones()

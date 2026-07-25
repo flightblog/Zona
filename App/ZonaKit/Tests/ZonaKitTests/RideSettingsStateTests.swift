@@ -94,6 +94,32 @@ struct RideSettingsStateTests {
         #expect(state.zoning == .lthr(160))
     }
 
+    // MARK: weight (manual vs WHOOP)
+
+    @Test func effectiveWeightFallsBackToManualWithoutWhoop() {
+        let state = RideSettingsState(weightKg: 82, whoopWeightKg: nil)
+        #expect(state.effectiveWeightKg == 82)
+    }
+
+    @Test func effectiveWeightPrefersWhoopWhenPresent() {
+        let state = RideSettingsState(weightKg: 82, whoopWeightKg: 79.5)
+        #expect(state.effectiveWeightKg == 79.5)
+    }
+
+    @Test func storeWhoopWeightSetsTheWhoopValue() {
+        var state = RideSettingsState(weightKg: 82)
+        state.storeWhoopWeight(79.5)
+        #expect(state.whoopWeightKg == 79.5)
+        #expect(state.effectiveWeightKg == 79.5)
+    }
+
+    @Test func clearWhoopZonesAlsoForgetsWhoopWeight() {
+        var state = RideSettingsState(weightKg: 82, whoopWeightKg: 79.5)
+        state.clearWhoopZones()
+        #expect(state.whoopWeightKg == nil)
+        #expect(state.effectiveWeightKg == 82)
+    }
+
     // MARK: hrrEngine (five-band listing on the setup screen)
 
     @Test func hrrEngineIsNilUntilBothInputsAreSaneAndPresent() {
