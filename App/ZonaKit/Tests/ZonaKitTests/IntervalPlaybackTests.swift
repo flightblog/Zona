@@ -44,37 +44,51 @@ struct IntervalPlaybackTests {
     @Test func beginCountdownArmsButDrivesNothing() {
         var playback = IntervalPlayback()
         let s = session()
-        playback.beginCountdown(s, seconds: 15)
+        playback.beginCountdown(s, seconds: 15, preTargetW: 165)
         #expect(playback.isCounting)
-        #expect(playback.phase == .countdown(session: s, remaining: 15))
+        #expect(playback.phase == .countdown(session: s, remaining: 15, preTargetW: 165))
     }
 
     @Test func tickDecrementsCountdownWithoutStarting() {
         var playback = IntervalPlayback()
         let s = session()
-        playback.beginCountdown(s, seconds: 3)
+        playback.beginCountdown(s, seconds: 3, preTargetW: 165)
         #expect(playback.tick(elapsed: 0, ftp: ftp) == [])
-        #expect(playback.phase == .countdown(session: s, remaining: 2))
+        #expect(playback.phase == .countdown(session: s, remaining: 2, preTargetW: 165))
         #expect(playback.tick(elapsed: 1, ftp: ftp) == [])
-        #expect(playback.phase == .countdown(session: s, remaining: 1))
+        #expect(playback.phase == .countdown(session: s, remaining: 1, preTargetW: 165))
     }
 
     @Test func countdownReachingZeroStartsTheBlockAndAppliesFirstStep() {
         var playback = IntervalPlayback()
         let s = session()
-        playback.beginCountdown(s, seconds: 1)
+        playback.beginCountdown(s, seconds: 1, preTargetW: 165)
         // This tick takes remaining 1 -> 0, which starts the block at this elapsed.
         let actions = playback.tick(elapsed: 15, ftp: ftp)
         #expect(actions == [.setWatts(workWatts())])
         #expect(playback.isRunning)
         #expect(playback.runningSession == s)
-        // preTargetW fell back to the first-step watts (caller passed none via the
-        // countdown path), so ending would revert there.
+        // The target armed with the countdown is carried into the running block,
+        // so ending reverts *there* — not to the block's first-step watts.
+        #expect(playback.phase == .running(session: s, startedAtSecond: 15, preTargetW: 165))
+    }
+
+    @Test func countdownRevertsToTheArmedTargetNotTheFirstStepWatts() {
+        // The fix for the countdown revert fallback: the target in force when the
+        // countdown was armed (a mid-ride trim to 140 W) must be what a finished
+        // block reverts to, even though the caller passes it at arm time, not at
+        // fire time.
+        var playback = IntervalPlayback()
+        let s = session(repeats: 1) // 1 x (30 + 30) = 60s once started
+        playback.beginCountdown(s, seconds: 1, preTargetW: 140)
+        _ = playback.tick(elapsed: 0, ftp: ftp) // fires the block at elapsed 0
+        let actions = playback.tick(elapsed: 60, ftp: ftp) // block done
+        #expect(actions.contains(.revert(toWatts: 140)))
     }
 
     @Test func cancelCountdownReturnsToIdle() {
         var playback = IntervalPlayback()
-        playback.beginCountdown(session(), seconds: 10)
+        playback.beginCountdown(session(), seconds: 10, preTargetW: 165)
         playback.cancelCountdown()
         #expect(playback.phase == .idle)
         #expect(playback.tick(elapsed: 5, ftp: ftp) == [])
@@ -84,9 +98,9 @@ struct IntervalPlaybackTests {
         var playback = IntervalPlayback()
         let first = session(repeats: 2)
         let second = session(repeats: 4)
-        playback.beginCountdown(first, seconds: 15)
-        playback.beginCountdown(second, seconds: 15)
-        #expect(playback.phase == .countdown(session: first, remaining: 15))
+        playback.beginCountdown(first, seconds: 15, preTargetW: 165)
+        playback.beginCountdown(second, seconds: 15, preTargetW: 200)
+        #expect(playback.phase == .countdown(session: first, remaining: 15, preTargetW: 165))
     }
 
     @Test func cancelWhileIdleIsANoOp() {
@@ -201,7 +215,7 @@ struct IntervalPlaybackTests {
     @Test func stopWhileNotRunningIsANoOp() {
         var playback = IntervalPlayback()
         #expect(playback.stop(atElapsed: 100) == [])
-        playback.beginCountdown(session(), seconds: 15)
+        playback.beginCountdown(session(), seconds: 15, preTargetW: 165)
         // Even mid-countdown, stop() only ends a *running* block.
         #expect(playback.stop(atElapsed: 100) == [])
         #expect(playback.isCounting)
@@ -221,7 +235,7 @@ struct IntervalPlaybackTests {
     @Test func currentStateIsNilWhenIdleOrCounting() {
         var playback = IntervalPlayback()
         #expect(playback.currentState(elapsed: 0, ftp: ftp) == nil)
-        playback.beginCountdown(session(), seconds: 15)
+        playback.beginCountdown(session(), seconds: 15, preTargetW: 165)
         #expect(playback.currentState(elapsed: 0, ftp: ftp) == nil)
     }
 

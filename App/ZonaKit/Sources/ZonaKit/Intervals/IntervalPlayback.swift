@@ -28,8 +28,12 @@ public struct IntervalPlayback: Sendable, Equatable {
         /// Nothing armed: the manual `TargetAdjuster` owns the target.
         case idle
         /// A session was chosen and is settling in a "get ready" countdown
-        /// before its first block drives ERG. Cancelable.
-        case countdown(session: IntervalSession, remaining: Int)
+        /// before its first block drives ERG. Cancelable. `preTargetW` is the ERG
+        /// target in force when the countdown was armed (including any mid-ride
+        /// `TargetAdjuster` trim); it's carried into `running` so ending reverts
+        /// to it rather than to the computed steady value — captured now because
+        /// the caller knows it when arming, not when the countdown fires.
+        case countdown(session: IntervalSession, remaining: Int, preTargetW: Int?)
         /// A block is actively steering ERG. `startedAtSecond` is the recorder
         /// second it began at (so elapsed-since-start can be recomputed each
         /// tick), and `preTargetW` is the ERG target that was in force the
@@ -91,9 +95,15 @@ public struct IntervalPlayback: Sendable, Equatable {
     /// first block drives ERG, so the picker dismissing doesn't snap the ERG up
     /// instantly. No-op (and no action) if a countdown or block is already
     /// active — the ride screen disables Add intervals then, but guard anyway.
-    public mutating func beginCountdown(_ session: IntervalSession, seconds: Int) {
+    ///
+    /// `preTargetW` is the ERG target in force right now (the caller's current
+    /// setpoint, e.g. `controller.metrics.targetW ?? settings.target`, including
+    /// any manual trim). It's captured here rather than when the countdown fires
+    /// so ending the block reverts to where the rider actually was, not to the
+    /// block's first-step watts.
+    public mutating func beginCountdown(_ session: IntervalSession, seconds: Int, preTargetW: Int?) {
         guard case .idle = phase else { return }
-        phase = .countdown(session: session, remaining: seconds)
+        phase = .countdown(session: session, remaining: seconds, preTargetW: preTargetW)
     }
 
     /// Abandon a countdown before it fires, returning to `idle` with the steady
@@ -121,13 +131,15 @@ public struct IntervalPlayback: Sendable, Equatable {
         case .idle:
             return []
 
-        case let .countdown(session, remaining):
+        case let .countdown(session, remaining, preTargetW):
             let next = remaining - 1
             if next <= 0 {
                 // Start the block *at this instant*: the settle window is over.
-                return start(session, atElapsed: elapsed, preTargetW: nil, ftp: ftp)
+                // Carry the target captured when the countdown was armed so the
+                // revert on end goes to where the rider was, not the first step.
+                return start(session, atElapsed: elapsed, preTargetW: preTargetW, ftp: ftp)
             }
-            phase = .countdown(session: session, remaining: next)
+            phase = .countdown(session: session, remaining: next, preTargetW: preTargetW)
             return []
 
         case let .running(session, startedAtSecond, preTargetW):
