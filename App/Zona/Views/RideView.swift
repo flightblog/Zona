@@ -22,32 +22,18 @@ struct RideView: View {
     @State private var confirmingEnd = false
     /// Drives the sheet listing the saved interval library.
     @State private var showingIntervalPicker = false
-    /// The session currently running, and the recorder second it started at —
-    /// `IntervalScheduler` is stateless, so elapsed-since-start (recomputed each
-    /// tick from `recorder.elapsed()`) is all it needs, no extra timer object.
-    @State private var activeIntervalSession: IntervalSession?
-    @State private var intervalStartSecond: Int?
-    /// The block's current step, mirrored into observed state each tick so the
-    /// HUD re-renders. nil whenever no block is running.
+    /// The interval-session playback lifecycle (`idle → countdown → running →
+    /// idle`): the get-ready countdown, block start/end, ERG-write-only-on-boundary,
+    /// and the revert-to-pre-block-target rule. Pure decision logic lives in
+    /// `IntervalPlayback` (unit-tested in `ZonaKit`); this view only feeds it the
+    /// elapsed second + FTP each tick and applies the `Action`s it returns to the
+    /// trainer/recorder. `IntervalScheduler` (which it calls) is stateless, so
+    /// elapsed-since-start recomputed from `recorder.elapsed()` is all it needs.
+    @State private var playback = IntervalPlayback()
+    /// The running block's current step, mirrored out of `playback` each tick so
+    /// the HUD re-renders (SwiftUI observes this `@State`, not the struct's pure
+    /// read). nil whenever no block is running.
     @State private var currentIntervalState: IntervalTargetState?
-    /// The watts last pushed to the trainer for the active block, so the 1 Hz
-    /// tick only calls `setTargetPower` at a step boundary (an unconditional BLE
-    /// write + event-log append, see `SensorHub.setTargetPower`) rather than
-    /// every second.
-    @State private var lastCommandedIntervalWatts: Int?
-    /// The ERG target that was in force the instant the block started, so ending
-    /// reverts to *that* — not `settings.target`. The rider can trim the target
-    /// mid-ride with `TargetAdjuster` (which only moves `metrics.targetW`, never
-    /// `settings.target`), so reverting to the computed steady value would
-    /// silently discard their adjustment.
-    @State private var preIntervalTargetW: Int?
-    /// A session chosen from the picker but not yet running: it sits in a short
-    /// "get ready" countdown so the rider has time to settle before the first
-    /// work block snaps the ERG up. Held here until `countdownRemaining` hits 0,
-    /// then handed to `startInterval`. Nil whenever no countdown is in progress.
-    @State private var pendingIntervalSession: IntervalSession?
-    /// Seconds left in the pre-session countdown, decremented by the 1 Hz tick.
-    @State private var countdownRemaining: Int = 0
 
     /// How long the rider gets to settle after choosing a session before its
     /// first block starts driving ERG.
@@ -161,11 +147,11 @@ struct RideView: View {
             // manual adjuster (which would fight it) is swapped for a compact
             // HUD showing progress and a way to stop early. Before that, a chosen
             // session sits in a "get ready" countdown with its own HUD.
-            if let session = pendingIntervalSession {
-                IntervalCountdownHUD(secondsRemaining: countdownRemaining,
+            if let remaining = playback.countdownRemaining, let session = playback.countingSession {
+                IntervalCountdownHUD(secondsRemaining: remaining,
                                      sessionName: session.name,
                                      onCancel: cancelCountdown)
-            } else if let state = currentIntervalState, let session = activeIntervalSession {
+            } else if let state = currentIntervalState, let session = playback.runningSession {
                 IntervalHUD(state: state, sessionName: session.name, onStop: endInterval)
             } else {
                 TargetAdjuster()
@@ -190,8 +176,8 @@ struct RideView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.blue)
                     .disabled(intervalLibrary.sessions.isEmpty
-                              || activeIntervalSession != nil
-                              || pendingIntervalSession != nil)
+                              || playback.isRunning
+                              || playback.isCounting)
                 }
 
                 Button(role: .destructive) { confirmingEnd = true } label: {
@@ -239,8 +225,7 @@ struct RideView: View {
                 // sweep-on-reading can't fire (see `sweepStalePowerMeter`).
                 controller.sweepStalePowerMeter()
                 recorder.ingest(controller.metrics)
-                tickCountdown()
-                tickIntervalScheduling()
+                tickIntervals()
             }
         }
         .sheet(isPresented: $showingIntervalPicker) {
@@ -260,91 +245,65 @@ struct RideView: View {
 
     /// Arm a chosen session with a short "get ready" countdown rather than
     /// starting it outright, so the first work block doesn't snap the ERG up the
-    /// instant the picker dismisses. The 1 Hz tick counts it down and starts the
-    /// session when it reaches 0.
+    /// instant the picker dismisses. `IntervalPlayback` counts it down on the 1 Hz
+    /// tick and starts the block when it reaches 0. The ERG target in force *now*
+    /// — including any mid-ride `TargetAdjuster` trim — is captured here, at arm
+    /// time, so ending the block reverts there rather than to the computed steady
+    /// value (the pre-block-revert rule); by the time the countdown fires this
+    /// context is gone.
     private func beginCountdown(_ session: IntervalSession) {
-        pendingIntervalSession = session
-        countdownRemaining = intervalCountdownSeconds
-    }
-
-    /// Decrement the pre-session countdown once per tick; at 0, hand the pending
-    /// session to `startInterval`.
-    private func tickCountdown() {
-        guard let session = pendingIntervalSession else { return }
-        countdownRemaining -= 1
-        if countdownRemaining <= 0 {
-            pendingIntervalSession = nil
-            countdownRemaining = 0
-            startInterval(session)
-        }
+        playback.beginCountdown(session,
+                                seconds: intervalCountdownSeconds,
+                                preTargetW: controller.metrics.targetW ?? settings.target)
     }
 
     /// Abandon a countdown before it fires, leaving the steady target untouched.
     private func cancelCountdown() {
-        pendingIntervalSession = nil
-        countdownRemaining = 0
+        playback.cancelCountdown()
     }
 
-    /// Start a saved session immediately (no separate "queued" step).
-    private func startInterval(_ session: IntervalSession) {
-        activeIntervalSession = session
-        intervalStartSecond = recorder.elapsed()
-        lastCommandedIntervalWatts = nil
-        currentIntervalState = nil
-        // Remember whatever the ERG was holding when the block began — including
-        // any mid-ride trim the rider made via `TargetAdjuster` — so ending the
-        // block restores it rather than snapping back to the computed steady value.
-        preIntervalTargetW = controller.metrics.targetW ?? settings.target
-        // Apply the first step's target right away rather than waiting up to a
-        // second for the next tick.
-        tickIntervalScheduling()
+    /// Advance interval playback by one 1 Hz tick and apply whatever it decides:
+    /// decrement/fire the countdown, push a new ERG setpoint at a step boundary,
+    /// or record-then-revert when a block ends. `IntervalPlayback` owns all that
+    /// logic; this only feeds it the elapsed second + FTP and applies the returned
+    /// `Action`s. The HUD's step state is a pure read mirrored out afterwards.
+    private func tickIntervals() {
+        apply(playback.tick(elapsed: recorder.elapsed(), ftp: settings.ftp))
+        currentIntervalState = playback.currentState(elapsed: recorder.elapsed(), ftp: settings.ftp)
     }
 
-    /// Ask the scheduler for the active block's current step and, only when the
-    /// target wattage actually changed at a step boundary, push it to the
-    /// trainer. Called from the ride screen's existing 1 Hz tick. Ends the block
-    /// (reverting to the steady target) once the scheduler reports it's done.
-    private func tickIntervalScheduling() {
-        guard let session = activeIntervalSession, let startSecond = intervalStartSecond else { return }
-        let scheduler = IntervalScheduler(session: session, ftp: settings.ftp)
-        guard let state = scheduler.target(atSecond: recorder.elapsed() - startSecond) else {
-            endInterval()
-            return
-        }
-        currentIntervalState = state
-        if state.targetWatts != lastCommandedIntervalWatts {
-            controller.setTargetPower(state.targetWatts)
-            lastCommandedIntervalWatts = state.targetWatts
-        }
-    }
-
-    /// End the active block, whether it finished on its own or the rider
-    /// stopped it early from the HUD — both revert the ERG target to whatever
-    /// was in force when the block started (captured in `preIntervalTargetW`,
-    /// which preserves any manual trim) and restore the manual `TargetAdjuster`.
+    /// Stop the running block early from the HUD. `IntervalPlayback.stop` returns
+    /// the record-then-revert actions (a no-op outside a running block).
     private func endInterval() {
-        // Record the finished run before clearing state, so it shows on the
-        // summary. Actual length is elapsed-since-start — which is shorter than
-        // the authored total when the rider stopped it (or ended the ride) early.
-        if let session = activeIntervalSession, let startSecond = intervalStartSecond {
-            recorder.recordInterval(session,
-                                    startedAtSecond: startSecond,
-                                    actualSeconds: recorder.elapsed() - startSecond)
-        }
-        let revertTarget = preIntervalTargetW ?? settings.target
-        activeIntervalSession = nil
-        intervalStartSecond = nil
+        apply(playback.stop(atElapsed: recorder.elapsed()))
         currentIntervalState = nil
-        lastCommandedIntervalWatts = nil
-        preIntervalTargetW = nil
-        controller.setTargetPower(revertTarget)
+    }
+
+    /// Apply the intents `IntervalPlayback` returns, in order — the only place
+    /// this view touches the trainer/recorder on the intervals' behalf. Order is
+    /// load-bearing: `recordRun` is always emitted before `revert` so the finished
+    /// run is banked before the target is restored (and before `finish()` locks
+    /// the recording).
+    private func apply(_ actions: [IntervalPlayback.Action]) {
+        for action in actions {
+            switch action {
+            case let .setWatts(watts):
+                controller.setTargetPower(watts)
+            case let .revert(toWatts):
+                controller.setTargetPower(toWatts)
+            case let .recordRun(session, startedAtSecond, actualSeconds):
+                recorder.recordInterval(session,
+                                        startedAtSecond: startedAtSecond,
+                                        actualSeconds: actualSeconds)
+            }
+        }
     }
 
     private func endRide() {
         // If a block is still running, record it (as a stopped-early run) before
         // finishing — `finish()` locks the recording, so an in-progress interval
         // would otherwise be dropped from the summary.
-        if activeIntervalSession != nil { endInterval() }
+        if playback.isRunning { endInterval() }
         let recording = recorder.finish()
         controller.stop()
         // Only persist rides that actually captured data.
