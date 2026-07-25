@@ -137,9 +137,9 @@ struct RideView: View {
             // exported or fed to ERG — the trainer drives those (see
             // `RideMetrics.powerMeterW`).
             HStack(spacing: 16) {
-                Metric(title: "Power",
+                Metric(title: "W/kg",
                        value: wattsPerKgText,
-                       unit: "W/kg")
+                       unit: "")
                 Metric(title: "Speed",
                        value: controller.metrics.speedKph.map { String(format: "%.1f", $0) } ?? "—",
                        unit: "km/h")
@@ -655,7 +655,7 @@ private struct Metric: View {
                 // on a single line on a narrow phone.
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
-            Text("\(title) · \(unit)")
+            Text(unit.isEmpty ? title : "\(title) · \(unit)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

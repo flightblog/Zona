@@ -181,7 +181,7 @@ final class RideSettings {
             hrZone: HRZone(rawValue: defaults.integer(forKey: "hrZone")) ?? .z2Endurance,
             whoopMaxHR: storedMax > 0 ? storedMax : nil,
             whoopRestingHR: storedResting > 0 ? storedResting : nil,
-            weightKg: storedWeight == 0 ? 75 : storedWeight,
+            weightKg: storedWeight == 0 ? 98 : storedWeight,
             whoopWeightKg: storedWhoopWeight > 0 ? storedWhoopWeight : nil,
             appearance: Appearance(rawValue: defaults.integer(forKey: "appearance")) ?? .system)
     }

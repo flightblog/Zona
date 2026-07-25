@@ -68,7 +68,7 @@ public struct RideSettingsState: Sendable, Equatable {
         hrZone: HRZone = .z2Endurance,
         whoopMaxHR: Int? = nil,
         whoopRestingHR: Int? = nil,
-        weightKg: Double = 75,
+        weightKg: Double = 98,
         whoopWeightKg: Double? = nil,
         appearance: Appearance = .system
     ) {
