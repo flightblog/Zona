@@ -89,6 +89,19 @@ public struct IntervalPlayback: Sendable, Equatable {
         return nil
     }
 
+    /// The session settling in a countdown, if any — for the countdown HUD's name.
+    public var countingSession: IntervalSession? {
+        if case let .countdown(session, _, _) = phase { return session }
+        return nil
+    }
+
+    /// Seconds left in the "get ready" countdown, or nil when not counting down —
+    /// for the countdown HUD's number.
+    public var countdownRemaining: Int? {
+        if case let .countdown(_, remaining, _) = phase { return remaining }
+        return nil
+    }
+
     // MARK: Countdown
 
     /// Arm a chosen session with a "get ready" countdown of `seconds` before its
