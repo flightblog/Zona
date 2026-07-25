@@ -69,8 +69,8 @@ App/
 │   │   ├── HRV.swift              # R-R intervals → RMSSD
 │   │   ├── TrainerController.swift # app-facing facade over SensorHub
 │   │   ├── Intervals/
-│   │   │   ├── IntervalSession.swift      # IntervalStep/IntervalSession: repeats × (work, rest)
-│   │   │   ├── IntervalScheduler.swift    # elapsed-seconds → IntervalTargetState (watts via ZoneEngine)
+│   │   │   ├── IntervalSession.swift      # IntervalStep/IntervalSession: free-form step list (+ legacy decode)
+│   │   │   ├── IntervalScheduler.swift    # elapsed-seconds → IntervalTargetState (step index/zone, watts via ZoneEngine)
 │   │   │   ├── IntervalPlayback.swift     # idle→countdown→running lifecycle; returns setWatts/revert/recordRun
 │   │   │   ├── IntervalRun.swift          # a session that actually ran: start second + actual vs planned length
 │   │   │   ├── IntervalAchievement.swift  # slices a run's samples per work/rest step → achieved avg/max W + HR
@@ -377,10 +377,24 @@ Shipped since the first cut (all verified on device unless noted):
   crank goes quiet, so a coast doesn't record fabricated watts — see *Sensors &
   connection behavior* above.
 
-- **Interval sessions (v1)** — a small pre-authored library of `repeats ×
-  (work, rest)` blocks, built in a Setup "Interval sessions" editor and
-  triggered mid-ride (typically near the end of a Z2 ride) from a sheet on the
-  ride screen. Choosing a session opens a short "get ready" countdown (15s, with
+- **Interval sessions** — a small pre-authored library of sessions, each a
+  free-form ordered list of steps (so a warmup, a ramp or a pyramid is
+  expressible, not just a uniform work/rest block), built in a Setup "Interval
+  sessions" editor and triggered mid-ride (typically near the end of a Z2 ride)
+  from a sheet on the ride screen. The editor is an add/remove/reorder step list;
+  an "Add repeats…" shortcut expands the common `n × (work, rest)` shape into
+  ordinary steps, which can then be edited individually. Repeat structure is
+  implicit in the list, but the common uniform set is still *detected*: the ride
+  HUD says "Rep 3 of 4 · REST" when a session is one alternating work/rest pair
+  (mid-set the useful question is how many hard efforts remain, not which step
+  index you're on), and falls back to counting steps and naming each step's zone
+  for a genuinely free-form one. Session summaries collapse the same way —
+  "300s Z2 / 4 × (30s Z5 / 30s Z1) / 600s Z2" rather than spelling out ten steps.
+  Sessions embedded in older finished rides still decode: `IntervalSession`
+  reads the pre-step-list `repeats`/`work`/`rest` shape and flattens it, so past
+  rides keep their interval review (see the note in `CLAUDE.md` — a decode
+  failure there is silent, not loud).
+  Choosing a session opens a short "get ready" countdown (15s, with
   a Cancel) before its first block starts driving ERG, so the power doesn't snap
   up the instant the picker dismisses. `IntervalScheduler` steps the ERG target
   through the block via the ride screen's existing 1 Hz loop, calling

@@ -332,17 +332,23 @@ private struct IntervalRunCard: View {
                     .foregroundStyle(.secondary)
             }
 
-            VStack(spacing: 6) {
-                StepRow(label: "Work", step: run.session.work, engine: engine, tint: .orange)
-                StepRow(label: "Rest", step: run.session.rest, engine: engine, tint: .blue)
-            }
-
-            // What was actually held, rep by rep. Skipped entirely for a run with
-            // no usable samples (an old ride recorded before this shipped, or one
-            // whose sensors were silent) so the card degrades to its v1 shape
-            // rather than showing a grid of dashes.
+            // What was prescribed and what was held, one row per step. A
+            // free-form session can be any shape, so the old fixed Work/Rest
+            // pair of `StepRow`s no longer describes it — the table carries each
+            // step's zone and target itself. Skipped for a run with no usable
+            // samples (sensors silent), leaving just the name + summary line.
             if !rows.isEmpty {
-                AchievedTable(rows: rows, showsLegPower: showsLegPower)
+                AchievedTable(rows: rows, engine: engine, showsLegPower: showsLegPower)
+            } else {
+                // No samples to score against: still show what was prescribed.
+                VStack(spacing: 6) {
+                    ForEach(Array(run.session.steps.enumerated()), id: \.offset) { index, step in
+                        StepRow(label: "Step \(index + 1)",
+                                step: step,
+                                engine: engine,
+                                tint: step.zone.rawValue >= PowerZone.z3Tempo.rawValue ? .orange : .blue)
+                    }
+                }
             }
 
             HStack(spacing: 6) {
@@ -383,13 +389,18 @@ private struct IntervalRunCard: View {
 /// soft-pedalled when the truth is we have no reading.
 private struct AchievedTable: View {
     let rows: [IntervalStepAchievement]
+    /// Resolves each step's prescribed watts from its zone at the ride's FTP —
+    /// the same `ZoneEngine.steadyTarget` call ERG was driven with, so the
+    /// target column shows what was actually commanded.
+    let engine: ZoneEngine
     let showsLegPower: Bool
 
     var body: some View {
         VStack(spacing: 4) {
             HStack(spacing: 0) {
-                Text("ACHIEVED")
-                    .frame(width: 92, alignment: .leading)
+                Text("STEP")
+                    .frame(width: 96, alignment: .leading)
+                Text("target").frame(maxWidth: .infinity, alignment: .trailing)
                 Text("avg W").frame(maxWidth: .infinity, alignment: .trailing)
                 Text("max W").frame(maxWidth: .infinity, alignment: .trailing)
                 // Sits after the trainer's own pair, so the two watt columns it
@@ -404,29 +415,41 @@ private struct AchievedTable: View {
 
             ForEach(rows) { row in
                 HStack(spacing: 0) {
-                    // Rep number only on the work half, so a repeat reads as one
-                    // visual group rather than repeating "Rep 3" twice.
+                    // Step number, its zone, and how long it ran — the
+                    // prescription, since a free-form session has no work/rest
+                    // alternation to label instead.
                     HStack(spacing: 4) {
-                        Text(row.isWork ? "Rep \(row.repeatIndex + 1)" : "")
+                        Text("\(row.stepIndex + 1)")
                             .font(.caption.weight(.medium))
-                            .frame(width: 48, alignment: .leading)
-                        Text(row.isWork ? "work" : "rest")
-                            .font(.caption2)
-                            .foregroundStyle(row.isWork ? .orange : .blue)
+                            .frame(width: 18, alignment: .leading)
+                        Text(row.zone.shortName)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(row.zone.rawValue >= PowerZone.z3Tempo.rawValue
+                                             ? .orange : .blue)
+                        Text(mmss(row.seconds))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
                     }
-                    .frame(width: 92, alignment: .leading)
+                    .frame(width: 96, alignment: .leading)
 
+                    Text("\(engine.steadyTarget(for: row.zone))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                     value(row.avgPowerW)
                     value(row.maxPowerW)
                     if showsLegPower { value(row.avgPowerMeterW) }
                     value(row.avgHeartRateBpm)
                 }
-                .opacity(row.isWork ? 1 : 0.7)
             }
         }
         .padding(.top, 2)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Achieved per repeat")
+        .accessibilityLabel("Achieved per step")
+    }
+
+    private func mmss(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
     private func value(_ v: Int?) -> some View {

@@ -3,8 +3,10 @@ import ZonaKit
 
 /// Setup-side library of rider-authored interval sessions: a small preset list
 /// (e.g. "4x30/30 VO2") built ahead of time here, then triggered mid-ride from
-/// `RideView`. v1 only supports the uniform `repeats × (work, rest)` shape, so
-/// the editor is just a reps stepper and two zone/duration rows.
+/// `RideView`. Sessions are free-form step lists, so warmups, ramps and pyramids
+/// are authorable — the form is an add/remove/reorder list of steps, with an
+/// "Add repeats…" shortcut that expands the common `n × (work, rest)` shape into
+/// ordinary steps.
 struct IntervalEditorView: View {
     @Environment(RideSettings.self) private var settings
     @Environment(IntervalLibrary.self) private var library
@@ -75,32 +77,35 @@ private struct IntervalSessionForm: View {
     let onSave: (IntervalSession) -> Void
 
     @State private var name: String
-    @State private var repeats: Int
-    @State private var workDuration: Int
-    @State private var workZone: PowerZone
-    @State private var restDuration: Int
-    @State private var restZone: PowerZone
+    @State private var steps: [IntervalStep]
+    @State private var showingRepeatBuilder = false
 
     init(ftp: Int, session: IntervalSession? = nil, onSave: @escaping (IntervalSession) -> Void) {
         self.ftp = ftp
         self.session = session
         self.onSave = onSave
         _name = State(initialValue: session?.name ?? "")
-        _repeats = State(initialValue: session?.repeats ?? 4)
-        _workDuration = State(initialValue: session?.work.durationSeconds ?? 30)
-        _workZone = State(initialValue: session?.work.zone ?? .z5VO2Max)
-        _restDuration = State(initialValue: session?.rest.durationSeconds ?? 30)
-        _restZone = State(initialValue: session?.rest.zone ?? .z1Recovery)
+        // A new session starts as the classic 4×30/30 rather than empty — it's
+        // still the most common thing to author, and an empty list is a worse
+        // starting point than one you can edit down.
+        _steps = State(initialValue: session?.steps ?? IntervalSession(
+            name: "",
+            repeats: 4,
+            work: IntervalStep(durationSeconds: 30, zone: .z5VO2Max),
+            rest: IntervalStep(durationSeconds: 30, zone: .z1Recovery)).steps)
     }
 
     private var engine: ZoneEngine { ZoneEngine(ftp: ftp) }
 
-    // The editor enforces valid ranges, not the scheduler — steppers below pin
-    // repeats/durations to their minimums, and this gate covers the one field a
-    // stepper can't (an empty name).
-    private var isValid: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
+    // The editor enforces valid ranges, not the scheduler — the per-step stepper
+    // pins durations to their minimum, and this gate covers what it can't: an
+    // empty name, and a session with no steps at all (which would schedule
+    // nothing and finish instantly).
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && !steps.isEmpty
+    }
 
-    private var totalDuration: Int { repeats * (workDuration + restDuration) }
+    private var totalDuration: Int { steps.reduce(0) { $0 + $1.durationSeconds } }
 
     var body: some View {
         NavigationStack {
@@ -109,20 +114,49 @@ private struct IntervalSessionForm: View {
                     TextField("e.g. 4x30/30 VO2", text: $name)
                 }
 
-                Section("Repeats") {
-                    Stepper(value: $repeats, in: 1...20) {
-                        LabeledContent("Repeats", value: "\(repeats)")
+                Section {
+                    // Steps are edited in place: each row carries its own zone
+                    // picker and duration stepper, and the list supports reorder
+                    // and delete so a warmup/ramp/pyramid is authorable without
+                    // rebuilding the session.
+                    ForEach($steps) { $step in
+                        StepEditorRow(step: $step, engine: engine)
+                    }
+                    .onDelete { steps.remove(atOffsets: $0) }
+                    .onMove { steps.move(fromOffsets: $0, toOffset: $1) }
+
+                    Button {
+                        // New steps copy the last one's shape: authoring a ramp
+                        // means tweaking each new row, not filling it from zero.
+                        steps.append(IntervalStep(
+                            durationSeconds: steps.last?.durationSeconds ?? 60,
+                            zone: steps.last?.zone ?? .z2Endurance))
+                    } label: {
+                        Label("Add step", systemImage: "plus")
+                    }
+
+                    Button {
+                        showingRepeatBuilder = true
+                    } label: {
+                        Label("Add repeats…", systemImage: "repeat")
+                    }
+                } header: {
+                    Text("Steps")
+                } footer: {
+                    if steps.isEmpty {
+                        Text("A session needs at least one step.")
                     }
                 }
 
-                stepSection(title: "Work", duration: $workDuration, zone: $workZone)
-                stepSection(title: "Rest", duration: $restDuration, zone: $restZone)
-
                 Section {
+                    LabeledContent("Steps", value: "\(steps.count)")
                     LabeledContent("Total block time", value: durationText(totalDuration))
                 }
             }
             .formStyle(.grouped)
+            #if os(iOS)
+            .environment(\.editMode, .constant(.active))
+            #endif
             .navigationTitle(session == nil ? "New session" : "Edit session")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -133,6 +167,111 @@ private struct IntervalSessionForm: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save).disabled(!isValid)
+                }
+            }
+            .sheet(isPresented: $showingRepeatBuilder) {
+                RepeatBuilderForm(engine: engine) { steps.append(contentsOf: $0) }
+            }
+        }
+    }
+
+    private func durationText(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private func save() {
+        onSave(IntervalSession(
+            id: session?.id ?? UUID(),
+            name: name.trimmingCharacters(in: .whitespaces),
+            steps: steps))
+        dismiss()
+    }
+}
+
+/// One editable step: zone, duration, and the watts that zone resolves to at the
+/// rider's FTP — the same `steadyTarget` the scheduler will drive ERG with, so
+/// the preview here matches what the ride actually holds.
+private struct StepEditorRow: View {
+    @Binding var step: IntervalStep
+    let engine: ZoneEngine
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Picker("Zone", selection: $step.zone) {
+                    ForEach(PowerZone.allCases) { z in
+                        Text(z.shortName).tag(z)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+
+                Spacer()
+
+                Text("\(engine.steadyTarget(for: step.zone)) W")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Stepper(value: $step.durationSeconds, in: 1...3600, step: 5) {
+                LabeledContent("Duration",
+                               value: String(format: "%d:%02d",
+                                             step.durationSeconds / 60,
+                                             step.durationSeconds % 60))
+                    .font(.caption)
+            }
+        }
+    }
+}
+
+/// Builds a `repeats × (work, rest)` run of steps and appends it to the list —
+/// the shape the old editor authored directly. The model no longer stores
+/// repeats, so this is purely an authoring shortcut that expands into steps;
+/// once added they're ordinary rows and can be edited or reordered individually.
+private struct RepeatBuilderForm: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let engine: ZoneEngine
+    let onAdd: ([IntervalStep]) -> Void
+
+    @State private var repeats = 4
+    @State private var workDuration = 30
+    @State private var workZone: PowerZone = .z5VO2Max
+    @State private var restDuration = 30
+    @State private var restZone: PowerZone = .z1Recovery
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Repeats") {
+                    Stepper(value: $repeats, in: 1...20) {
+                        LabeledContent("Repeats", value: "\(repeats)")
+                    }
+                }
+                stepSection(title: "Work", duration: $workDuration, zone: $workZone)
+                stepSection(title: "Rest", duration: $restDuration, zone: $restZone)
+                Section {
+                    LabeledContent("Adds", value: "\(repeats * 2) steps")
+                    LabeledContent("Total time",
+                                   value: durationText(repeats * (workDuration + restDuration)))
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Add repeats")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        onAdd((0..<repeats).flatMap { _ in
+                            [IntervalStep(durationSeconds: workDuration, zone: workZone),
+                             IntervalStep(durationSeconds: restDuration, zone: restZone)]
+                        })
+                        dismiss()
+                    }
                 }
             }
         }
@@ -154,17 +293,6 @@ private struct IntervalSessionForm: View {
 
     private func durationText(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
-    }
-
-    private func save() {
-        let newSession = IntervalSession(
-            id: session?.id ?? UUID(),
-            name: name.trimmingCharacters(in: .whitespaces),
-            repeats: repeats,
-            work: IntervalStep(durationSeconds: workDuration, zone: workZone),
-            rest: IntervalStep(durationSeconds: restDuration, zone: restZone))
-        onSave(newSession)
-        dismiss()
     }
 }
 

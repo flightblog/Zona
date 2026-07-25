@@ -34,12 +34,12 @@ struct IntervalLibraryStateTests {
 
         var edited = original
         edited.name = "Edited"
-        edited.repeats = 6
+        edited.steps = Array(edited.steps.prefix(2))
         library.update(edited)
 
         #expect(library.sessions.count == 1)
         #expect(library.sessions[0].name == "Edited")
-        #expect(library.sessions[0].repeats == 6)
+        #expect(library.sessions[0].steps.count == 2)
     }
 
     @Test func updateIsANoOpForAnUnknownId() {

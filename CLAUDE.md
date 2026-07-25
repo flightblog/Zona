@@ -82,9 +82,31 @@ HRR-derived zones if connected). A closed-loop HR→watts mode was built and the
 deliberately removed — don't reintroduce it without discussion.
 
 **Interval sessions are the one thing that moves ERG mid-ride, and they revert
-to the *pre-block* target.** A session is `repeats × (work, rest)` steps whose
-watts resolve from `PowerZone` via `ZoneEngine` at scheduling time — never stored
-as raw watts, so a session follows the rider's FTP. `IntervalPlayback` (pure,
+to the *pre-block* target.** A session is a free-form ordered `[IntervalStep]`
+(so warmups, ramps and pyramids are expressible; a uniform `4×30/30` is just
+eight steps, with repeat structure implicit in the list) whose watts resolve from
+`PowerZone` via `ZoneEngine` at scheduling time — never stored as raw watts, so a
+session follows the rider's FTP.
+
+**`IntervalSession`'s decoding is back-compatible and must stay that way.**
+Sessions are persisted twice: the library in `UserDefaults`, and — the
+load-bearing one — snapshotted inside `IntervalRun` on every finished `Ride`, so
+a later library edit can't restate history. Blobs written before the step list
+encode `repeats`/`work`/`rest`, and `Ride.intervalRuns` swallows a decode failure
+as `[]` — so dropping the legacy path in `init(from:)` wouldn't throw, it would
+silently empty the interval review on every older ride. Legacy keys are read,
+never written, so a re-saved session migrates forward. A blob matching *neither*
+shape deliberately **throws**: that same `try?` then drops the run entirely,
+which is honest, where decoding it to an empty session would render a card
+reading "No steps · Stopped early · 0:00 of 0:00" — fabricated history.
+
+Repeat structure is implicit in the list, but `IntervalSession.isUniformSet` /
+`repeatPosition(ofStep:)` still *detect* the common `n × (work, rest)` shape so
+the ride HUD can count reps ("Rep 3 of 4 · REST") instead of steps — mid-set the
+rider wants to know how many hard efforts remain, not a step index. That
+detection lives in `ZonaKit` where it's tested; the view only picks a string.
+Note it requires `work != rest`, so an all-identical session isn't mistaken for a
+work/rest set. `IntervalPlayback` (pure,
 `ZonaKit`) owns the whole `idle → countdown → running → idle` lifecycle as one
 enum rather than the correlated optionals `RideView` used to hold, and returns
 `Action`s (`setWatts` / `revert` / `recordRun`) for the view to apply **in
