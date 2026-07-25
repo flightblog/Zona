@@ -112,7 +112,9 @@ struct RideView: View {
             // than below the secondary ones. (It replaced a live watts/BPM
             // time-series, which was answering a question — "how have I drifted?"
             // — better asked afterwards; the summary still plots the full ride.)
-            HRZoneBar(bpm: controller.metrics.heartRateBpm, zoning: rideZoning)
+            HRZoneBar(bpm: controller.metrics.heartRateBpm,
+                      target: settings.hrZone,
+                      zoning: rideZoning)
 
             // Watts/kg, Speed, Distance, and the secondary SRAM/Quarq readout
             // (power + cadence) all share one line. The SRAM tiles only appear
@@ -397,6 +399,10 @@ struct RideView: View {
 /// the same double-count `secondsPerZone` documents avoiding).
 private struct HRZoneBar: View {
     let bpm: Int?
+    /// The zone the rider is aiming at. Its segment is outlined so the target is
+    /// visible even before a reading arrives, and the handle is tinted by whether
+    /// the live effort is below / on / above it.
+    let target: HRZone
     let zoning: RideHRZoning
 
     /// Where the live BPM sits inside its own zone's band, 0…1 — so the handle
@@ -414,6 +420,11 @@ private struct HRZoneBar: View {
         // confident 0 would. The BPM gauge below is what says "—" in that case.
         let active = bpm.map { zoning.zone(forHR: $0) }
         let handleFraction = bpm.map { fraction(of: $0, in: zoning.bpmRange(for: zoning.zone(forHR: $0))) }
+        // Below / on / above target, from the SAME classifier the BPM dial's
+        // PUSH/HOLD/EASE chip uses — so the bar's handle and that chip can never
+        // disagree about whether the rider is on target. `.noData` when there's no
+        // reading, which leaves the handle hidden anyway.
+        let state = ZoneState(bpm: bpm, target: target, zoning: zoning)
 
         VStack(alignment: .leading, spacing: 10) {
             GeometryReader { geo in
@@ -425,6 +436,17 @@ private struct HRZoneBar: View {
                         ForEach(HRZone.allCases) { zone in
                             Capsule()
                                 .fill(zone == active ? zone.color : zone.color.opacity(0.18))
+                                // Outline the target segment so "where I'm meant to
+                                // be" reads at a glance, distinct from the filled
+                                // "where I am" segment. When the two coincide the
+                                // rider is on target — the filled segment sits
+                                // inside its own outline.
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(zone == target ? Color.primary.opacity(0.55)
+                                                                     : .clear,
+                                                      lineWidth: 2)
+                                )
                         }
                     }
                     .frame(height: 8)
@@ -434,7 +456,8 @@ private struct HRZoneBar: View {
                         let index = CGFloat(active.rawValue - 1)
                         let handleX = segmentWidth * (index + CGFloat(handleFraction))
                         Circle()
-                            .fill(Color.primary)
+                            .fill(state.tint)
+                            .overlay(Circle().strokeBorder(Color.primary.opacity(0.7), lineWidth: 2))
                             .frame(width: 18, height: 18)
                             .offset(x: handleX - 9)
                             .animation(.easeOut(duration: 0.3), value: handleX)
@@ -446,7 +469,7 @@ private struct HRZoneBar: View {
             HStack(spacing: 0) {
                 ForEach(HRZone.allCases) { zone in
                     Text(zone.shortName)
-                        .font(.caption.weight(zone == active ? .bold : .regular))
+                        .font(.caption.weight(zone == active || zone == target ? .bold : .regular))
                         .foregroundStyle(zone == active ? Color.primary : zone.color.opacity(0.7))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -454,8 +477,23 @@ private struct HRZoneBar: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Heart rate")
-        .accessibilityValue(bpm.map { "\($0) beats per minute, \(zoning.zone(forHR: $0).name)" }
-            ?? "No reading")
+        .accessibilityValue(accessibilityValue)
+    }
+
+    /// Spoken as "148 beats per minute, Z2 Endurance, on target" — the on/below/
+    /// above phrase mirrors the dial's PUSH/HOLD/EASE cue so VoiceOver users get
+    /// the same three-way state sighted users read from the handle's colour.
+    private var accessibilityValue: String {
+        guard let bpm else { return "No reading" }
+        let zone = zoning.zone(forHR: bpm)
+        let relation: String
+        switch ZoneState(bpm: bpm, target: target, zoning: zoning) {
+        case .below:  relation = "below target \(target.shortName)"
+        case .inZone: relation = "on target"
+        case .above:  relation = "above target \(target.shortName)"
+        case .noData: relation = ""
+        }
+        return "\(bpm) beats per minute, \(zone.name), \(relation)"
     }
 }
 
