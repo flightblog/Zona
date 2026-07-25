@@ -227,8 +227,8 @@ struct IntervalPlaybackTests {
         var playback = IntervalPlayback()
         _ = playback.start(session(), atElapsed: 100, preTargetW: 165, ftp: ftp)
         let state = playback.currentState(elapsed: 100, ftp: ftp)
-        #expect(state?.isWork == true)
-        #expect(state?.repeatIndex == 0)
+        #expect(state?.stepIndex == 0)
+        #expect(state?.zone == .z5VO2Max)
         #expect(state?.secondsRemainingInStep == 30)
     }
 

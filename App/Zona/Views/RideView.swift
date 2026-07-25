@@ -684,21 +684,48 @@ private struct TargetAdjuster: View {
 }
 
 /// Compact HUD shown in place of `TargetAdjuster` while an interval block owns
-/// the ERG target: which repeat, work or rest, and time left in the step, plus
-/// a way to end the block early without ending the ride.
+/// the ERG target: which step, its zone, and time left in it, plus a way to end
+/// the block early without ending the ride.
+///
+/// For the common uniform session it counts **reps** ("Rep 3 of 4 · REST"),
+/// because mid-set the question is "how many hard efforts left?" and a raw step
+/// number answers that only after arithmetic the rider shouldn't be doing at
+/// threshold. A genuinely free-form session (warmup, ramp, pyramid) has no
+/// work/rest alternation to label, so it falls back to counting steps and naming
+/// the step's zone. `IntervalTargetState.repetition` makes that distinction in
+/// ZonaKit, where it's unit-tested — the view just picks a string.
 private struct IntervalHUD: View {
     let state: IntervalTargetState
     let sessionName: String
     let onStop: () -> Void
+
+    /// One short line, read at a glance mid-effort.
+    private var line: String {
+        let time = mmss(state.secondsRemainingInStep)
+        if let rep = state.repetition {
+            return "Rep \(rep.index + 1) of \(rep.total) · \(rep.isWork ? "WORK" : "REST") · \(time)"
+        }
+        return "Step \(state.stepIndex + 1) of \(state.totalSteps) · \(state.zone.shortName) · \(time)"
+    }
+
+    /// Warm while working, cool while recovering. For a uniform set that's the
+    /// work/rest half; otherwise it falls back to the zone's intensity — the
+    /// same orange/blue split the summary's step rows use, without inventing a
+    /// PowerZone→Color ramp (PowerZone has 7 cases to HRZone's 5, so they don't
+    /// map cleanly onto `HRZone.color`).
+    private var tint: Color {
+        if let rep = state.repetition { return rep.isWork ? .orange : .blue }
+        return state.zone.rawValue >= PowerZone.z3Tempo.rawValue ? .orange : .blue
+    }
 
     var body: some View {
         VStack(spacing: 10) {
             Text(sessionName)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text("Interval \(state.repeatIndex + 1) of \(state.totalRepeats) · \(state.isWork ? "WORK" : "REST") · \(mmss(state.secondsRemainingInStep))")
+            Text(line)
                 .font(.title3.weight(.bold).monospacedDigit())
-                .foregroundStyle(state.isWork ? .orange : .blue)
+                .foregroundStyle(tint)
                 .contentTransition(.numericText())
             Button(role: .destructive, action: onStop) {
                 Text("Stop intervals")

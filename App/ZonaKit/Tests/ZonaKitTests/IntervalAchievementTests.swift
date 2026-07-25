@@ -27,8 +27,8 @@ struct IntervalAchievementTests {
         let got = IntervalAchievement.perStep(run: run, samples: [])
 
         #expect(got.count == 4)
-        #expect(got.map(\.repeatIndex) == [0, 0, 1, 1])
-        #expect(got.map(\.isWork) == [true, false, true, false])
+        #expect(got.map(\.stepIndex) == [0, 1, 2, 3])
+        #expect(got.map(\.zone) == [.z5VO2Max, .z1Recovery, .z5VO2Max, .z1Recovery])
         #expect(got.allSatisfy { $0.seconds == 2 })
     }
 
@@ -206,7 +206,7 @@ struct IntervalAchievementTests {
         let got = IntervalAchievement.perStep(run: run, samples: [sample(0, power: 120)])
 
         #expect(got.count == 1)
-        #expect(got[0].isWork == false)
+        #expect(got[0].zone == .z1Recovery)
         #expect(got[0].seconds == 3)
     }
 

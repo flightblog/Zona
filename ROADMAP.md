@@ -44,10 +44,19 @@ summarized but not charted).
     meter was paired. Missing readings report nil and render "—", never 0: the
     meter expires on a coast and a strap can drop, and averaging a gap as zero
     would fabricate watts the rider never held.
+  - **A general `[IntervalStep]` model** for warmups, ramps, and pyramids.
+    ✅ _Shipped (PR #110)._ `IntervalSession` now holds a free-form ordered step
+    list instead of `repeats × (work, rest)`; repeat structure is implicit (a
+    uniform 4×30/30 is simply eight steps). The editor became an
+    add/remove/reorder list with an "Add repeats…" shortcut that expands the
+    common shape into ordinary steps. The HUD and summary count steps and name
+    zones, since there's no longer a work/rest alternation to label.
+    `IntervalSession.init(from:)` still decodes the old shape — sessions are
+    snapshotted into `IntervalRun` on every finished ride, and a decode failure
+    there is silent (`[]`), so that path is load-bearing for old rides' reviews.
   Remaining as a natural v2:
-  - A general `[IntervalStep]` model for warmups, ramps, and pyramids (today's
-    shape is uniform work/rest only), plus **workout import/export
-    (.zwo / .erg / .mrc)** below.
+  - **Workout import/export (.zwo / .erg / .mrc)** below — now unblocked, since
+    those formats describe exactly this kind of free-form step list.
 - **Workout import/export (.zwo / .erg / .mrc).** Import standard workout files so
   sessions don't all have to be authored in-app. Reuses the XML-handling patterns
   proven in `TCXExporter`.

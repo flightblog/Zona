@@ -10,12 +10,14 @@ import Foundation
 /// readings reports nil rather than 0 — "we don't know" and "you held zero
 /// watts" are different claims, and the summary renders the former as "—".
 public struct IntervalStepAchievement: Sendable, Equatable, Identifiable {
-    /// 0-based repeat this step belongs to, matching
-    /// `IntervalTargetState.repeatIndex`.
-    public let repeatIndex: Int
-    /// True for the work half of the repeat, false for the rest half — the same
-    /// `index % 2 == 0` split `IntervalScheduler` uses.
-    public let isWork: Bool
+    /// 0-based index into the session's `steps`, matching
+    /// `IntervalTargetState.stepIndex`. A free-form session has no inherent
+    /// repeat structure, so a step is identified by its position, not by a
+    /// rep number and a work/rest flag.
+    public let stepIndex: Int
+    /// The zone this step prescribed, so the summary can label the row without
+    /// re-reading the session alongside.
+    public let zone: PowerZone
     /// Seconds of this step that actually elapsed. Less than the authored
     /// duration when the run was stopped (or the ride ended) partway through it;
     /// the step is still reported, over the seconds it did run.
@@ -42,10 +44,10 @@ public struct IntervalStepAchievement: Sendable, Equatable, Identifiable {
     /// `maxPowerMeterW`.
     public let maxHeartRateBpm: Int?
 
-    public var id: String { "\(repeatIndex)-\(isWork)" }
+    public var id: Int { stepIndex }
 
-    public init(repeatIndex: Int,
-                isWork: Bool,
+    public init(stepIndex: Int,
+                zone: PowerZone,
                 seconds: Int,
                 avgPowerW: Int?,
                 maxPowerW: Int?,
@@ -53,8 +55,8 @@ public struct IntervalStepAchievement: Sendable, Equatable, Identifiable {
                 maxPowerMeterW: Int?,
                 avgHeartRateBpm: Int?,
                 maxHeartRateBpm: Int?) {
-        self.repeatIndex = repeatIndex
-        self.isWork = isWork
+        self.stepIndex = stepIndex
+        self.zone = zone
         self.seconds = seconds
         self.avgPowerW = avgPowerW
         self.maxPowerW = maxPowerW
@@ -75,18 +77,17 @@ public struct IntervalStepAchievement: Sendable, Equatable, Identifiable {
 ///
 /// Pure and stateless, like `IntervalScheduler` — which is deliberate, because
 /// this must carve the run's window on *exactly* the boundaries the scheduler
-/// drove ERG on. It walks the same flattened `session.steps` sequence with the
-/// same running cursor, so rep 3's work half here is the identical second-range
-/// rep 3's work half was commanded over. Deriving boundaries any other way (e.g.
-/// dividing the elapsed time by the repeat count) would drift against a run that
-/// was stopped early, and silently misattribute samples to the wrong rep.
+/// drove ERG on. It walks the same `session.steps` sequence with the same
+/// running cursor, so step 5 here is the identical second-range step 5 was
+/// commanded over. Deriving boundaries any other way (e.g. dividing the elapsed
+/// time by the step count) would drift against a run that was stopped early, and
+/// silently misattribute samples to the wrong step.
 public struct IntervalAchievement: Sendable {
-    /// Per-step achieved figures for `run`, in ride order (rep 0 work, rep 0
-    /// rest, rep 1 work, …).
+    /// Per-step achieved figures for `run`, in ride order (step 0, step 1, …).
     ///
     /// Steps the run never reached are omitted entirely rather than reported as
-    /// empty rows: a 4×30/30 stopped after two reps returns four entries, not
-    /// eight, so "what you did" doesn't pad itself out with what you didn't.
+    /// empty rows: an eight-step session stopped after four returns four
+    /// entries, so "what you did" doesn't pad itself out with what you didn't.
     /// A partially-ridden step *is* included, over the seconds it ran.
     ///
     /// `samples` may be the whole ride's — it's filtered to each step's window
@@ -118,8 +119,8 @@ public struct IntervalAchievement: Sendable {
             let window = samples.filter { $0.secondsFromStart >= from && $0.secondsFromStart < until }
 
             result.append(IntervalStepAchievement(
-                repeatIndex: index / 2,
-                isWork: index % 2 == 0,
+                stepIndex: index,
+                zone: step.zone,
                 seconds: ranSeconds,
                 avgPowerW: average(window.compactMap(\.powerW)),
                 maxPowerW: window.compactMap(\.powerW).max(),
