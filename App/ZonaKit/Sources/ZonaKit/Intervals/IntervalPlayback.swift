@@ -185,12 +185,13 @@ public struct IntervalPlayback: Sendable, Equatable {
     /// (`preTargetW`) so ending reverts to *that* — preserving any mid-ride
     /// `TargetAdjuster` trim — and applying the first step's watts right away.
     /// `preTargetW` is the caller's current ERG setpoint (nil coalesces to the
-    /// scheduler's first-step watts only if the caller has none). Used both by
-    /// the countdown reaching 0 and by any direct start.
-    public mutating func start(_ session: IntervalSession,
-                               atElapsed elapsed: Int,
-                               preTargetW: Int?,
-                               ftp: Int) -> [Action] {
+    /// scheduler's first-step watts only if the caller has none). Driven by the
+    /// countdown reaching 0 (`tick`); internal so the app starts a session only
+    /// via the countdown, never straight into a block.
+    mutating func start(_ session: IntervalSession,
+                        atElapsed elapsed: Int,
+                        preTargetW: Int?,
+                        ftp: Int) -> [Action] {
         let scheduler = IntervalScheduler(session: session, ftp: ftp)
         // Capture the pre-block target so end() can restore it. Fall back to the
         // first step's watts if the caller genuinely has no ERG target yet, so
