@@ -128,14 +128,18 @@ struct RideView: View {
             // — better asked afterwards; the summary still plots the full ride.)
             HRZoneBar(bpm: controller.metrics.heartRateBpm, zoning: rideZoning)
 
-            // Speed, Distance, and the secondary SRAM/Quarq readout (power +
-            // cadence) all share one line. The SRAM tiles only appear when the
-            // meter is connected and reporting; when it is, four tiles have to
-            // fit across a phone, so the row scales its font down to keep them on
-            // one line. The meter's watts are recorded as leg power on their own
-            // channel (its cadence stays display-only), but neither is exported or
-            // fed to ERG — the trainer drives those (see `RideMetrics.powerMeterW`).
+            // Watts/kg, Speed, Distance, and the secondary SRAM/Quarq readout
+            // (power + cadence) all share one line. The SRAM tiles only appear
+            // when the meter is connected and reporting; when it is, five tiles
+            // have to fit across a phone, so the row scales its font down to keep
+            // them on one line. The meter's watts are recorded as leg power on
+            // their own channel (its cadence stays display-only), but neither is
+            // exported or fed to ERG — the trainer drives those (see
+            // `RideMetrics.powerMeterW`).
             HStack(spacing: 16) {
+                Metric(title: "W/kg",
+                       value: wattsPerKgText,
+                       unit: "")
                 Metric(title: "Speed",
                        value: controller.metrics.speedKph.map { String(format: "%.1f", $0) } ?? "—",
                        unit: "km/h")
@@ -345,7 +349,8 @@ struct RideView: View {
         controller.stop()
         // Only persist rides that actually captured data.
         guard !recording.samples.isEmpty else { return }
-        let ride = Ride.make(from: recording, zoning: rideZoning, hrZone: settings.hrZone)
+        let ride = Ride.make(from: recording, zoning: rideZoning, hrZone: settings.hrZone,
+                            weightKg: settings.effectiveWeightKg)
         modelContext.insert(ride)
         try? modelContext.save()
         savedRide = ride
@@ -390,6 +395,14 @@ struct RideView: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// Live watts-per-kilogram, using WHOOP's body weight when available (see
+    /// `RideSettings.effectiveWeightKg`), else the manually entered weight. "—"
+    /// with no trainer reading, same as the other live tiles.
+    private var wattsPerKgText: String {
+        PowerPerWeight.wattsPerKg(watts: controller.metrics.powerW, weightKg: settings.effectiveWeightKg)
+            .map { String(format: "%.1f", $0) } ?? "—"
     }
 
     private var wattTarget: Int { controller.metrics.targetW ?? settings.target }
@@ -642,7 +655,7 @@ private struct Metric: View {
                 // on a single line on a narrow phone.
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
-            Text("\(title) · \(unit)")
+            Text(unit.isEmpty ? title : "\(title) · \(unit)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

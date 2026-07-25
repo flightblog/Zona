@@ -49,6 +49,13 @@ public struct RideSettingsState: Sendable, Equatable {
     public var whoopMaxHR: Int?
     /// Resting HR fetched from WHOOP, or nil if never fetched.
     public var whoopRestingHR: Int?
+    /// Rider body weight, manually entered — the fallback used whenever
+    /// `whoopWeightKg` hasn't been fetched.
+    public var weightKg: Double
+    /// Body weight fetched from WHOOP's body-measurement endpoint, or nil if never
+    /// fetched. Takes priority over `weightKg` (see `effectiveWeightKg`), the same
+    /// "holding the number is the decision to use it" shape as `whoopMaxHR`.
+    public var whoopWeightKg: Double?
     /// Light/dark appearance.
     public var appearance: Appearance
 
@@ -61,6 +68,8 @@ public struct RideSettingsState: Sendable, Equatable {
         hrZone: HRZone = .z2Endurance,
         whoopMaxHR: Int? = nil,
         whoopRestingHR: Int? = nil,
+        weightKg: Double = 98,
+        whoopWeightKg: Double? = nil,
         appearance: Appearance = .system
     ) {
         self.ftp = ftp
@@ -70,6 +79,8 @@ public struct RideSettingsState: Sendable, Equatable {
         self.hrZone = hrZone
         self.whoopMaxHR = whoopMaxHR
         self.whoopRestingHR = whoopRestingHR
+        self.weightKg = weightKg
+        self.whoopWeightKg = whoopWeightKg
         self.appearance = appearance
     }
 
@@ -125,9 +136,25 @@ public struct RideSettingsState: Sendable, Equatable {
         whoopRestingHR = restingHR
     }
 
-    /// Forget the WHOOP inputs and revert to manual LTHR zones ("Disconnect").
+    /// Store body weight fetched from WHOOP. Called alongside `storeWhoopInputs`
+    /// on every WHOOP fetch, when WHOOP's body-measurement response includes one
+    /// (it's optional on WHOOP's side too).
+    public mutating func storeWhoopWeight(_ kg: Double) {
+        whoopWeightKg = kg
+    }
+
+    /// Forget everything WHOOP told us and revert to manual inputs ("Disconnect"):
+    /// LTHR zones instead of WHOOP's HRR bands, and the manually-entered weight
+    /// instead of WHOOP's body measurement.
     public mutating func clearWhoopZones() {
         whoopMaxHR = nil
         whoopRestingHR = nil
+        whoopWeightKg = nil
     }
+
+    // MARK: Weight
+
+    /// The weight actually used for watts-per-kilogram: WHOOP's body measurement
+    /// when available, else the manually entered value.
+    public var effectiveWeightKg: Double { whoopWeightKg ?? weightKg }
 }

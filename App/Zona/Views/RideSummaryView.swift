@@ -42,6 +42,9 @@ struct RideSummaryView: View {
                     Stat(label: "Avg power", value: "\(ride.avgPowerW) W")
                     Stat(label: "Normalized", value: "\(ride.normalizedPowerW) W")
                     Stat(label: "Max power", value: "\(ride.maxPowerW) W")
+                    // "—" for rides recorded before weight tracking was added.
+                    Stat(label: "Avg W/kg", value: formatted(ride.avgPowerPerKg))
+                    Stat(label: "Normalized W/kg", value: formatted(ride.normalizedPowerPerKg))
                     Stat(label: "Total Time in \(ride.zone.shortName) (power)",
                          value: minutesSeconds(ride.timeInZoneSec))
                 }
@@ -126,6 +129,10 @@ struct RideSummaryView: View {
 
     private func minutesSeconds(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private func formatted(_ wattsPerKg: Double?) -> String {
+        wattsPerKg.map { String(format: "%.1f W/kg", $0) } ?? "—"
     }
 }
 

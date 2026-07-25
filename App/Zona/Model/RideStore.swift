@@ -60,6 +60,14 @@ final class Ride {
     var maxPowerMeterW: Int?
     var normalizedPowerMeterW: Int?
 
+    /// Rider body weight (kg) at the time of the ride, for watts-per-kilogram —
+    /// captured per-ride rather than read from current settings, same reasoning
+    /// as `whoopMaxHR`/`whoopRestingHR` above: a later weight change (or a WHOOP
+    /// re-sync) shouldn't retroactively rescore an old ride's W/kg. Optional with
+    /// no default keeps it CloudKit-safe and lightweight-migrates existing rides
+    /// to nil (which reads as "—", never a fabricated ratio).
+    var weightKg: Double?
+
     /// The interval sessions that ran during this ride, JSON-encoded, or nil for
     /// a plain steady ride. Stored as a single `Data` blob rather than a SwiftData
     /// relationship: a ride has at most a handful of runs, they're read only as a
@@ -101,6 +109,7 @@ final class Ride {
          avgPowerMeterW: Int? = nil,
          maxPowerMeterW: Int? = nil,
          normalizedPowerMeterW: Int? = nil,
+         weightKg: Double? = nil,
          intervalRunsData: Data? = nil,
          stravaActivityId: Int64? = nil,
          stravaUploadedAt: Date? = nil) {
@@ -125,6 +134,7 @@ final class Ride {
         self.avgPowerMeterW = avgPowerMeterW
         self.maxPowerMeterW = maxPowerMeterW
         self.normalizedPowerMeterW = normalizedPowerMeterW
+        self.weightKg = weightKg
         self.intervalRunsData = intervalRunsData
         self.stravaActivityId = stravaActivityId
         self.stravaUploadedAt = stravaUploadedAt
@@ -157,6 +167,18 @@ final class Ride {
 
     var timeInHRZoneFraction: Double {
         durationSec > 0 ? Double(timeInHRZoneSec) / Double(durationSec) : 0
+    }
+
+    /// Average watts per kilogram, or nil when the ride predates weight tracking
+    /// (see `weightKg`).
+    var avgPowerPerKg: Double? {
+        PowerPerWeight.wattsPerKg(watts: avgPowerW, weightKg: weightKg)
+    }
+
+    /// Normalized watts per kilogram, or nil when the ride predates weight
+    /// tracking (see `weightKg`).
+    var normalizedPowerPerKg: Double? {
+        PowerPerWeight.wattsPerKg(watts: normalizedPowerW, weightKg: weightKg)
     }
 }
 
@@ -220,7 +242,10 @@ extension Ride {
     /// target `hrZone`, which live in settings rather than the recording; the
     /// WHOOP inputs are stored on the ride so it stays scored against the bands it
     /// was ridden against even if WHOOP is later refreshed or disconnected.
-    static func make(from recording: RideRecording, zoning: RideHRZoning, hrZone: HRZone) -> Ride {
+    /// `weightKg` is likewise the rider's weight at ride time, stamped onto the
+    /// ride rather than read live at summary time — see `weightKg`'s doc comment.
+    static func make(from recording: RideRecording, zoning: RideHRZoning, hrZone: HRZone,
+                      weightKg: Double) -> Ride {
         let summary = recording.summary()
         let ride = Ride(
             date: recording.startedAt,
@@ -243,6 +268,7 @@ extension Ride {
             avgPowerMeterW: summary.averagePowerMeterW,
             maxPowerMeterW: summary.maxPowerMeterW,
             normalizedPowerMeterW: summary.normalizedPowerMeterW,
+            weightKg: weightKg,
             // nil (not an empty-array blob) for a steady ride, so the summary's
             // interval section stays hidden and old rides migrate to "no intervals".
             intervalRunsData: recording.intervalRuns.isEmpty

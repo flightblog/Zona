@@ -64,21 +64,31 @@ actor WhoopService {
 
     // MARK: Zone inputs
 
-    /// Max HR plus the latest recovery in one shot — max HR and the recovery page
-    /// are fetched concurrently, and the recovery page is decoded once for both
-    /// resting HR (zones) and the readiness display. `recovery` is nil when WHOOP
-    /// has no scored recovery yet. This is the single "refresh" call the UI makes.
-    func fetchZonesAndRecovery() async throws -> (maxHR: Int, recovery: WhoopRecovery?) {
-        async let maxHR = fetchMaxHR()
+    /// Max HR and body weight plus the latest recovery in one shot — the body
+    /// measurement and the recovery page are fetched concurrently, and the
+    /// recovery page is decoded once for both resting HR (zones) and the
+    /// readiness display. `recovery` is nil when WHOOP has no scored recovery
+    /// yet; `weightKg` is nil when WHOOP has no weight on file for the account
+    /// (it's optional on WHOOP's side too). This is the single "refresh" call
+    /// the UI makes.
+    func fetchZonesAndRecovery() async throws -> (maxHR: Int, weightKg: Double?, recovery: WhoopRecovery?) {
+        async let measurement = fetchBodyMeasurement()
         async let recovery = fetchRecovery()
-        return try await (maxHR, recovery)
+        let (body, recoveryResult) = try await (measurement, recovery)
+        return (body.maxHeartRate, body.weightKilogram, recoveryResult)
     }
 
     /// `GET /v2/user/measurement/body` → max heart rate.
     func fetchMaxHR() async throws -> Int {
+        try await fetchBodyMeasurement().maxHeartRate
+    }
+
+    /// `GET /v2/user/measurement/body`, decoded once and shared by `fetchMaxHR`
+    /// and `fetchZonesAndRecovery`.
+    private func fetchBodyMeasurement() async throws -> WhoopBodyMeasurement {
         let url = Self.apiBase.appendingPathComponent("v2/user/measurement/body")
         let data = try await authorizedGet(url)
-        return try decode(WhoopBodyMeasurement.self, from: data).maxHeartRate
+        return try decode(WhoopBodyMeasurement.self, from: data)
     }
 
     /// `GET /v2/recovery` (newest first) → resting HR from the latest scored
