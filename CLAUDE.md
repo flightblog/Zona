@@ -141,6 +141,19 @@ Notable behaviors baked into it, worth knowing before touching connection logic:
   trainer itself grab that slot (and, via `SensorMemoryStore.remember`,
   permanently lock the real standalone meter out of it on every future ride).
 
+**One classifier decides every HR zone, and one state decides "on target".**
+`RideHRZoning.zone(forHR:)` is the *only* thing that turns a BPM reading into a
+zone — `bpmRange` is for display and for positioning the zone bar's handle
+*within* its segment, never for classification. Bands are inclusive at both ends
+and Friel Z1's floor is 0, so scanning them to classify misreads every rounded
+band edge (a past bug lit Z5 at the LTHR boundary). Likewise, whether the rider
+is below/on/above target comes from the shared `ZoneState(bpm:target:zoning:)` —
+the BPM dial's PUSH/HOLD/EASE chip, the zone bar's outlined target segment and
+tinted handle, and its VoiceOver phrase all read that one value. Don't add a
+parallel `activeZone == target` comparison anywhere: the whole point is that the
+dial, the zone bar, the live "In zone" timer, and the summary's time-in-zone
+agree beat-for-beat.
+
 **Concurrency (Swift 6, strict).** `SensorHub` / `TrainerController` are
 `@MainActor @Observable`. All CoreBluetooth objects (`CBCentralManager`,
 `CBPeripheral`, `CBCharacteristic`) live inside a private `MultiBLEManager` on a

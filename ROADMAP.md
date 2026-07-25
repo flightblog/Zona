@@ -114,10 +114,14 @@ summarized but not charted).
   with the zone bar below — mid-ride you're steering to a zone, not reading a trend,
   and the drift question is better asked afterwards, which the summary still answers.
 - **Live HR zone bar.** ✅ _Shipped (PR #65, trimmed in #66, took the chart's slot in
-  #67); verified on device._ A segmented Z1–Z5 bar on the ride screen with a handle
-  marking where the current effort sits inside its zone — the "which zone am I in
-  *right now*?" readout, complementing the `ZoneGauge` dials ("am I inside my
-  *target* band?"). It classifies through `RideHRZoning.zone(forHR:)`, i.e. the exact
+  #67, target marked in #107); verified on device._ A segmented Z1–Z5 bar on the ride
+  screen with a handle marking where the current effort sits inside its zone, plus
+  the **target zone** marked by an outlined segment, a below/on/above-tinted handle,
+  and a bolded label — so the bar now answers both "which zone am I in *right now*?"
+  and "am I where I'm meant to be?" that previously needed the `ZoneGauge` dials.
+  That on-target state comes from the same `ZoneState` the dials' PUSH/HOLD/EASE cue
+  reads, never a parallel comparison, so the two can't disagree at a band edge.
+  It classifies through `RideHRZoning.zone(forHR:)`, i.e. the exact
   classifier the ride's own time-in-zone scoring uses, so the bar can never name a
   different zone than the ride records for the same beat. **Don't classify a reading
   by scanning `bpmRange`s** — the bands are inclusive at both ends and Friel's Z1
