@@ -11,11 +11,11 @@ import Foundation
 ///
 /// `startedAtSecond` + `actualSeconds` also delimit the run's window into the
 /// ride's samples (`RideRecording.samples` / `Ride.samples` share the same
-/// seconds-from-start axis). That's deliberate headroom for a planned follow-on:
-/// slicing those samples to show *achieved* avg/max watts and HR per block
-/// beside the prescribed target the summary review already lists (see the
-/// interval-sessions v2 note in `ROADMAP.md`). Nothing reads the window that way
-/// yet — the review is prescription-only today.
+/// seconds-from-start axis). `IntervalAchievement.perStep` reads exactly that
+/// window to report *achieved* avg/max watts and HR per work/rest step, beside
+/// the prescribed target the summary review lists — so these two fields are load-
+/// bearing for more than the completed/stopped-early footer now. Changing how
+/// either is recorded would misattribute samples to the wrong repeat.
 public struct IntervalRun: Sendable, Equatable, Codable, Identifiable {
     public var id: UUID
     /// The session as it was ridden, captured at run time so a later edit to (or

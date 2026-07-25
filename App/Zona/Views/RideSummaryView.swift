@@ -13,6 +13,19 @@ struct RideSummaryView: View {
     @State private var strava: StravaUploadModel?
     @State private var showDeleteConfirmation = false
 
+    /// The ride's stored samples bridged to `ZonaKit`'s pure `RideSample`, so the
+    /// interval review can slice them per step. Only built when a run exists —
+    /// most rides have none, and this walks every second of the ride.
+    private var intervalSamples: [RideSample] {
+        guard !ride.intervalRuns.isEmpty else { return [] }
+        return (ride.samples ?? []).map {
+            RideSample(secondsFromStart: $0.secondsFromStart,
+                       powerW: $0.powerW,
+                       heartRateBpm: $0.heartRateBpm,
+                       powerMeterW: $0.powerMeterW)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -61,7 +74,9 @@ struct RideSummaryView: View {
 
                 // Interval review — only for rides that actually ran a session.
                 if !ride.intervalRuns.isEmpty {
-                    IntervalReview(runs: ride.intervalRuns, ftp: ride.ftp)
+                    IntervalReview(runs: ride.intervalRuns,
+                                   ftp: ride.ftp,
+                                   samples: intervalSamples)
                         .padding(.horizontal)
                 }
 
@@ -266,13 +281,16 @@ private struct IntervalReview: View {
     /// The ride's FTP, so each step's target watts can be shown the same way ERG
     /// held them (`ZoneEngine.steadyTarget`) — the runs store zones, not watts.
     let ftp: Int
+    /// The ride's samples, sliced per step to show what was actually held. Passed
+    /// down whole; `IntervalAchievement` windows them to each run.
+    let samples: [RideSample]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Intervals")
                 .font(.headline)
             ForEach(runs) { run in
-                IntervalRunCard(run: run, ftp: ftp)
+                IntervalRunCard(run: run, ftp: ftp, samples: samples)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -286,7 +304,24 @@ private struct IntervalRunCard: View {
     let run: IntervalRun
     let ftp: Int
 
-    private var engine: ZoneEngine { ZoneEngine(ftp: ftp) }
+    private let engine: ZoneEngine
+    /// Sliced ONCE, in `init` — not as a computed property. `perStep` scans every
+    /// sample in the ride, and a computed property would re-run that on each
+    /// layout pass; that exact mistake froze the summary on long rides when the
+    /// chart's points were computed per-render (see `PowerChart`'s note). Already
+    /// filtered to the rows worth drawing.
+    private let rows: [IntervalStepAchievement]
+    private let showsLegPower: Bool
+
+    init(run: IntervalRun, ftp: Int, samples: [RideSample]) {
+        self.run = run
+        self.ftp = ftp
+        self.engine = ZoneEngine(ftp: ftp)
+        let achieved = IntervalAchievement.perStep(run: run, samples: samples)
+            .filter { !$0.isEmpty }
+        self.rows = achieved
+        self.showsLegPower = achieved.contains { $0.avgPowerMeterW != nil }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -300,6 +335,14 @@ private struct IntervalRunCard: View {
             VStack(spacing: 6) {
                 StepRow(label: "Work", step: run.session.work, engine: engine, tint: .orange)
                 StepRow(label: "Rest", step: run.session.rest, engine: engine, tint: .blue)
+            }
+
+            // What was actually held, rep by rep. Skipped entirely for a run with
+            // no usable samples (an old ride recorded before this shipped, or one
+            // whose sensors were silent) so the card degrades to its v1 shape
+            // rather than showing a grid of dashes.
+            if !rows.isEmpty {
+                AchievedTable(rows: rows, showsLegPower: showsLegPower)
             }
 
             HStack(spacing: 6) {
@@ -319,6 +362,77 @@ private struct IntervalRunCard: View {
 
     private func mmss(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// The achieved figures, one row per work/rest step of each repeat — what the
+/// rider actually held against the prescription listed above it.
+///
+/// Every column names both its **channel** and its **statistic**, because the
+/// trainer and the crank meter are parallel channels that legitimately disagree
+/// (the meter reads a few watts high by design), and a bare "W" or "bpm" beside
+/// them invites reading one as the other's peak. So: `avg W`/`max W` are the
+/// trainer's, `leg avg W` is the meter's, and HR is explicitly `avg bpm` —
+/// average, not peak, since across a set it's drift that's informative while the
+/// peak is mostly noise.
+///
+/// The leg column only appears when a crank meter was paired for at least part
+/// of the run; without one the table stays three columns wide instead of showing
+/// a dash per row. Missing values read "—" rather than 0: the meter expires on a
+/// coast and a strap can drop, and printing 0 W would claim the rider
+/// soft-pedalled when the truth is we have no reading.
+private struct AchievedTable: View {
+    let rows: [IntervalStepAchievement]
+    let showsLegPower: Bool
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 0) {
+                Text("ACHIEVED")
+                    .frame(width: 92, alignment: .leading)
+                Text("avg W").frame(maxWidth: .infinity, alignment: .trailing)
+                Text("max W").frame(maxWidth: .infinity, alignment: .trailing)
+                // Sits after the trainer's own pair, so the two watt columns it
+                // parallels read together rather than being split by it.
+                if showsLegPower {
+                    Text("leg avg W").frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                Text("avg bpm").frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+
+            ForEach(rows) { row in
+                HStack(spacing: 0) {
+                    // Rep number only on the work half, so a repeat reads as one
+                    // visual group rather than repeating "Rep 3" twice.
+                    HStack(spacing: 4) {
+                        Text(row.isWork ? "Rep \(row.repeatIndex + 1)" : "")
+                            .font(.caption.weight(.medium))
+                            .frame(width: 48, alignment: .leading)
+                        Text(row.isWork ? "work" : "rest")
+                            .font(.caption2)
+                            .foregroundStyle(row.isWork ? .orange : .blue)
+                    }
+                    .frame(width: 92, alignment: .leading)
+
+                    value(row.avgPowerW)
+                    value(row.maxPowerW)
+                    if showsLegPower { value(row.avgPowerMeterW) }
+                    value(row.avgHeartRateBpm)
+                }
+                .opacity(row.isWork ? 1 : 0.7)
+            }
+        }
+        .padding(.top, 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Achieved per repeat")
+    }
+
+    private func value(_ v: Int?) -> some View {
+        Text(v.map(String.init) ?? "—")
+            .font(.caption.monospacedDigit())
+            .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 

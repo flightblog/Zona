@@ -99,8 +99,15 @@ order**. Two rules are encoded there and are easy to regress:
 Choosing a session arms a cancelable 15s "get ready" countdown before the first
 block drives ERG. Runs that happened are persisted per-ride (`IntervalRun`, a
 JSON blob in `Ride.intervalRunsData`) and reviewed on the summary — display only;
-the ride is still scored as one block, and per-block achieved power/HR is a
-deliberate v2 follow-on.
+the ride is still scored as one block. That review shows both the prescription
+and what was *achieved*: `IntervalAchievement.perStep` (pure, `ZonaKit`) slices
+the run's sample window per work/rest step by walking the same flattened
+`session.steps` cursor `IntervalScheduler` drove ERG on — never by dividing
+elapsed time by the repeat count, which would drift on a run stopped early and
+misattribute samples to the wrong repeat. Every achieved figure is optional and
+renders "—" when absent: a step with no readings must not report 0, since the
+crank meter expires on a coast and a strap can drop, and averaging a gap as zero
+fabricates watts the rider never held.
 
 **`SensorHub` manages multiple independent BLE sensors over one
 `CBCentralManager`**, keyed by `SensorKind` (`trainer` / `heartRate` /
