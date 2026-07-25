@@ -33,6 +33,32 @@ power setpoint (FTMS ERG from FTP); HR only *defines and displays* the target
 zone. A closed-loop HR→watts mode was built and deliberately removed — flag any
 reintroduction of HR-driving-power.
 
+**Interval sessions are the only mid-ride ERG writer.** Two ordering rules live
+in `IntervalPlayback` and are easy to regress:
+- Ending a block reverts to `preTargetW` — the target in force when the block
+  *started*, captured on the countdown path too — never to `settings.target`.
+  Reverting to the steady target silently discards a mid-ride `TargetAdjuster`
+  trim. Flag any revert that reads settings instead of the captured value.
+- `recordRun` is emitted *before* the accompanying `revert`, and callers must
+  apply a returned `[Action]` **in order**. Flag a caller that reorders or
+  filters them.
+
+Interval step watts resolve from `PowerZone` via `ZoneEngine` at scheduling time
+— flag raw watts stored on a step, which would stop sessions tracking FTP. The
+ride is still scored end-to-end as one block (no TCX laps, no `RideSummary`
+changes); the summary's interval review is display-only.
+
+## Per-ride data invariants
+
+**Rider-describing values are stamped onto the `Ride`, not read live at summary
+time** — `weightKg`, `whoopMaxHR`/`whoopRestingHR`, and the HR-zone model. Flag a
+summary that resolves any of these from current settings: it would retroactively
+rewrite finished rides when the rider's weight changes or WHOOP reconnects.
+
+**New `Ride` fields must be optional with no default** — that's what keeps the
+CloudKit mirror valid and lets existing rides lightweight-migrate. Flag a
+non-optional or defaulted new property.
+
 ## Sensor / recorder invariants
 
 **The trainer is the source of truth.** A SRAM/Quarq power meter is a

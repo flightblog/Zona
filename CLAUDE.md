@@ -61,14 +61,18 @@ integration, keep protocol/parsing logic testable in `ZonaKit` and put
 `URLSession`/`Keychain`/`ASWebAuthentication` calls in the app target.
 
 **The same "pure decision logic in ZonaKit, thin `@Observable` wrapper in the
-app" shape recurs three times** — worth recognizing before adding a fourth:
+app" shape recurs throughout** — recognize it before adding logic anywhere else:
 `TrainerController` wraps `SensorHub`, `RideSettings` wraps `RideSettingsState`
 (all ride-input decisions — FTP/zone targets, zone-sync, WHOOP-vs-LTHR
-resolution via `RideSettingsState.zoning` — live in the pure struct; the app
-class just persists it to `UserDefaults` on every mutation), and
+resolution via `RideSettingsState.zoning`, rider weight — live in the pure
+struct; the app class just persists it to `UserDefaults` on every mutation),
+`IntervalLibrary` wraps `IntervalLibraryState`, and
 `StravaUploadModel`/`WhoopModel` wrap the `StravaUpload`/WHOOP state machines.
-Put new decision logic in the `ZonaKit` half so it's unit-testable without
-running the app; the wrapper should do little more than persist/publish it.
+`RideView`'s interval playback follows the same split without an `@Observable`
+class: the pure `IntervalPlayback` struct is held in `@State` and the view just
+applies the `Action`s it returns (see below). Put new decision logic in the
+`ZonaKit` half so it's unit-testable without running the app; the wrapper should
+do little more than persist/publish it.
 
 **Design: HR defines the target zone, power does the controlling.** The trainer
 can only hold a *power* setpoint (FTMS ERG, from FTP); HR lags and drifts too
@@ -76,6 +80,27 @@ much to close the loop on directly. So the ride is power-steady while HR is used
 only to *define and display* the target zone (from LTHR, or from WHOOP's
 HRR-derived zones if connected). A closed-loop HR→watts mode was built and then
 deliberately removed — don't reintroduce it without discussion.
+
+**Interval sessions are the one thing that moves ERG mid-ride, and they revert
+to the *pre-block* target.** A session is `repeats × (work, rest)` steps whose
+watts resolve from `PowerZone` via `ZoneEngine` at scheduling time — never stored
+as raw watts, so a session follows the rider's FTP. `IntervalPlayback` (pure,
+`ZonaKit`) owns the whole `idle → countdown → running → idle` lifecycle as one
+enum rather than the correlated optionals `RideView` used to hold, and returns
+`Action`s (`setWatts` / `revert` / `recordRun`) for the view to apply **in
+order**. Two rules are encoded there and are easy to regress:
+- Ending a block reverts to the ERG target that was in force when the block
+  *started* — captured as `preTargetW`, including the countdown path — not to
+  `settings.target`. That's what lets a mid-ride `TargetAdjuster` trim survive an
+  interval.
+- `recordRun` is always emitted *before* the accompanying `revert`, so the
+  finished run banks against the right state.
+
+Choosing a session arms a cancelable 15s "get ready" countdown before the first
+block drives ERG. Runs that happened are persisted per-ride (`IntervalRun`, a
+JSON blob in `Ride.intervalRunsData`) and reviewed on the summary — display only;
+the ride is still scored as one block, and per-block achieved power/HR is a
+deliberate v2 follow-on.
 
 **`SensorHub` manages multiple independent BLE sensors over one
 `CBCentralManager`**, keyed by `SensorKind` (`trainer` / `heartRate` /
@@ -131,8 +156,9 @@ freeze the UI on stale values — don't reintroduce one.
 `ZonaKit` half and an app-target I/O half: Strava (upload finished rides) and
 WHOOP (use its HR zones, reconstructed from max/resting HR via HRR/Karvonen, as
 the ride target instead of manual LTHR; also surfaces today's recovery as an
-advisory zone suggestion, `WhoopReadiness` — never changes settings). Both need
-credentials in the gitignored `App/Zona/Config/Secrets.xcconfig` (copy from
+advisory zone suggestion, `WhoopReadiness` — never changes settings; and supplies
+the rider's body weight for W/kg). Both need credentials in the gitignored
+`App/Zona/Config/Secrets.xcconfig` (copy from
 `Secrets.example.xcconfig`); the corresponding UI section simply hides when
 credentials aren't configured. The interactive OAuth leg and the Keychain
 storage are **shared, provider-agnostic code**, not duplicated per provider:
@@ -145,6 +171,18 @@ refresh token rotates on every use, so syncing it would let two devices
 invalidate each other's). Both accept a client secret baked into the binary (no
 PKCE on either provider's token endpoint) — acceptable for a personal
 single-user build, not for public distribution.
+
+**Values that describe the rider are stamped onto the ride, not read live at
+summary time.** `weightKg` (for watts-per-kilogram) joins `whoopMaxHR` /
+`whoopRestingHR` / the HR-zone model in this: each `Ride` carries what was true
+when it was ridden, so a later weight change or a WHOOP reconnect doesn't
+retroactively rewrite old summaries. All of them are **optional with no default**
+— that's what keeps them CloudKit-safe and lets existing rides lightweight-migrate;
+follow that pattern for any new per-ride field. Weight itself resolves
+WHOOP-over-manual via `RideSettingsState.effectiveWeightKg` (holding WHOOP's
+number *is* the decision to use it, the same shape as the HR zones), and the one
+division lives in `ZonaKit`'s `PowerPerWeight` so the live tile and the summary
+can't drift apart.
 
 **Data**: rides are stored with SwiftData and synced across the user's own
 devices via a private iCloud/CloudKit container. Outbound networking is limited
