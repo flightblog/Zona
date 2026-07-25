@@ -24,6 +24,54 @@ struct ZoneMathTests {
         #expect(engine.zone(forPower: 210) == .z4Threshold)
     }
 
+    /// The power bands are inclusive at BOTH ends and touch at their boundaries —
+    /// at FTP 200, Z1 is 0…110 and Z2 is 110…150, so 110 belongs to two bands.
+    /// `zone(forPower:)` is the tiebreak (`fraction <= upperFraction` in
+    /// `PowerZone.allCases` order, so the LOWER zone wins the shared edge), and
+    /// it's the only correct classifier. This is the power-side twin of the HR
+    /// trap that `RideHRZoningTests.classifyingByBandScanWouldLandOnTheWrongZone`
+    /// pins — scanning `wattRange`s to classify would be wrong here too, since
+    /// Z1's band starts at 0 and underlaps every other band's floor.
+    @Test func classifyPowerAtSharedBandEdges() {
+        // Every shared edge lands in the lower of the two zones.
+        #expect(engine.zone(forPower: 110) == .z1Recovery)   // Z1/Z2 edge
+        #expect(engine.zone(forPower: 150) == .z2Endurance)  // Z2/Z3 edge
+        #expect(engine.zone(forPower: 180) == .z3Tempo)      // Z3/Z4 edge
+        #expect(engine.zone(forPower: 210) == .z4Threshold)  // Z4/Z5 edge
+        #expect(engine.zone(forPower: 240) == .z5VO2Max)     // Z5/Z6 edge
+        #expect(engine.zone(forPower: 300) == .z6Anaerobic)  // Z6/Z7 edge
+
+        // One watt past each edge crosses into the upper zone.
+        #expect(engine.zone(forPower: 111) == .z2Endurance)
+        #expect(engine.zone(forPower: 151) == .z3Tempo)
+        #expect(engine.zone(forPower: 181) == .z4Threshold)
+        #expect(engine.zone(forPower: 211) == .z5VO2Max)
+        #expect(engine.zone(forPower: 241) == .z6Anaerobic)
+        #expect(engine.zone(forPower: 301) == .z7Neuromuscular)
+
+        // Z1's band starts at 0, so it underlaps every other band's floor.
+        #expect(engine.wattRange(for: .z1Recovery).lowerBound == 0)
+        #expect(engine.zone(forPower: 0) == .z1Recovery)
+    }
+
+    /// Z7 has an infinite upper fraction, so it's the catch-all: no wattage,
+    /// however implausible, classifies past it or falls through to a crash.
+    @Test func z7AbsorbsEverythingAboveItsFloor() {
+        #expect(engine.zone(forPower: 400) == .z7Neuromuscular)
+        #expect(engine.zone(forPower: 2000) == .z7Neuromuscular)
+        // `wattRange` substitutes 2×FTP for the infinite bound so the band is
+        // renderable rather than unbounded.
+        #expect(engine.wattRange(for: .z7Neuromuscular) == 300...400)
+    }
+
+    /// A zero/absent FTP (fresh install before the rider sets one) must not
+    /// divide by zero — classification degrades to Z1 rather than crashing.
+    @Test func zeroFTPClassifiesAsZ1WithoutDividingByZero() {
+        let unset = ZoneEngine(ftp: 0)
+        #expect(unset.zone(forPower: 0) == .z1Recovery)
+        #expect(unset.zone(forPower: 250) == .z1Recovery)
+    }
+
     @Test func steadyTargetPositionable() {
         // Lower edge of Z2 band.
         #expect(engine.steadyTarget(for: .z2Endurance, position: 0.0) == 110)
@@ -374,6 +422,45 @@ struct RideSummaryTests {
         #expect(RideRecording.normalizedPower([100, 200]) == 150)
     }
 
+    /// The 30-sample window boundary: 29 samples take the mean fallback, 30 take
+    /// the real rolling-window path. Both are 150 W steady here, so they agree —
+    /// which is the point. An off-by-one in the `powers.count >= window` guard
+    /// (or in `reserveCapacity`/the loop bounds) would crash or skew at exactly
+    /// this size rather than at any value the other NP tests use.
+    @Test func normalizedPowerAtTheThirtySampleWindowBoundary() {
+        #expect(RideRecording.normalizedPower(Array(repeating: 150, count: 29)) == 150)
+        #expect(RideRecording.normalizedPower(Array(repeating: 150, count: 30)) == 150)
+        #expect(RideRecording.normalizedPower(Array(repeating: 150, count: 31)) == 150)
+    }
+
+    /// NP's whole reason for existing: a variable ride is metabolically harder
+    /// than its average watts suggest, so NP must come out ABOVE the mean. Two
+    /// minutes split 60 s at 100 W / 60 s at 300 W averages 200 W but normalizes
+    /// to 244 W — the 4th-power weighting of the hard block. Every other NP test
+    /// here uses steady power, where NP == average and a broken implementation
+    /// (e.g. 4th-powering raw samples instead of the rolling means) would still
+    /// pass. This is the one that actually exercises the weighting.
+    @Test func normalizedPowerExceedsAverageForVariablePower() {
+        let spiky = Array(repeating: 100, count: 60) + Array(repeating: 300, count: 60)
+        #expect(spiky.reduce(0, +) / spiky.count == 200)      // plain average
+        #expect(RideRecording.normalizedPower(spiky) == 244)   // NP weights the hard block
+    }
+
+    /// The complement: power that alternates every SECOND rather than in blocks
+    /// averages out *inside* each 30 s window, so NP lands back at the mean. This
+    /// pins that the smoothing is genuinely a 30 s rolling average — an
+    /// implementation that 4th-powered each raw sample would report ~244 here too
+    /// (same values, same mean), so this test is what distinguishes the two.
+    @Test func normalizedPowerSmoothsSecondBySecondVariation() {
+        let alternating = (0..<120).map { $0.isMultiple(of: 2) ? 100 : 300 }
+        #expect(alternating.reduce(0, +) / alternating.count == 200)
+        #expect(RideRecording.normalizedPower(alternating) == 200)
+    }
+
+    @Test func normalizedPowerIsZeroForNoSamples() {
+        #expect(RideRecording.normalizedPower([]) == 0)
+    }
+
     /// Leg power summarizes on its own axis, and — the point of keeping it a
     /// separate channel — leaves every trainer-derived stat exactly as it would
     /// be without a meter: avg, max, NP and time-in-zone all still read the
@@ -442,6 +529,71 @@ struct RideSummaryTests {
         #expect(rec.timeInZone() == 3)
         #expect(rec.summary().timeInZoneSeconds == 3)
         #expect(abs(rec.timeInZoneFraction - 0.6) < 0.0001)
+    }
+
+    /// `timeInZone` defaults to the recording's own target zone, but takes an
+    /// explicit one — the argument form is what a "how long was I in Z1?" readout
+    /// on a Z2 ride would call. Same samples, scored against a different band.
+    @Test func timeInZoneScoresAnExplicitZoneNotJustTheTarget() {
+        // FTP 200 → Z1 0…110, Z2 110…150, Z4 180…210.
+        let powers = [90, 130, 130, 130, 200]
+        let samples = powers.enumerated().map {
+            RideSample(secondsFromStart: $0.offset, powerW: $0.element)
+        }
+        let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
+        #expect(rec.timeInZone(.z2Endurance) == 3)   // the ride's own target
+        #expect(rec.timeInZone(.z1Recovery) == 1)    // the 90 W sample
+        #expect(rec.timeInZone(.z4Threshold) == 1)   // the 200 W sample
+        #expect(rec.timeInZone(.z6Anaerobic) == 0)   // never ridden
+    }
+
+    /// `summary()` prefers the recorded wall-clock duration, but a recording built
+    /// without one (0 is the sentinel — every hand-built recording in these tests,
+    /// and the `RideRecording` init's default) falls back to counting samples.
+    /// `finishStampsWallClockDuration` covers the branch where a real duration
+    /// wins; this pins the other side of that ternary, the same way
+    /// `totalTimeSecondsFallsBackWhenDurationIsZero` does for the TCX export.
+    @Test func summaryDurationFallsBackToSampleCountWhenUnrecorded() {
+        let rec = steady(130, count: 7)
+        #expect(rec.durationSeconds == 0)             // no wall-clock duration stamped
+        #expect(rec.summary().durationSeconds == 7)   // …so sample count stands in
+
+        // And when one IS stamped, it wins over the sample count.
+        let timed = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(),
+                                  samples: rec.samples, durationSeconds: 90)
+        #expect(timed.summary().durationSeconds == 90)
+    }
+
+    /// The fallback has to hold for the derived fraction too: `timeInZoneFraction`
+    /// divides by the same duration, so an unstamped recording must divide by the
+    /// sample count rather than by 0 (which would be a NaN on the summary screen).
+    @Test func timeInZoneFractionUsesTheSameDurationFallback() {
+        let powers = [90, 130, 130, 130, 200]        // 3 of 5 in Z2
+        let samples = powers.enumerated().map {
+            RideSample(secondsFromStart: $0.offset, powerW: $0.element)
+        }
+        let unstamped = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: samples)
+        #expect(abs(unstamped.timeInZoneFraction - 0.6) < 0.0001)   // 3/5, not 3/0
+
+        // A stamped duration lengthens the denominator: seconds where no sample
+        // landed at all still count as time not in zone.
+        let stamped = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(),
+                                    samples: samples, durationSeconds: 10)
+        #expect(abs(stamped.timeInZoneFraction - 0.3) < 0.0001)     // 3/10
+    }
+
+    /// A recording with no samples at all (the trainer never reported) must
+    /// summarize to zeros rather than crash on an empty reduce or divide by zero.
+    @Test func emptyRecordingSummarizesToZeros() {
+        let rec = RideRecording(ftp: 200, zone: .z2Endurance, startedAt: Date(), samples: [])
+        let s = rec.summary()
+        #expect(s.durationSeconds == 0)
+        #expect(s.averagePowerW == 0)
+        #expect(s.maxPowerW == 0)
+        #expect(s.normalizedPowerW == 0)
+        #expect(s.timeInZoneSeconds == 0)
+        #expect(s.distanceMeters == 0)
+        #expect(rec.timeInZoneFraction == 0)   // guarded, not NaN
     }
 
     // MARK: Distance (speed integration)
