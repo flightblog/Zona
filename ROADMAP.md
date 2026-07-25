@@ -3,17 +3,20 @@
 Possible new features, grouped by value and by how much of the plumbing already
 exists. Zona today holds a Kickr Core 2 at a steady ERG wattage while you aim for
 a target HR zone, records the ride to SwiftData, computes summaries
-(avg/NP/max power, time-in-zone, distance, RMSSD), shows a live HR-zone bar and a
-running Total / In-zone timer pair, charts watts and HR over time post-ride,
+(avg/NP/max power, W/kg, time-in-zone, distance, RMSSD), shows a live HR-zone bar
+and a running Total / In-zone timer pair, can steer ERG through a rider-triggered
+interval block mid-ride, charts watts and HR over time post-ride,
 exports TCX, uploads directly to Strava, and syncs
 across devices via iCloud/CloudKit. The `App/` project (the `ZonaKit` package
 plus the SwiftUI target) is now the sole codebase — the retired Phase-0
 `WahooFTMSPrototype` CLI that validated FTMS trainer control before the app
 existed has been removed. The pure-core / app-glue split now extends to the
 settings layer too: the ride-input decision logic (zone-sync, WHOOP-vs-LTHR
-zoning) lives in a unit-tested `RideSettingsState` in `ZonaKit`, with
-`RideSettings` a thin `@Observable` wrapper that just persists it to
-`UserDefaults` (PR #84). Several of the
+zoning, rider weight) lives in a unit-tested `RideSettingsState` in `ZonaKit`,
+with `RideSettings` a thin `@Observable` wrapper that just persists it to
+`UserDefaults` (PR #84). It extends to interval playback too: the whole
+countdown/start/end lifecycle lives in a pure `IntervalPlayback` struct, and
+`RideView` only applies the actions it returns (PR #99). Several of the
 items below build on infrastructure that already exists but isn't yet fully
 surfaced (persisted R-R intervals; a Quarq's per-second leg power, recorded and
 summarized but not charted).
@@ -29,7 +32,13 @@ summarized but not charted).
   `IntervalScheduler` steps the ERG target through it via the ride screen's
   existing 1 Hz `.task` loop, only calling `setTargetPower` at a step boundary. A running block can be stopped
   early from a HUD that replaces the manual `TargetAdjuster` while it's active;
-  ending (naturally or via Stop) reverts to the steady target. Sessions that ran
+  ending (naturally or via Stop) reverts to the target that was in force when the
+  block *started*, so a mid-ride `TargetAdjuster` trim survives the interval. The
+  whole `idle → countdown → running` lifecycle was since extracted into a pure,
+  unit-tested `IntervalPlayback` struct in ZonaKit (PR #99, #101) that returns
+  `setWatts`/`revert`/`recordRun` intents for `RideView` to apply in order —
+  making the record-then-revert and pre-block-target rules testable properties
+  rather than conventions held in view code. Sessions that ran
   are now recorded (`IntervalRun` — the session as ridden, its start second, and
   actual vs. planned length) and reviewed on the summary; the ride is still
   *scored* end-to-end as one block, and the interval only steers watts (no TCX
@@ -83,6 +92,18 @@ summarized but not charted).
   that byte so the crank data behind it stays at the right offset; don't re-add the
   field without a concrete use for it. Charting leg power as a third series on the
   summary chart remains possible — the per-second data is stored — but isn't planned.
+- **Watts per kilogram.** ✅ _Shipped (PR #98); not yet observed on hardware._ The
+  ride screen shows a live **W/kg** tile beside the power readout, and the summary
+  reports avg and normalized W/kg. Rider weight is entered manually in Setup and
+  **overridden by WHOOP's body measurement** whenever that's been fetched
+  (`RideSettingsState.effectiveWeightKg` — holding WHOOP's number *is* the
+  decision to use it, the same shape as the HR zones). The division itself is one
+  pure helper (`PowerPerWeight` in ZonaKit) shared by both screens so they can't
+  drift apart. Weight is **stamped onto each `Ride`** (`weightKg`, optional/no
+  default for CloudKit lightweight migration), so losing or changing weight later
+  never retroactively rewrites old summaries — rides that predate the field simply
+  omit the W/kg figures. Uses the trainer's watts, consistent with every other
+  scored number; leg-power W/kg off the Quarq isn't planned.
 - **Audio / haptic zone cues.** Optional voice or haptic feedback ("push," "ease,"
   "back in zone") so you can ride heads-down without watching the gauges.
 - **Auto-pause / coasting detection.** When you stop pedaling (watts=0) the timer
