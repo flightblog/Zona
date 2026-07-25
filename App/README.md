@@ -65,10 +65,13 @@ App/
 │   │   ├── RideSummary.swift      # avg/NP/max power, avg/max HR, time-in-(HR)zone
 │   │   ├── RideHistoryStats.swift # all-time rollup: totals, bests, per-zone time, weekly trend
 │   │   ├── ChartDownsampling.swift # ChartPoint + bucket-average downsampler for the ride charts
+│   │   ├── PowerPerWeight.swift   # watts ÷ kg, shared by the live tile and the summary
+│   │   ├── HRV.swift              # R-R intervals → RMSSD
 │   │   ├── TrainerController.swift # app-facing facade over SensorHub
 │   │   ├── Intervals/
 │   │   │   ├── IntervalSession.swift      # IntervalStep/IntervalSession: repeats × (work, rest)
 │   │   │   ├── IntervalScheduler.swift    # elapsed-seconds → IntervalTargetState (watts via ZoneEngine)
+│   │   │   ├── IntervalPlayback.swift     # idle→countdown→running lifecycle; returns setWatts/revert/recordRun
 │   │   │   ├── IntervalRun.swift          # a session that actually ran: start second + actual vs planned length
 │   │   │   └── IntervalLibraryState.swift # pure add/update/remove; app persists it
 │   │   ├── Sensors/
@@ -88,8 +91,8 @@ App/
 │   │       ├── WhoopOAuth.swift    # authorize URL (state), callback parse, token bodies
 │   │       ├── WhoopToken.swift    # token decode + expiry
 │   │       ├── WhoopProfile.swift  # body-measurement + recovery DTOs
-│   │       └── WhoopTokenStore.swift # token persistence seam
-│   └── Tests/ZonaKitTests/  # ZonaKitTests, SensorTests, ExportTests, StravaTests, WhoopTests, HRRZonesTests, RideHRZoningTests, ChartDownsamplingTests, IntervalSchedulerTests, IntervalSessionTests, IntervalLibraryStateTests
+│   │       └── WhoopReadiness.swift # today's recovery → advisory zone suggestion
+│   └── Tests/ZonaKitTests/  # one test file per source area (see the directory)
 └── Zona/                    # App target
     ├── ZonaApp.swift        # @main, RideSettings (thin @Observable + UserDefaults over RideSettingsState), IntervalLibrary, modelContainer
     ├── Model/
@@ -97,16 +100,15 @@ App/
     │   ├── RideExport.swift         # Ride → .tcx temp file for the Share sheet
     │   ├── SensorMemoryStore.swift  # UserDefaults-backed SensorMemory
     │   └── IntervalLibrary.swift    # thin @Observable + UserDefaults (JSON) over IntervalLibraryState
+    ├── OAuth/                       # provider-agnostic, shared by Strava + WHOOP
+    │   ├── OAuthAuthenticator.swift # ASWebAuthenticationSession, given a URL + callback parser
+    │   └── KeychainTokenStore.swift # generic Keychain store, keyed by a per-provider service string
     ├── Strava/                      # app-side I/O glue for Strava upload
     │   ├── StravaService.swift      # URLSession: exchange, refresh, upload + poll
-    │   ├── StravaAuthenticator.swift # ASWebAuthenticationSession OAuth login
-    │   ├── KeychainTokenStore.swift # Keychain-backed TokenStore
     │   ├── StravaSecrets.swift      # client id/secret from Info.plist
     │   └── StravaUploadModel.swift  # @Observable upload view-model
     ├── Whoop/                       # app-side I/O glue for WHOOP zones
     │   ├── WhoopService.swift       # URLSession: exchange, refresh, fetch zone inputs
-    │   ├── WhoopAuthenticator.swift # ASWebAuthenticationSession OAuth login
-    │   ├── KeychainWhoopTokenStore.swift # Keychain-backed WhoopTokenStore
     │   ├── WhoopSecrets.swift       # client id/secret from Info.plist
     │   └── WhoopModel.swift         # @Observable connect/refresh view-model
     ├── Config/
@@ -117,6 +119,7 @@ App/
     │   ├── IntervalEditorView.swift # Setup-side interval session library: add/edit/delete
     │   ├── RideView.swift        # HR readout, power dial, live Z1–Z5 zone bar, record, interval HUD, End ride
     │   ├── HRZoneColor.swift     # shared Z1–Z5 cool→warm ramp (HRZone.color)
+    │   ├── KeepAwake.swift       # cross-platform .keepAwake() — no display sleep mid-ride
     │   ├── RideSummaryView.swift # per-ride summary + dual-axis watts/HR chart + Strava upload / Export
     │   ├── HistoryView.swift     # past rides list + All-Time Stats link
     │   └── AllTimeStatsView.swift # all-time totals, bests, time-in-each-zone, weekly trend
@@ -374,10 +377,15 @@ Shipped since the first cut (all verified on device unless noted):
   triggered mid-ride (typically near the end of a Z2 ride) from a sheet on the
   ride screen. Choosing a session opens a short "get ready" countdown (15s, with
   a Cancel) before its first block starts driving ERG, so the power doesn't snap
-  up the instant the picker dismisses. `IntervalScheduler` steps the ERG target through the block via
-  the ride screen's existing 1 Hz loop, calling `setTargetPower` only at a step
-  boundary; a HUD replaces the manual adjuster while a block runs and can stop
-  it early. Ending — naturally or via Stop — reverts to the steady target.
+  up the instant the picker dismisses. `IntervalScheduler` steps the ERG target
+  through the block via the ride screen's existing 1 Hz loop, calling
+  `setTargetPower` only at a step boundary; a HUD replaces the manual adjuster
+  while a block runs and can stop it early. The whole `idle → countdown →
+  running` lifecycle lives in the pure `IntervalPlayback` struct, which returns
+  `setWatts`/`revert`/`recordRun` intents for `RideView` to apply in order —
+  keeping it unit-testable and the ordering rules explicit. Ending — naturally or
+  via Stop — reverts to the target that was in force when the block *started*, so
+  a mid-ride `TargetAdjuster` trim survives the interval.
   Sessions that ran are recorded per-ride (`IntervalRun`: the session as ridden,
   its start second, and actual-vs-planned length, persisted as a JSON blob on
   the `Ride`) and shown in an "Intervals" review on the ride summary. The ride
