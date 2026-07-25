@@ -82,8 +82,17 @@ quiet crank sends nothing rather than a 0 W frame, so:
 **Never scan `bpmRange` bands to classify a heart-rate reading.** Bands are
 inclusive at both ends and Friel Z1's floor is 0, so scanning them misclassifies
 boundary values (a past bug lit Z5 at the LTHR boundary). `bpmRange` is for
-DISPLAY only; `RideHRZoning.zone(forHR:)` is the single classifier. Live in-zone
-time uses `RideHRZoning.secondsInZone` so the live timer agrees with the summary.
+DISPLAY only — including positioning the zone bar's handle *within* its segment —
+and `RideHRZoning.zone(forHR:)` is the single classifier. Live in-zone time uses
+`RideHRZoning.secondsInZone` so the live timer agrees with the summary.
+
+**"On target" comes from the shared `ZoneState(bpm:target:zoning:)`.** The BPM
+dial's PUSH/HOLD/EASE chip, the zone bar's outlined target segment, its tinted
+handle, and its VoiceOver phrase all derive from that one value. Flag a parallel
+below/on/above comparison (e.g. `activeZone == target`, or a fresh `bpmRange`
+containment check) — it can disagree with the chip at a band edge, which is the
+beat-for-beat agreement #76 and #107 established. The handle also needs its
+contrast stroke to stay legible when it sits on a same-coloured segment.
 
 **Scans are unfiltered (`services: nil`)** because some sensors (Garmin HRM 200)
 don't advertise their service UUID; devices are classified after connecting. Flag

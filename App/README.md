@@ -350,11 +350,15 @@ Shipped since the first cut (all verified on device unless noted):
   post-ride summary, with the target HR-zone band shaded. Samples are downsampled
   so long rides stay responsive.
 - **Live HR zone bar** on the ride screen — a segmented Z1–Z5 bar with a handle
-  showing where the current effort sits inside its zone. It answers "which zone am
-  I in right now?", where the gauges answer "am I inside my target band?", and it
-  classifies through the same `RideHRZoning.zone(forHR:)` the ride's own scoring
-  uses — so it can't name a zone the ride wouldn't record. (It replaced the live
-  chart on this screen: mid-ride you're steering to a zone, not reading a trend.)
+  showing where the current effort sits inside its zone, and the **target zone
+  marked** by an outlined segment, a below/on/above-tinted handle, and a bolded
+  label — so it answers both "which zone am I in?" and "am I where I'm meant to
+  be?" without a glance at the gauges. It classifies through the same
+  `RideHRZoning.zone(forHR:)` the ride's own scoring uses (so it can't name a zone
+  the ride wouldn't record), and takes its on-target state from the same
+  `ZoneState` the BPM dial's PUSH/HOLD/EASE cue reads, so the two can't disagree
+  at a band edge. (It replaced the live chart on this screen: mid-ride you're
+  steering to a zone, not reading a trend.)
 - **All-Time Stats** (off the History toolbar) — totals (rides / time / distance),
   personal bests, a **time-in-each-HR-zone** breakdown (Z1–Z5, recomputed from each
   ride's stored HR samples), and a weekly in-zone trend, all rolled up by a pure
