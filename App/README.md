@@ -73,6 +73,7 @@ App/
 │   │   │   ├── IntervalScheduler.swift    # elapsed-seconds → IntervalTargetState (watts via ZoneEngine)
 │   │   │   ├── IntervalPlayback.swift     # idle→countdown→running lifecycle; returns setWatts/revert/recordRun
 │   │   │   ├── IntervalRun.swift          # a session that actually ran: start second + actual vs planned length
+│   │   │   ├── IntervalAchievement.swift  # slices a run's samples per work/rest step → achieved avg/max W + HR
 │   │   │   └── IntervalLibraryState.swift # pure add/update/remove; app persists it
 │   │   ├── Sensors/
 │   │   │   ├── SensorKind.swift            # trainer / heartRate / powerMeter
@@ -392,11 +393,25 @@ Shipped since the first cut (all verified on device unless noted):
   a mid-ride `TargetAdjuster` trim survives the interval.
   Sessions that ran are recorded per-ride (`IntervalRun`: the session as ridden,
   its start second, and actual-vs-planned length, persisted as a JSON blob on
-  the `Ride`) and shown in an "Intervals" review on the ride summary. The ride
+  the `Ride`) and shown in an "Intervals" review on the ride summary. That review
+  lists the prescription *and* what was **achieved**, rep by rep:
+  `IntervalAchievement.perStep` slices the run's window of ride samples into one
+  row per work/rest step — avg/max trainer watts, average HR, and an average
+  leg-power column when a crank meter was paired — so "you ran 4×30/30 at Z5"
+  also says what you actually held on each rep, and fade across reps is visible.
+  Each column names its channel *and* its statistic (`avg W`, `max W`, `leg avg
+  W`, `avg bpm`), since the trainer and the meter are parallel channels that
+  legitimately disagree and a bare "W" invites reading one as the other's peak.
+  HR is shown as an average because across a set it's drift that's informative,
+  where the per-step peak is mostly noise. It carves
+  those windows by walking the same flattened `session.steps` cursor
+  `IntervalScheduler` drove ERG on, so a step is scored over exactly the seconds
+  it was commanded over even when the run was stopped early. Missing readings
+  show "—", never 0 (the meter expires on a coast; a strap can drop). The ride
   is still *scored* end-to-end as one block: no TCX laps, no
-  `RideHRZoning`/`RideSummary` scoring changes. Per-block achieved power/HR in
-  that review, a general step-list model (warmups, ramps, pyramids), and workout
-  import/export remain open follow-ons (see `ROADMAP.md`).
+  `RideHRZoning`/`RideSummary` scoring changes. A general step-list model
+  (warmups, ramps, pyramids) and workout import/export remain open follow-ons
+  (see `ROADMAP.md`).
 
 Still open / optional:
 - Direct **Strava OAuth upload** if the manual TCX Share export proves too clunky.
