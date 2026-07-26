@@ -7,7 +7,8 @@ import ZonaKit
 /// glanceable arc gauge side by side: each fills to show where the live value
 /// sits within its band and shows a color + word + arrow cue (PUSH / HOLD /
 /// EASE) so you know at a glance whether you're in target and which way to
-/// correct — without relying on color alone. Speed stays small below; End ride
+/// correct — without relying on color alone. W/kg, speed and distance stay small
+/// below, with the SRAM/Quarq readout on its own row under them; End ride
 /// at the bottom. When the view appears we push the ERG target and start
 /// recording; on End ride we save the ride to SwiftData and show its summary.
 struct RideView: View {
@@ -116,14 +117,8 @@ struct RideView: View {
                       target: settings.hrZone,
                       zoning: rideZoning)
 
-            // Watts/kg, Speed, Distance, and the secondary SRAM/Quarq readout
-            // (power + cadence) all share one line. The SRAM tiles only appear
-            // when the meter is connected and reporting; when it is, five tiles
-            // have to fit across a phone, so the row scales its font down to keep
-            // them on one line. The meter's watts are recorded as leg power on
-            // their own channel (its cadence stays display-only), but neither is
-            // exported or fed to ERG — the trainer drives those (see
-            // `RideMetrics.powerMeterW`).
+            // Watts/kg, Speed and Distance — the trainer-derived secondary
+            // readouts — share one line.
             HStack(spacing: 16) {
                 Metric(title: "W/kg",
                        value: wattsPerKgText,
@@ -134,14 +129,35 @@ struct RideView: View {
                 Metric(title: "Distance",
                        value: String(format: "%.2f", recorder.distanceMeters / 1000),
                        unit: "km")
-                if let meterW = controller.metrics.powerMeterW {
-                    Metric(title: "SRAM", value: "\(meterW)", unit: "W")
+            }
+            .frame(maxWidth: .infinity)
+
+            // The SRAM/Quarq readout (power + cadence) gets its own row below —
+            // it's a separate sensor from the trainer, and keeping it off the
+            // line above means neither row has to squeeze. The meter's watts are
+            // recorded as leg power on their own channel (its cadence stays
+            // display-only), but neither is exported or fed to ERG — the trainer
+            // drives those (see `RideMetrics.powerMeterW`).
+            //
+            // The row is keyed on the meter being *connected*, not on it having
+            // a current reading. Those differ constantly: a quiet crank sends
+            // nothing rather than a 0 W frame, so the values expire after a few
+            // seconds of coasting and go nil. Keying on the reading would make
+            // the whole row vanish and shift the layout every time the rider
+            // stopped pedalling. Expired values render "—" — never 0, which
+            // would claim the rider held watts they didn't (see
+            // `RideMetrics.powerMeterW`).
+            if controller.sensorState(.powerMeter).isConnected {
+                HStack(spacing: 16) {
+                    Metric(title: "SRAM",
+                           value: controller.metrics.powerMeterW.map { "\($0)" } ?? "—",
+                           unit: "W")
                     Metric(title: "SRAM",
                            value: controller.metrics.powerMeterCadenceRpm.map { "\($0)" } ?? "—",
                            unit: "RPM")
                 }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
 
             Spacer()
 
