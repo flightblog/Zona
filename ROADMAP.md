@@ -22,14 +22,17 @@ summarized but not charted).
 
 - **Structured workouts / interval sessions.** ✅ _v1 shipped (issue #88): a
   rider-triggered interval block._ A small pre-authored library
-  (`IntervalSession` — `repeats × (work, rest)`, `Z3`-and-up work zones typical,
-  authored in a new Setup "Interval sessions" editor) can be triggered mid-ride,
+  (`IntervalSession` — a free-form ordered `[IntervalStep]` since PR #110,
+  `Z3`-and-up work zones typical, authored in a Setup "Interval sessions"
+  editor) can be triggered mid-ride,
   typically near the end of a Z2 session; choosing one opens a short 15s "get
   ready" countdown (cancelable) before the first block drives ERG, then
   `IntervalScheduler` steps the ERG target through it via the ride screen's
   existing 1 Hz `.task` loop, only calling `setTargetPower` at a step boundary. A running block can be stopped
   early from a HUD that replaces the manual `TargetAdjuster` while it's active;
-  ending (naturally or via Stop) reverts to the steady target. Sessions that ran
+  ending (naturally or via Stop) reverts to the **pre-block** target — the one in
+  force when the block started, so a mid-ride `TargetAdjuster` trim survives the
+  interval — not to `settings.target`. Sessions that ran
   are now recorded (`IntervalRun` — the session as ridden, its start second, and
   actual vs. planned length) and reviewed on the summary; the ride is still
   *scored* end-to-end as one block, and the interval only steers watts (no TCX
@@ -37,9 +40,9 @@ summarized but not charted).
   - **Per-block achieved power/HR in the summary review.** ✅ _Shipped (PR #109)._
     Each `IntervalRun`'s `startedAtSecond` + `actualSeconds` delimit its window
     into the ride's samples, and `IntervalAchievement.perStep` (pure, ZonaKit)
-    slices it **per work/rest step of each repeat**, walking the same flattened
-    `session.steps` cursor `IntervalScheduler` drove ERG on — so rep 3's work half
-    is scored over exactly the seconds it was commanded over. The card renders an
+    slices it **per step**, walking the same `session.steps` cursor
+    `IntervalScheduler` drove ERG on — so a step is scored over exactly the
+    seconds it was commanded over. The card renders an
     achieved table beside the prescription, with a leg-power column when a crank
     meter was paired. Missing readings report nil and render "—", never 0: the
     meter expires on a coast and a strap can drop, and averaging a gap as zero
@@ -82,6 +85,14 @@ summarized but not charted).
   alongside the trainer's (`RideSample.powerMeterW` → `RideSampleModel.powerMeterW`),
   summarized into avg/max leg power, and shown as their own summary tiles on rides
   ridden with a meter.
+  Those two live tiles sit on **their own row** beneath W/kg / Speed / Distance
+  (PR #111) rather than sharing that line, which had to shrink its font to fit
+  five tiles across a phone. The row is keyed on the meter being *connected*, not
+  on it having a current reading: a quiet crank sends nothing rather than a 0 W
+  frame, so the values expire on a coast and go nil, and keying on the reading
+  made the whole row vanish and shift the layout every time the rider stopped
+  pedalling. Each value falls back independently to "—" — never 0, which would
+  claim watts the rider never held.
   It stays a **parallel channel, not a replacement**: the trainer's `powerW` is
   still the single source of truth for ERG, zone math, and the TCX/Strava export,
   so leg power can never skew a recorded or uploaded ride. As expected, a real
@@ -169,6 +180,33 @@ summarized but not charted).
   OAuth, tokens in the Keychain, cloned from the Strava plumbing. Requires a WHOOP
   dev app (redirect `zona://whoop-auth`) and the privacy policy at
   <https://flightblog.github.io/Zona/privacy-policy>.
+  - **OAuth token hardening.** ✅ _Shipped (PR #112)._ Three fixes to the shared
+    token plumbing, prompted by a WHOOP refresh failing with `HTTP 400`. A
+    refresh token WHOOP won't honour now **clears itself** and asks the rider to
+    reconnect: previously it stayed in the Keychain, so `isConnected` stayed
+    true and every retry — including the automatic one on each visit to the
+    setup screen — replayed the same dead credential, wedging the account with
+    no way out but a Disconnect the rider had no reason to suspect. Recognising
+    that state needs care, because WHOOP answers a dead token with
+    `invalid_request` — the *same* code as a genuinely malformed request, not
+    the standard `invalid_grant` — so only `error_hint` separates "reconnect"
+    from "our request is wrong"; `WhoopTokenErrorKind` (pure, ZonaKit) matches
+    the hint and, deliberately, only ever reports a dead token for a
+    `refresh_token` grant, so a malformed code exchange can't send the rider
+    round a reconnect loop that wouldn't fix it. Alongside it:
+    `FormURLEncoding` replaced two hand-rolled copies of a form encoder that
+    escaped RFC 3986's unreserved characters, putting `grant_type` on the wire
+    as `refresh%5Ftoken` and corrupting any token containing `-`, `.` or `_`;
+    and `TokenRefresher` collapses concurrent refreshes into one, since an
+    `actor` alone does **not** serialize them (isolation is released at every
+    `await`, so two callers could each burn the same single-use token). Both new
+    types are generic and shared with Strava, which carried the identical
+    encoder bug. Error banners now show WHOOP's `error_hint` rather than the
+    boilerplate `error_description` that is identical for every
+    `invalid_request` — that change is what identified the real fault.
+    _Note: the dead-token recovery path itself is not yet device-observed — the
+    classifier is tested against error bodies captured from the live endpoint,
+    but the full expire → clear → reconnect sequence hasn't been exercised._
 - **Per-ride HR-zone model (WHOOP vs. LTHR).** ✅ _Shipped (PR #61 model, PR #62
   the WHOOP-always-wins rule); verified in-app._ Which HR-zone model a ride is
   scored against is now a **fact about the ride**, not a re-reading of today's
