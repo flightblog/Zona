@@ -157,10 +157,7 @@ actor WhoopService {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
-        request.httpBody = fields
-            .map { "\(urlEncode($0.key))=\(urlEncode($0.value))" }
-            .joined(separator: "&")
-            .data(using: .utf8)
+        request.httpBody = FormURLEncoding.bodyData(fields)
         return try await send(request)
     }
 
@@ -180,7 +177,4 @@ actor WhoopService {
         catch { throw WhoopServiceError.decoding }
     }
 
-    private func urlEncode(_ s: String) -> String {
-        s.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? s
-    }
 }
