@@ -205,3 +205,65 @@ struct WhoopReadinessTests {
         #expect(WhoopReadiness(from: rec)?.suggestedCeiling == .z3)
     }
 }
+
+@Suite("WHOOP token error classification")
+struct WhoopTokenErrorKindTests {
+
+    /// The exact body WHOOP returns for a refresh token it will not honour —
+    /// captured from the live endpoint. Note it is `invalid_request`, *not* the
+    /// standard `invalid_grant`, which is why the hint has to be matched.
+    private static let deadTokenBody = """
+    {"error":"invalid_request","error_description":"The request is missing a required parameter, \
+    includes an invalid parameter value, includes a parameter more than once, or is otherwise \
+    malformed","error_hint":"Make sure that the various parameters are correct, be aware of case \
+    sensitivity and trim your parameters. Make sure that the client you are using has exactly \
+    whitelisted the redirect_uri you specified.","status_code":400}
+    """
+
+    /// A genuinely malformed request: same `error` code, different hint.
+    private static let missingParamBody = """
+    {"error":"invalid_request","error_description":"The request is missing a required parameter, \
+    includes an invalid parameter value, includes a parameter more than once, or is otherwise \
+    malformed","error_hint":"Request parameter \\"grant_type\\"\\" is missing","status_code":400}
+    """
+
+    private static let badClientBody = """
+    {"error":"invalid_client","error_description":"Client authentication failed","status_code":401}
+    """
+
+    @Test func deadRefreshTokenIsRecognised() {
+        #expect(WhoopTokenErrorKind.classify(body: Self.deadTokenBody, grantType: "refresh_token")
+                == .deadRefreshToken)
+    }
+
+    /// A missing `grant_type` is a bug in our request, not a dead token — clearing
+    /// the user's credentials over it would be wrong.
+    @Test func missingParameterIsNotADeadToken() {
+        #expect(WhoopTokenErrorKind.classify(body: Self.missingParamBody, grantType: "refresh_token")
+                == .other)
+    }
+
+    @Test func badClientIsNotADeadToken() {
+        #expect(WhoopTokenErrorKind.classify(body: Self.badClientBody, grantType: "refresh_token")
+                == .other)
+    }
+
+    /// Standard OAuth2 `invalid_grant`, in case WHOOP ever starts using it.
+    @Test func standardInvalidGrantIsRecognised() {
+        let body = #"{"error":"invalid_grant","error_description":"token expired"}"#
+        #expect(WhoopTokenErrorKind.classify(body: body, grantType: "refresh_token")
+                == .deadRefreshToken)
+    }
+
+    /// Only a refresh grant can produce a dead *refresh* token. The same hint on an
+    /// authorization-code exchange means our request was wrong, and reconnecting
+    /// wouldn't fix it — so it must not send the user round that loop.
+    @Test func authorizationCodeGrantIsNeverADeadRefreshToken() {
+        #expect(WhoopTokenErrorKind.classify(body: Self.deadTokenBody, grantType: "authorization_code")
+                == .other)
+    }
+
+    @Test func emptyBodyIsNotADeadToken() {
+        #expect(WhoopTokenErrorKind.classify(body: "", grantType: "refresh_token") == .other)
+    }
+}

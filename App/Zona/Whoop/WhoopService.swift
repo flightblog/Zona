@@ -4,6 +4,7 @@ import ZonaKit
 /// Networking errors surfaced to the UI.
 enum WhoopServiceError: Error {
     case notAuthorized                       // no tokens stored; must authorize first
+    case refreshTokenExpired                 // stored refresh token is dead; reconnect needed
     case http(status: Int, body: String)     // non-2xx from WHOOP
     case decoding                            // response didn't decode
     case noRestingHR                         // recovery came back with no scored resting HR
@@ -38,6 +39,12 @@ actor WhoopService {
     var isConnected: Bool { tokens.loadTokens() != nil }
 
     func disconnect() { tokens.clear() }
+
+    /// Drop tokens WHOOP has refused to refresh. Separate from `disconnect()` so
+    /// the intent reads clearly at the call site: this isn't the user leaving, it's
+    /// a credential that can no longer work being discarded so the next attempt
+    /// starts a fresh authorization instead of replaying a dead token.
+    private func clearDeadTokens() { tokens.clear() }
 
     // MARK: OAuth
 
@@ -78,8 +85,20 @@ actor WhoopService {
             accessToken: { $0.accessToken },
             refresh: { [config] current in
                 let body = WhoopOAuth.refreshBody(refreshToken: current.refreshToken, config: config)
-                let response = try await self.postForm(WhoopOAuth.tokenURL, fields: body, accessToken: nil)
-                return WhoopTokens(from: try Self.decode(WhoopTokenResponse.self, from: response))
+                do {
+                    let response = try await self.postForm(WhoopOAuth.tokenURL, fields: body, accessToken: nil)
+                    return WhoopTokens(from: try Self.decode(WhoopTokenResponse.self, from: response))
+                } catch let WhoopServiceError.http(status, errorBody) {
+                    // A refresh token WHOOP won't honour can never start working
+                    // again, so clear it rather than leaving the account wedged in
+                    // a state where every retry re-fails on the same dead token.
+                    if WhoopTokenErrorKind.classify(body: errorBody, grantType: "refresh_token")
+                        == .deadRefreshToken {
+                        await self.clearDeadTokens()
+                        throw WhoopServiceError.refreshTokenExpired
+                    }
+                    throw WhoopServiceError.http(status: status, body: errorBody)
+                }
             })
         refresher = built
         return built
@@ -162,12 +181,34 @@ actor WhoopService {
     }
 
     /// Send a request, throwing on a non-2xx status.
+    ///
+    /// The thrown body is the **raw** response, not a summary: `WhoopTokenErrorKind`
+    /// classifies against it, and reducing it here would discard the `error_hint`
+    /// that distinguishes a dead refresh token from a malformed request. The UI
+    /// summarises it at display time instead (`errorSummary(from:)`).
     private func send(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { return data }
         if (200...299).contains(http.statusCode) { return data }
         throw WhoopServiceError.http(status: http.statusCode,
                                      body: String(data: data, encoding: .utf8) ?? "")
+    }
+
+    /// The most specific message in an OAuth error body: `error_hint` if WHOOP
+    /// sent one, else `error`, else the raw body. Used for display only.
+    static func errorSummary(from raw: String) -> String {
+        guard let data = raw.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return raw
+        }
+        let hint = json["error_hint"] as? String
+        let code = json["error"] as? String
+        switch (code, hint) {
+        case let (code?, hint?): return "\(code): \(hint)"
+        case let (nil, hint?):   return hint
+        case let (code?, nil):   return code
+        default:                 return raw
+        }
     }
 
     /// `static` (and so implicitly nonisolated) because it touches no actor state

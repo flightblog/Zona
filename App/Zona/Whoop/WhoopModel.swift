@@ -165,13 +165,18 @@ final class WhoopModel {
     private func friendly(_ error: Error) -> String {
         switch error {
         case WhoopServiceError.notAuthorized: return "Not connected to WHOOP."
+        case WhoopServiceError.refreshTokenExpired:
+            return "Your WHOOP sign-in has expired. Tap Connect WHOOP to sign in again."
         case WhoopServiceError.noRestingHR: return "WHOOP has no recent resting-HR reading yet."
         case WhoopServiceError.http(let status, let body):
             // Include WHOOP's own message when there is one: a bare status code
             // can't distinguish an expired grant from a bad request, which is
-            // exactly what made a 400 here hard to diagnose. Trimmed so a stray
-            // HTML error page can't blow out the banner.
-            let detail = body.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200)
+            // exactly what made a 400 here hard to diagnose. Reduced to the most
+            // specific field and trimmed so a stray HTML error page can't blow out
+            // the banner.
+            let detail = WhoopService.errorSummary(from: body)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .prefix(200)
             return detail.isEmpty
                 ? "WHOOP returned an error (HTTP \(status))."
                 : "WHOOP returned an error (HTTP \(status)): \(detail)"
