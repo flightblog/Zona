@@ -105,10 +105,7 @@ actor StravaService {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
-        request.httpBody = fields
-            .map { "\(urlEncode($0.key))=\(urlEncode($0.value))" }
-            .joined(separator: "&")
-            .data(using: .utf8)
+        request.httpBody = FormURLEncoding.bodyData(fields)
         return try await send(request)
     }
 
@@ -160,9 +157,5 @@ actor StravaService {
 
         append("--\(boundary)--\r\n")
         return (body, "multipart/form-data; boundary=\(boundary)")
-    }
-
-    private func urlEncode(_ s: String) -> String {
-        s.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? s
     }
 }

@@ -25,6 +25,40 @@ public struct WhoopOAuthConfig: Sendable, Equatable {
     public var redirectURI: String { "\(redirectScheme)://\(redirectHost)" }
 }
 
+/// Classifies a failed token-endpoint response body.
+///
+/// WHOOP does not use the standard OAuth2 `invalid_grant` code for a refresh token
+/// that has been revoked, rotated away, or issued to another client — it answers
+/// `invalid_request` with an `error_hint` about checking your parameters, the same
+/// shape it uses for a genuinely malformed request. A bogus token and a real
+/// but dead one are indistinguishable by code alone, so matching the hint is the
+/// only way to tell "reconnect" from "fix your request".
+public enum WhoopTokenErrorKind: Equatable, Sendable {
+    /// The refresh token is no longer usable; the user must reconnect.
+    case deadRefreshToken
+    /// Something else — a genuinely malformed request, bad credentials, an outage.
+    case other
+
+    /// Classify a token-endpoint error body (raw JSON, as returned on a non-2xx).
+    ///
+    /// Deliberately conservative: only a `refresh_token` grant is ever reported as
+    /// dead, so a malformed *exchange* can't send the user round the reconnect
+    /// loop it wouldn't fix.
+    public static func classify(body: String, grantType: String) -> WhoopTokenErrorKind {
+        guard grantType == "refresh_token" else { return .other }
+        let lowered = body.lowercased()
+        guard lowered.contains("\"invalid_request\"") || lowered.contains("invalid_grant") else {
+            return .other
+        }
+        if lowered.contains("invalid_grant") { return .deadRefreshToken }
+        // WHOOP's hint for a token it won't honour. Anchored on the distinctive
+        // phrases rather than the whole sentence, which is long and may be reworded.
+        return lowered.contains("case sensitivity") || lowered.contains("trim your parameters")
+            ? .deadRefreshToken
+            : .other
+    }
+}
+
 /// Something that went wrong in the authorize/callback leg of the OAuth flow.
 public enum WhoopAuthError: Error, Equatable, Sendable {
     /// The user dismissed the web auth sheet (ASWebAuthenticationSession cancel).
