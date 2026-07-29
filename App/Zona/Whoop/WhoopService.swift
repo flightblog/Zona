@@ -14,15 +14,20 @@ enum WhoopServiceError: Error {
 /// is delegated to the pure ZonaKit helpers (`WhoopOAuth`, `WhoopTokens`,
 /// `WhoopBodyMeasurement`, `WhoopRecoveryPage`); this actor only does the I/O.
 ///
-/// An `actor` so a token refresh is serialized — two concurrent fetches can't
-/// both refresh and clobber each other's rotated refresh token (matches
-/// `StravaService`).
+/// An `actor` for the usual reasons, but note that actor isolation alone does
+/// **not** serialize a token refresh — it's released at every `await`, so two
+/// concurrent fetches could each refresh with the same single-use token. That's
+/// what `ZonaKit`'s `TokenRefresher` is for; see its doc comment.
 actor WhoopService {
     private let config: WhoopOAuthConfig
     private let tokens: any TokenStore<WhoopTokens>
     private let session: URLSession
 
     private static let apiBase = URL(string: "https://api.prod.whoop.com/developer")!
+
+    /// Serializes refreshes so concurrent GETs share one round-trip. Built lazily
+    /// because it closes over `self` to perform the POST.
+    private var refresher: TokenRefresher<WhoopTokens>?
 
     init(config: WhoopOAuthConfig, tokens: any TokenStore<WhoopTokens>, session: URLSession = .shared) {
         self.config = config
@@ -42,7 +47,7 @@ actor WhoopService {
     func exchange(code: String) async throws -> WhoopTokens {
         let body = WhoopOAuth.tokenExchangeBody(code: code, config: config)
         let response = try await postForm(WhoopOAuth.tokenURL, fields: body, accessToken: nil)
-        let decoded = try decode(WhoopTokenResponse.self, from: response)
+        let decoded = try Self.decode(WhoopTokenResponse.self, from: response)
         let newTokens = WhoopTokens(from: decoded)
         tokens.save(newTokens)
         return newTokens
@@ -50,16 +55,34 @@ actor WhoopService {
 
     /// A currently-valid access token, refreshing first if the cached one is at
     /// or near expiry. Persists the rotated refresh token.
+    ///
+    /// Delegates to `TokenRefresher` so that the two concurrent GETs behind
+    /// `fetchZonesAndRecovery` share a single refresh: WHOOP's refresh token is
+    /// single-use, so a second simultaneous refresh presents an
+    /// already-invalidated token and comes back HTTP 400.
     func validAccessToken() async throws -> String {
-        guard let current = tokens.loadTokens() else { throw WhoopServiceError.notAuthorized }
-        guard current.isExpired() else { return current.accessToken }
+        do {
+            return try await tokenRefresher().validAccessToken()
+        } catch TokenRefreshError.notAuthorized {
+            throw WhoopServiceError.notAuthorized
+        }
+    }
 
-        let body = WhoopOAuth.refreshBody(refreshToken: current.refreshToken, config: config)
-        let response = try await postForm(WhoopOAuth.tokenURL, fields: body, accessToken: nil)
-        let decoded = try decode(WhoopTokenResponse.self, from: response)
-        let refreshed = WhoopTokens(from: decoded)
-        tokens.save(refreshed)   // refresh token rotated — persisting is mandatory
-        return refreshed.accessToken
+    /// The lazily-built shared refresher. One instance per service, so the
+    /// in-flight refresh is actually shared between callers.
+    private func tokenRefresher() -> TokenRefresher<WhoopTokens> {
+        if let refresher { return refresher }
+        let built = TokenRefresher<WhoopTokens>(
+            store: tokens,
+            isExpired: { $0.isExpired() },
+            accessToken: { $0.accessToken },
+            refresh: { [config] current in
+                let body = WhoopOAuth.refreshBody(refreshToken: current.refreshToken, config: config)
+                let response = try await self.postForm(WhoopOAuth.tokenURL, fields: body, accessToken: nil)
+                return WhoopTokens(from: try Self.decode(WhoopTokenResponse.self, from: response))
+            })
+        refresher = built
+        return built
     }
 
     // MARK: Zone inputs
@@ -88,7 +111,7 @@ actor WhoopService {
     private func fetchBodyMeasurement() async throws -> WhoopBodyMeasurement {
         let url = Self.apiBase.appendingPathComponent("v2/user/measurement/body")
         let data = try await authorizedGet(url)
-        return try decode(WhoopBodyMeasurement.self, from: data)
+        return try Self.decode(WhoopBodyMeasurement.self, from: data)
     }
 
     /// `GET /v2/recovery` (newest first) → resting HR from the latest scored
@@ -115,7 +138,7 @@ actor WhoopService {
                                   resolvingAgainstBaseURL: false)!
         comps.queryItems = [URLQueryItem(name: "limit", value: "10")]
         let data = try await authorizedGet(comps.url!)
-        return try decode(WhoopRecoveryPage.self, from: data)
+        return try Self.decode(WhoopRecoveryPage.self, from: data)
     }
 
     // MARK: HTTP plumbing
@@ -150,7 +173,9 @@ actor WhoopService {
                                      body: String(data: data, encoding: .utf8) ?? "")
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+    /// `static` (and so implicitly nonisolated) because it touches no actor state
+    /// and must be callable from the `@Sendable` refresh closure.
+    private static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         do { return try JSONDecoder().decode(T.self, from: data) }
         catch { throw WhoopServiceError.decoding }
     }

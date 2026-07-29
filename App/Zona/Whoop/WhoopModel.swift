@@ -166,7 +166,15 @@ final class WhoopModel {
         switch error {
         case WhoopServiceError.notAuthorized: return "Not connected to WHOOP."
         case WhoopServiceError.noRestingHR: return "WHOOP has no recent resting-HR reading yet."
-        case WhoopServiceError.http(let status, _): return "WHOOP returned an error (HTTP \(status))."
+        case WhoopServiceError.http(let status, let body):
+            // Include WHOOP's own message when there is one: a bare status code
+            // can't distinguish an expired grant from a bad request, which is
+            // exactly what made a 400 here hard to diagnose. Trimmed so a stray
+            // HTML error page can't blow out the banner.
+            let detail = body.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200)
+            return detail.isEmpty
+                ? "WHOOP returned an error (HTTP \(status))."
+                : "WHOOP returned an error (HTTP \(status)): \(detail)"
         case WhoopServiceError.decoding: return "Couldn't read WHOOP's response."
         case WhoopAuthError.accessDenied: return "WHOOP access was declined."
         case WhoopAuthError.stateMismatch: return "WHOOP sign-in couldn't be verified — try again."
