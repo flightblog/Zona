@@ -180,6 +180,33 @@ summarized but not charted).
   OAuth, tokens in the Keychain, cloned from the Strava plumbing. Requires a WHOOP
   dev app (redirect `zona://whoop-auth`) and the privacy policy at
   <https://flightblog.github.io/Zona/privacy-policy>.
+  - **OAuth token hardening.** ✅ _Shipped (PR #112)._ Three fixes to the shared
+    token plumbing, prompted by a WHOOP refresh failing with `HTTP 400`. A
+    refresh token WHOOP won't honour now **clears itself** and asks the rider to
+    reconnect: previously it stayed in the Keychain, so `isConnected` stayed
+    true and every retry — including the automatic one on each visit to the
+    setup screen — replayed the same dead credential, wedging the account with
+    no way out but a Disconnect the rider had no reason to suspect. Recognising
+    that state needs care, because WHOOP answers a dead token with
+    `invalid_request` — the *same* code as a genuinely malformed request, not
+    the standard `invalid_grant` — so only `error_hint` separates "reconnect"
+    from "our request is wrong"; `WhoopTokenErrorKind` (pure, ZonaKit) matches
+    the hint and, deliberately, only ever reports a dead token for a
+    `refresh_token` grant, so a malformed code exchange can't send the rider
+    round a reconnect loop that wouldn't fix it. Alongside it:
+    `FormURLEncoding` replaced two hand-rolled copies of a form encoder that
+    escaped RFC 3986's unreserved characters, putting `grant_type` on the wire
+    as `refresh%5Ftoken` and corrupting any token containing `-`, `.` or `_`;
+    and `TokenRefresher` collapses concurrent refreshes into one, since an
+    `actor` alone does **not** serialize them (isolation is released at every
+    `await`, so two callers could each burn the same single-use token). Both new
+    types are generic and shared with Strava, which carried the identical
+    encoder bug. Error banners now show WHOOP's `error_hint` rather than the
+    boilerplate `error_description` that is identical for every
+    `invalid_request` — that change is what identified the real fault.
+    _Note: the dead-token recovery path itself is not yet device-observed — the
+    classifier is tested against error bodies captured from the live endpoint,
+    but the full expire → clear → reconnect sequence hasn't been exercised._
 - **Per-ride HR-zone model (WHOOP vs. LTHR).** ✅ _Shipped (PR #61 model, PR #62
   the WHOOP-always-wins rule); verified in-app._ Which HR-zone model a ride is
   scored against is now a **fact about the ride**, not a re-reading of today's
