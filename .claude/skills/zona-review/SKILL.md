@@ -46,7 +46,24 @@ in `IntervalPlayback` and are easy to regress:
 Interval step watts resolve from `PowerZone` via `ZoneEngine` at scheduling time
 — flag raw watts stored on a step, which would stop sessions tracking FTP. The
 ride is still scored end-to-end as one block (no TCX laps, no `RideSummary`
-changes); the summary's interval review is display-only.
+changes); the summary's interval review is display-only. Intervals are a Zone 2
+feature — "Add intervals" is hidden entirely on a Zone 1 ride.
+
+**`IntervalSession`'s decoder must stay back-compatible.** Old blobs encoding
+`repeats`/`work`/`rest` are snapshotted inside `IntervalRun` on every finished
+`Ride` and decoded with `try?`, so dropping the legacy path in `init(from:)`
+wouldn't throw — it would silently empty the interval review on every older ride.
+Legacy keys are read, never written. A blob matching *neither* shape must keep
+**throwing**: `try?` then drops the run, which is honest, where decoding to an
+empty session renders a fabricated "No steps · 0:00 of 0:00" card. Flag a
+decoder change that removes the legacy branch or swallows an unknown shape.
+
+Per-step achieved figures (`IntervalAchievement.perStep`) slice the sample window
+by walking the same flattened `session.steps` cursor the scheduler drove ERG on —
+flag any attempt to divide elapsed time by the repeat count, which drifts on a
+run stopped early and misattributes samples. Every achieved figure is optional
+and renders "—" when absent; flag a `?? 0`, since the crank meter expires on a
+coast and averaging a gap as zero fabricates watts.
 
 ## Per-ride data invariants
 
@@ -98,6 +115,24 @@ contrast stroke to stay legible when it sits on a same-coloured segment.
 don't advertise their service UUID; devices are classified after connecting. Flag
 a switch to a filtered scan.
 
+**Kind resolution tries `.trainer` first**, in `SensorKind.allCases` order —
+never `desired`'s `Set` order, which varies per process. The Kickr also
+implements the legacy Cycling Power Service, so resolving it to `.powerMeter`
+lets the trainer steal that slot and, via `SensorMemoryStore.remember`,
+permanently lock a real standalone meter out of it. Flag a reordering of
+`SensorKind`'s cases or an iteration over `desired`.
+
+## Accessibility invariants
+
+**A stat tile is one VoiceOver stop.** The ride screen's `Metric` tiles and the
+summary's stat tiles merge into a single element with a spoken label and value.
+Flag a separately focusable info button inside a tile — it gives a rider three
+stops per reading. Ambiguous titles need an explicit `spokenLabel` (the "Leg …"
+vocabulary), units must be spelled out ("W" reads as a letter, "RPM"
+letter-by-letter), and the "—" placeholder needs a spoken form. Explanations are
+delivered as an accessibility *hint* plus a popover — flag `.help()` alone, which
+is macOS-hover-only and invisible on iOS.
+
 ## Zone-model invariants
 
 **The HR-zone model is a property of the ride**, latched at ride start
@@ -122,6 +157,43 @@ logic) and an app-target I/O half. Tokens live in the Keychain **per-device** (n
 iCloud sync of tokens). Both bake the client secret into the binary (no PKCE) —
 acceptable for this personal single-user build; don't flag it as a leak, but do
 flag it if the code moves toward public distribution.
+
+**Token refresh has three regression-prone rules** (all fixed in #112). Both
+providers rotate the refresh token on every use, so a duplicate refresh burns it
+and a late `save()` can overwrite the good rotated token, making the failure
+sticky:
+- Refreshes go through `ZonaKit`'s single-flight `TokenRefresher`, which caches
+  the in-flight `Task` **before its first suspension point**. Flag a refresh that
+  reads-then-`await`s-then-saves on its own, and flag any comment claiming
+  `actor` isolation alone prevents the double refresh — it doesn't, since the
+  actor is released at every `await`. `StravaService` hasn't adopted it yet and
+  should, rather than growing a second implementation.
+- Form bodies use `ZonaKit`'s `FormURLEncoding`. Flag a hand-rolled `urlEncode`
+  in an app-target service, and specifically flag percent-encoding with
+  `.alphanumerics` — RFC 3986 unreserved characters (`- . _ ~`) must stay
+  literal, or `grant_type` ships as `refresh%5Ftoken` and tokens get corrupted.
+- A refusal the provider won't honour must **clear** the stored tokens. Flag a
+  path that leaves a dead token in the Keychain: `isConnected` stays true and
+  every retry replays it, wedging the account. Note WHOOP signals this as
+  `invalid_request` (not `invalid_grant`) via `error_hint`, and
+  `WhoopTokenErrorKind.classify` only reports a dead token for a `refresh_token`
+  grant — don't "simplify" that guard away, it stops a failed auth-code exchange
+  looping the rider through reconnects.
+
+## Docs conventions
+
+If the diff touches Markdown, enforce both rules — each was learned from notes
+that went stale within a PR or two:
+- **No hard-coded test counts.** "234 tests pass" is wrong by the next PR that
+  adds one. Flag it; say "unit-tested" and let CI be the authority. (A count in a
+  *commit message* is fine — that's a point-in-time record, not a live doc.)
+- **State how far something *was* verified, never what hasn't happened yet.**
+  "Compile-verified on both platforms" and "verified on device" stay true
+  permanently; "not yet observed on hardware" is false the moment the rider tries
+  it and nobody goes back to fix it. Flag the forward-looking form. Verification
+  level is worth recording precisely here because Zona drives real hardware — a
+  passing suite and a held ERG session are different claims. Per-feature
+  verification lives in `ROADMAP.md`; `App/README.md` defers to it.
 
 ## Output
 
