@@ -242,6 +242,21 @@ summarized but not charted).
   disappears (End ride), so normal power management resumes and the screen never
   stays on after a session. Compile-verified on both platforms; not yet observed
   on hardware.
+- **VoiceOver on the ride screen.** ✅ _Shipped (PR #65 zone bar, PR #116 metric
+  tiles); not yet heard aloud on device._ The Z1–Z5 zone bar and all six small
+  metric tiles are each a single accessibility element with a spoken label and
+  value, rather than the pile of separate number/caption stops SwiftUI produces by
+  default. Two rules the tiles encode, both easy to undo by accident: the row
+  deliberately repeats short visible titles (three read "SRAM", two read
+  "W/kg") because position and unit disambiguate them at a glance — which doesn't
+  survive being read aloud, so `Metric` takes an optional `spokenLabel` that
+  overrides the visible one ("Leg power" / "Leg cadence" / "Leg watts per
+  kilogram", reusing the leg-power vocabulary the summary already uses). And the
+  "—" placeholder is announced as **"No reading"**, never as punctuation or
+  silence — the audible half of the never-report-a-value-the-rider-didn't-hold
+  rule, so an expired crank says "No reading" rather than implying zero.
+  The gauges, HUDs and buttons still read as default SwiftUI elements; a full pass
+  (and an actual listen with VoiceOver on) is the remaining work.
 - **FTP / LTHR test protocols.** Guided ramp or 20-min tests to set the two
   numbers the whole app depends on, instead of typing them in.
 

@@ -360,6 +360,17 @@ Shipped since the first cut (all verified on device unless noted):
   `ZoneState` the BPM dial's PUSH/HOLD/EASE cue reads, so the two can't disagree
   at a band edge. (It replaced the live chart on this screen: mid-ride you're
   steering to a zone, not reading a trend.)
+- **VoiceOver on the ride screen's readouts** _(not yet heard aloud on device)_ —
+  the zone bar and the six small metric tiles are each one accessibility element
+  with a spoken label and value, instead of the separate number/caption stops
+  SwiftUI produces by default. Because the row repeats short visible titles (three
+  tiles read "SRAM", two read "W/kg" — position and unit disambiguate them
+  visually, but not aloud), `Metric` takes an optional `spokenLabel` that
+  overrides the visible one: "Leg power", "Leg cadence", "Leg watts per kilogram".
+  Units are spelled out (VoiceOver reads "W" as a letter and "RPM"
+  letter-by-letter), and a missing value is announced as **"No reading"** rather
+  than as punctuation or silence — so an expired crank reading never sounds like
+  a zero the rider didn't hold.
 - **All-Time Stats** (off the History toolbar) — totals (rides / time / distance),
   personal bests, a **time-in-each-HR-zone** breakdown (Z1–Z5, recomputed from each
   ride's stored HR samples), and a weekly in-zone trend, all rolled up by a pure
