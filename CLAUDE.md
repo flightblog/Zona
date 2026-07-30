@@ -36,6 +36,37 @@ CI (`.github/workflows/`) runs `swift test` in `App/ZonaKit` on macOS on every P
 and push to `main`; the **ZonaKit tests** check is required to merge. It does not
 build/run the app target.
 
+To verify a change in the running app, use a **signed macOS build** (see the
+unsigned-build note below — an unsigned one compiles but crashes at launch):
+
+```sh
+xcodebuild -project App/Zona.xcodeproj -scheme Zona -destination 'platform=macOS' \
+  build DEVELOPMENT_TEAM=<YOUR_TEAM_ID> CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates
+```
+
+A SourceKit `No such module 'ZonaKit'` diagnostic while editing app-target files
+is usually a stale-index artifact, not a real error — confirm with a real build
+before chasing it.
+
+## Workflow
+
+Work lands on a branch via PR, never directly on `main`. Squash-merge and delete
+the branch (`gh pr merge <n> --squash --delete-branch`), then `git fetch --prune`
+— the repo is kept main-only with no lingering merged branches. Wait for the
+required **ZonaKit tests** check before merging (`gh pr checks <n> --watch`); a
+`BLOCKED` merge state usually just means it's still running.
+
+**Code and docs ship as separate PRs**, code first, docs immediately after
+(#122→#123, #118→#119, #116→#117, #114→#115). The docs PR updates whichever of
+`CLAUDE.md` / `App/README.md` / `ROADMAP.md` the change invalidates. Keep this
+split rather than folding docs into the code PR.
+
+Commit messages and PR bodies here run long by design: they explain *why*, name
+the failure mode a change prevents, and record what was deliberately **not** done
+and on what evidence. Several invariants in this file were recovered from commit
+messages, so treat them as the durable record. Test counts are fine in a commit
+message (a point-in-time record) but not in a doc — see Docs conventions.
+
 **The Xcode project is generated, not committed.** `App/project.yml` is the
 source of truth for the project, `Info.plist`, and entitlements — re-run
 `xcodegen generate` after editing it, and never hand-edit files under

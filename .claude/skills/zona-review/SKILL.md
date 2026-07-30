@@ -10,6 +10,20 @@ against the invariants below. **These invariants encode deliberate design
 decisions — flag a violation of one, but do not flag the invariant itself as a
 bug.**
 
+## Diagnosing a live failure
+
+**Observe before diagnosing.** When a change is prompted by a real failure
+(especially a network or hardware one), capture the actual request/response or
+device behaviour before proposing a cause. The WHOOP `HTTP 400` hunt produced two
+confident, wrong diagnoses from code-reading alone; replaying the request with
+`curl` against the live endpoint settled it in one step. Flag a fix whose
+rationale is "reading the code suggests…" when the real artifact was obtainable.
+
+The corollary: **don't invent error handling for a failure mode you haven't
+seen.** WHOOP's dead-token classification exists because its real response was
+captured and found to use `invalid_request`; writing a speculative equivalent for
+another provider would encode a guess as a rule.
+
 ## First: mechanical checks
 
 - Run `cd App/ZonaKit && swift test` and report failures. The **ZonaKit tests**
@@ -179,6 +193,27 @@ sticky:
   `WhoopTokenErrorKind.classify` only reports a dead token for a `refresh_token`
   grant — don't "simplify" that guard away, it stops a failed auth-code exchange
   looping the rider through reconnects.
+
+## Testing standards
+
+**A new test earns its place by failing.** Before claiming a test covers
+something, mutate the code it guards and confirm it goes red — a test that passes
+against broken code is worse than none, because it advertises coverage that isn't
+there. State the mutation and its failure message when reporting new coverage. If
+a mutation "survives", first suspect the run was invalid (didn't compile, crashed
+before asserting) rather than concluding the code is untested. Note `--filter`
+matches the **type** name, not the `@Suite` display name.
+
+**Don't add a test that restates one that exists.** A 2026-07-25 audit
+(#104–#106) reviewed the suite for duplicates and removed none, so near-identical
+tests are usually deliberate boundary cases, not redundancy — read them before
+proposing a merge. The corollary for new code: when behaviour is already covered
+generically (a shared helper's own suite), a provider-flavoured copy tests the
+same code twice. Flag proposed tests that would.
+
+**Pure logic in `ZonaKit` is testable; app-target I/O is not, by design.** Don't
+flag a `Service` class for lacking unit tests — flag it for holding logic that
+should have been pushed into `ZonaKit` where it could be tested.
 
 ## Docs conventions
 
