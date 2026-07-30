@@ -673,7 +673,8 @@ private struct Metric: View {
             Text(value)
                 .font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText())
-                // Four of these have to fit on one line when a SRAM meter is
+                // Up to three of these share one line — the W/kg/Speed/Distance
+                // row, and the SRAM row (W, RPM, W/kg) when a meter is
                 // connected; scale the number down (never wrap) so the row stays
                 // on a single line on a narrow phone.
                 .minimumScaleFactor(0.5)
