@@ -52,12 +52,17 @@ struct RideSummaryView: View {
                     // beats (or none), never a fabricated 0.
                     Stat(label: "HRV (RMSSD)",
                          value: ride.hrvRMSSDms.map { "\($0) ms" } ?? "—")
-                    Stat(label: "Avg power", value: "\(ride.avgPowerW) W")
-                    Stat(label: "Normalized", value: "\(ride.normalizedPowerW) W")
-                    Stat(label: "Max power", value: "\(ride.maxPowerW) W")
+                    Stat(label: "Avg power", value: "\(ride.avgPowerW) W",
+                         explanation: Explanation.avgPower)
+                    Stat(label: "Normalized", value: "\(ride.normalizedPowerW) W",
+                         explanation: Explanation.normalizedPower)
+                    Stat(label: "Max power", value: "\(ride.maxPowerW) W",
+                         explanation: Explanation.maxPower)
                     // "—" for rides recorded before weight tracking was added.
-                    Stat(label: "Avg W/kg", value: formatted(ride.avgPowerPerKg))
-                    Stat(label: "Normalized W/kg", value: formatted(ride.normalizedPowerPerKg))
+                    Stat(label: "Avg W/kg", value: formatted(ride.avgPowerPerKg),
+                         explanation: Explanation.avgPerKg)
+                    Stat(label: "Normalized W/kg", value: formatted(ride.normalizedPowerPerKg),
+                         explanation: Explanation.normalizedPerKg)
                     Stat(label: "Total Time in \(ride.zone.shortName) (power)",
                          value: minutesSeconds(ride.timeInZoneSec))
                 }
@@ -242,13 +247,16 @@ private struct PowerMeterStats: View {
                 .font(.headline)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                 if let avgLeg = ride.avgPowerMeterW {
-                    Stat(label: "Avg leg power", value: "\(avgLeg) W")
+                    Stat(label: "Avg leg power", value: "\(avgLeg) W",
+                         explanation: Explanation.avgLegPower)
                 }
                 if let npLeg = ride.normalizedPowerMeterW {
-                    Stat(label: "Normalized leg power", value: "\(npLeg) W")
+                    Stat(label: "Normalized leg power", value: "\(npLeg) W",
+                         explanation: Explanation.normalizedLegPower)
                 }
                 if let maxLeg = ride.maxPowerMeterW {
-                    Stat(label: "Max leg power", value: "\(maxLeg) W")
+                    Stat(label: "Max leg power", value: "\(maxLeg) W",
+                         explanation: Explanation.maxLegPower)
                 }
             }
         }
@@ -256,18 +264,118 @@ private struct PowerMeterStats: View {
     }
 }
 
+/// Plain-English blurbs for the summary tiles whose meaning isn't obvious from
+/// the label — chiefly the average-vs-normalized pair, which read almost
+/// identically on a steady ERG ride and diverge on an interval session. Kept
+/// together so the average and normalized wordings stay consistent with each
+/// other.
+private enum Explanation {
+    static let avgPower = """
+        The plain average of every power reading from the trainer over the whole \
+        ride. On a steady ERG ride this sits right at your hold target.
+        """
+
+    static let normalizedPower = """
+        An effort-weighted average that counts hard efforts more heavily than \
+        easy ones, so it reflects how hard the ride actually felt. On a steady \
+        ERG ride it nearly matches Avg power; after an interval session it reads \
+        higher, and the gap is a measure of how spiky the ride was.
+        """
+
+    static let maxPower = """
+        The single highest watt reading from the trainer during the ride.
+        """
+
+    static let avgPerKg = """
+        Avg power divided by your weight at the time of this ride — the plain \
+        average of the trainer's watts per kilogram.
+        """
+
+    static let normalizedPerKg = """
+        Normalized power divided by your weight at the time of this ride. Same \
+        effort-weighting as Normalized, so it runs higher than Avg W/kg on a \
+        ride with intervals and matches it closely on a steady one.
+        """
+
+    // The leg-power blurbs each carry the crank-vs-trainer point as well as the
+    // averaging one: the first question this section raises is why its numbers
+    // don't match the trainer's, and a rider reading one tile shouldn't have to
+    // find the answer on another. Kept consistent with the physical explanation
+    // on `RideMetrics.powerMeterW`.
+    static let avgLegPower = """
+        The plain average of your power meter's watts over the whole ride. Your \
+        meter measures at the cranks, so it reads a few watts above the \
+        trainer — that gap is drivetrain loss between the cranks and the \
+        flywheel, not an error. The trainer stays the number the ride is scored \
+        and uploaded on.
+        """
+
+    static let normalizedLegPower = """
+        Your power meter's watts, effort-weighted so hard efforts count more \
+        heavily than easy ones — the same calculation as Normalized above, run \
+        on the meter instead of the trainer. Expect it a few watts above the \
+        trainer's figure, which is drivetrain loss rather than an error.
+        """
+
+    static let maxLegPower = """
+        The single highest watt reading from your power meter during the ride. \
+        Measured at the cranks, so it sits above the trainer's max for the same \
+        effort.
+        """
+}
+
 private struct Stat: View {
     let label: String
     let value: String
+    /// Optional plain-English explanation of what the figure means. When set, an
+    /// info button sits beside the label and reveals this in a popover.
+    var explanation: String?
+
+    @State private var showExplanation = false
 
     var body: some View {
         VStack(spacing: 2) {
             Text(value).font(.title2.weight(.semibold).monospacedDigit())
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text(label).font(.caption).foregroundStyle(.secondary)
+                if explanation != nil {
+                    // A tap target on both platforms — `.help` alone is a
+                    // macOS-only hover affordance and would be invisible on iOS.
+                    // Purely decorative to VoiceOver: the whole tile is one
+                    // element carrying the same explanation as its hint, so the
+                    // button must not add a second stop of its own.
+                    Image(systemName: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard explanation != nil else { return }
+            showExplanation = true
+        }
+        .help(explanation ?? "")
+        .popover(isPresented: $showExplanation) {
+            Text(explanation ?? "")
+                .font(.callout)
+                .multilineTextAlignment(.leading)
+                .padding()
+                .frame(idealWidth: 280)
+                .presentationCompactAdaptation(.popover)
+        }
+        // One stop per tile, spoken "Avg power: 210 W" — the same merge the ride
+        // screen's Metric tiles make (see `RideView`), so a rider swiping the
+        // grid hears one stop per reading rather than two. The explanation rides
+        // along as the hint instead of becoming a separately focusable button.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(value)
+        .accessibilityHint(explanation ?? "")
+        .accessibilityAddTraits(explanation != nil ? .isButton : [])
     }
 }
 
