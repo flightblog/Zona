@@ -155,6 +155,9 @@ struct RideView: View {
                     Metric(title: "SRAM",
                            value: controller.metrics.powerMeterCadenceRpm.map { "\($0)" } ?? "—",
                            unit: "RPM")
+                    Metric(title: "SRAM",
+                           value: powerMeterWattsPerKgText,
+                           unit: "W/kg")
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -379,6 +382,13 @@ struct RideView: View {
     /// with no trainer reading, same as the other live tiles.
     private var wattsPerKgText: String {
         PowerPerWeight.wattsPerKg(watts: controller.metrics.powerW, weightKg: settings.effectiveWeightKg)
+            .map { String(format: "%.1f", $0) } ?? "—"
+    }
+
+    /// Watts-per-kilogram from the SRAM/Quarq meter's leg power, same "—" on
+    /// no reading as the other SRAM tiles (see `RideMetrics.powerMeterW`).
+    private var powerMeterWattsPerKgText: String {
+        PowerPerWeight.wattsPerKg(watts: controller.metrics.powerMeterW, weightKg: settings.effectiveWeightKg)
             .map { String(format: "%.1f", $0) } ?? "—"
     }
 
