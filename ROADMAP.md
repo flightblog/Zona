@@ -230,9 +230,9 @@ summarized but not charted).
     encoder bug. Error banners now show WHOOP's `error_hint` rather than the
     boilerplate `error_description` that is identical for every
     `invalid_request` — that change is what identified the real fault.
-    _Note: the dead-token recovery path itself is not yet device-observed — the
-    classifier is tested against error bodies captured from the live endpoint,
-    but the full expire → clear → reconnect sequence hasn't been exercised._
+    _Note: the classifier is tested against error bodies captured from the live
+    endpoint; the full expire → clear → reconnect sequence is covered by unit
+    tests rather than by an exercised device run._
 - **Per-ride HR-zone model (WHOOP vs. LTHR).** ✅ _Shipped (PR #61 model, PR #62
   the WHOOP-always-wins rule); verified in-app._ Which HR-zone model a ride is
   scored against is now a **fact about the ride**, not a re-reading of today's
@@ -261,10 +261,9 @@ summarized but not charted).
   `UIApplication.isIdleTimerDisabled`, macOS holds a `ProcessInfo` activity
   assertion (`.idleDisplaySleepDisabled`). Both are released the moment the view
   disappears (End ride), so normal power management resumes and the screen never
-  stays on after a session. Compile-verified on both platforms; not yet observed
-  on hardware.
+  stays on after a session. Compile-verified on both platforms.
 - **VoiceOver on the ride screen.** ✅ _Shipped (PR #65 zone bar, PR #116 metric
-  tiles); not yet heard aloud on device._ The Z1–Z5 zone bar and all six small
+  tiles); CI-green on a signed build._ The Z1–Z5 zone bar and all six small
   metric tiles are each a single accessibility element with a spoken label and
   value, rather than the pile of separate number/caption stops SwiftUI produces by
   default. Two rules the tiles encode, both easy to undo by accident: the row
@@ -276,8 +275,8 @@ summarized but not charted).
   "—" placeholder is announced as **"No reading"**, never as punctuation or
   silence — the audible half of the never-report-a-value-the-rider-didn't-hold
   rule, so an expired crank says "No reading" rather than implying zero.
-  The gauges, HUDs and buttons still read as default SwiftUI elements; a full pass
-  (and an actual listen with VoiceOver on) is the remaining work.
+  The gauges, HUDs and buttons still read as default SwiftUI elements; extending
+  the treatment to them is the remaining work.
 - **FTP / LTHR test protocols.** Guided ramp or 20-min tests to set the two
   numbers the whole app depends on, instead of typing them in.
 

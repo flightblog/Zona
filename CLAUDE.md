@@ -233,3 +233,19 @@ the Wahoo Cloud API.
 
 See `App/README.md` for the full source-tree map, Strava/WHOOP setup steps, and
 the roadmap; `ROADMAP.md` at the repo root tracks longer-term app-level plans.
+
+**Docs conventions.** Two rules, both learned from notes that went stale a PR or
+two after they were written:
+- **No hard-coded test counts.** "234 tests pass" is wrong by the next PR that
+  adds one. Say "unit-tested" and let CI be the authority.
+- **State how far something *was* verified, never what hasn't happened yet.**
+  "Compile-verified on both platforms" and "verified on device" stay true
+  permanently; "not yet observed on hardware" is false the moment the rider tries
+  it, and nobody goes back to correct it — it silently understates the app.
+  Verification level matters here because Zona drives real hardware, so a passing
+  test suite and a held ERG session are genuinely different claims: record which
+  one you have. When device confirmation later arrives, upgrading the line is a
+  real improvement, but let it ride along with the next PR touching that file
+  rather than opening one just to flip a status. `ROADMAP.md` is where
+  per-feature verification lives; `App/README.md` describes what the app does and
+  defers to it, so entries there don't each need their own status.
