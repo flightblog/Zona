@@ -164,6 +164,27 @@ summarized but not charted).
   power window). The same Total / In-zone pair is mirrored onto `RideSummaryView`
   below the green headline, reading from the persisted `durationSec` and
   `timeInHRZoneSec`, so the two screens read alike.
+- **Explained summary stats.** ✅ _Shipped (PR #118); not yet seen in-app._ Every
+  summary tile whose meaning isn't obvious from its label carries an info glyph
+  and opens a plain-English explanation on tap. The pair that prompted it was
+  **Avg power** / **Normalized** (and their W/kg counterparts): both are the same
+  trainer watts over the same stamped weight, differing only in the averaging, so
+  on a steady ERG ride they read almost identically and only visibly diverge after
+  an interval session — exactly when the rider wonders why. The Normalized wording
+  names the 4th-power effort-weighting and says the gap to Avg measures how spiky
+  the ride was. The **Power Meter** section's three leg-power tiles each also
+  answer the question that section raises first — why its watts sit above the
+  trainer's — repeating that the gap is drivetrain loss rather than an error and
+  that the trainer stays what the ride is scored and uploaded on, wording kept in
+  step with the physical explanation on `RideMetrics.powerMeterW`. Two things
+  worth not undoing: it's a **popover, not `.help()` alone** (`.help` is a
+  macOS-only hover affordance and would be invisible on iOS, where a summary is
+  most likely to be read — it's kept alongside so macOS still gets hover); and the
+  whole tile stays **one** accessibility element spoken "Avg power: 210 W" with
+  the explanation as its hint, the same merge the ride screen's `Metric` tiles
+  make. A separately focusable info button gives a rider swiping the grid three
+  stops per reading instead of one — the first cut did exactly that and was caught
+  in review.
 
 ## Tier 3 — Connectivity & sync (known deferred items)
 
