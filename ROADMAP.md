@@ -164,7 +164,7 @@ summarized but not charted).
   power window). The same Total / In-zone pair is mirrored onto `RideSummaryView`
   below the green headline, reading from the persisted `durationSec` and
   `timeInHRZoneSec`, so the two screens read alike.
-- **Explained summary stats.** ✅ _Shipped (PR #118); not yet seen in-app._ Every
+- **Explained summary stats.** ✅ _Shipped (PR #118); verified in-app._ Every
   summary tile whose meaning isn't obvious from its label carries an info glyph
   and opens a plain-English explanation on tap. The pair that prompted it was
   **Avg power** / **Normalized** (and their W/kg counterparts): both are the same
