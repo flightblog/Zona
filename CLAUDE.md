@@ -86,7 +86,9 @@ to the *pre-block* target.** A session is a free-form ordered `[IntervalStep]`
 (so warmups, ramps and pyramids are expressible; a uniform `4×30/30` is just
 eight steps, with repeat structure implicit in the list) whose watts resolve from
 `PowerZone` via `ZoneEngine` at scheduling time — never stored as raw watts, so a
-session follows the rider's FTP.
+session follows the rider's FTP. Intervals are a **Zone 2 feature**: on a Zone 1
+ride "Add intervals" is hidden entirely (End ride spans the bottom row alone),
+since Zone 1 is recovery-steady with no interval mode.
 
 **`IntervalSession`'s decoding is back-compatible and must stay that way.**
 Sessions are persisted twice: the library in `UserDefaults`, and — the
@@ -183,6 +185,27 @@ parallel `activeZone == target` comparison anywhere: the whole point is that the
 dial, the zone bar, the live "In zone" timer, and the summary's time-in-zone
 agree beat-for-beat.
 
+**A stat tile is one VoiceOver stop, and units are spelled out.** The ride
+screen's `Metric` tiles and the summary's stat tiles both merge into a single
+accessibility element with a spoken label and value ("Avg power: 210 W"), because
+the visual rows lean on position and unit to disambiguate and that doesn't
+survive being read aloud — three tiles all announcing "SRAM" is the failure this
+fixed. Tiles whose visible title is ambiguous pass an explicit `spokenLabel`
+("Leg power" / "Leg cadence" / "Leg watts per kilogram"), reusing the same
+*leg*-power vocabulary the summary and these docs use for that channel. Spell
+units out (VoiceOver reads "W" as a letter and "RPM" letter-by-letter) and give
+the "—" placeholder a spoken form ("No reading") so it isn't announced as
+punctuation or skipped. On the summary, a tile's explanation is its
+accessibility *hint*, not a separately focusable button — that would give a rider
+swiping the grid three stops per reading instead of one.
+
+**Explanatory text uses a popover, not `.help()` alone.** `.help` is a macOS-only
+hover affordance and would be invisible on iOS, where a summary is most likely to
+be read; the summary keeps both, so macOS still gets hover. Any tile whose
+meaning isn't obvious from its label (Avg vs. Normalized, and the leg-power
+tiles, whose blurbs also explain that the gap above the trainer's watts is
+drivetrain loss rather than an error) carries one.
+
 **Concurrency (Swift 6, strict).** `SensorHub` / `TrainerController` are
 `@MainActor @Observable`. All CoreBluetooth objects (`CBCentralManager`,
 `CBPeripheral`, `CBCharacteristic`) live inside a private `MultiBLEManager` on a
@@ -213,6 +236,33 @@ refresh token rotates on every use, so syncing it would let two devices
 invalidate each other's). Both accept a client secret baked into the binary (no
 PKCE on either provider's token endpoint) — acceptable for a personal
 single-user build, not for public distribution.
+
+**Refreshing those tokens has three hazards, all fixed once and easy to
+reintroduce.** Both providers rotate the refresh token on every use, so a second
+refresh with the same token fails *and* a late `save()` can overwrite the good
+rotated one, making the failure sticky rather than self-clearing:
+- **An `actor` alone does not serialize a refresh.** Actor isolation holds only
+  across synchronous regions; a refresh that `await`s the network POST releases
+  the actor and lets a second caller re-read the still-unrotated token. WHOOP hit
+  this because `fetchZonesAndRecovery` issues two GETs concurrently.
+  `ZonaKit`'s generic `TokenRefresher` actor caches the in-flight `Task` so later
+  callers join it — **the cache is assigned before the first suspension point**,
+  which is the whole fix. WHOOP uses it; `StravaService` has the same exposure
+  but one call site today, so adopt it there rather than rewriting the logic.
+- **Form bodies must leave RFC 3986's unreserved characters literal.** Encoding
+  with `.alphanumerics` looks conservative but is malformed: it sent `grant_type`
+  as `refresh%5Ftoken` and corrupted any refresh token containing `-`, `.` or `_`.
+  One tested `FormURLEncoding` in `ZonaKit` now serves both providers (keys sorted
+  so the body is deterministic and therefore testable) — don't hand-roll a second
+  `urlEncode` in an app-target service.
+- **A dead refresh token must clear the stored tokens, not wedge the account.**
+  Leaving it in the Keychain keeps `isConnected` true, so every retry replays the
+  same dead credential with no way out but a Disconnect the rider has no reason to
+  suspect. Note WHOOP answers `invalid_request` — *not* the standard
+  `invalid_grant` — for this, putting the only signal in `error_hint`;
+  `WhoopTokenErrorKind.classify` reads that, and deliberately only reports a dead
+  token for a `refresh_token` grant so a failed authorization-code exchange can't
+  send the rider round a reconnect loop that wouldn't help.
 
 **Values that describe the rider are stamped onto the ride, not read live at
 summary time.** `weightKg` (for watts-per-kilogram) joins `whoopMaxHR` /
