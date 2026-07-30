@@ -332,7 +332,8 @@ the roadmap for why.
 
 ## Roadmap
 
-Shipped since the first cut (all verified on device unless noted):
+Shipped since the first cut. This list describes what the app does; `ROADMAP.md`
+records how far each feature has been verified (hardware, signed build, or tests):
 
 - **WHOOP** as a live HR source over standard `0x180D`, plus a **WHOOP Cloud**
   integration: HR zones reconstructed from max/resting HR via HRR (Karvonen),
@@ -361,10 +362,10 @@ Shipped since the first cut (all verified on device unless noted):
   `ZoneState` the BPM dial's PUSH/HOLD/EASE cue reads, so the two can't disagree
   at a band edge. (It replaced the live chart on this screen: mid-ride you're
   steering to a zone, not reading a trend.)
-- **VoiceOver on the ride screen's readouts** _(not yet heard aloud on device)_ —
-  the zone bar and the six small metric tiles are each one accessibility element
-  with a spoken label and value, instead of the separate number/caption stops
-  SwiftUI produces by default. Because the row repeats short visible titles (three
+- **VoiceOver on the ride screen's readouts** — the zone bar and the six small
+  metric tiles are each one accessibility element with a spoken label and value,
+  instead of the separate number/caption stops SwiftUI produces by default.
+  Because the row repeats short visible titles (three
   tiles read "SRAM", two read "W/kg" — position and unit disambiguate them
   visually, but not aloud), `Metric` takes an optional `spokenLabel` that
   overrides the visible one: "Leg power", "Leg cadence", "Leg watts per kilogram".
