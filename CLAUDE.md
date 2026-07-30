@@ -247,8 +247,8 @@ rotated one, making the failure sticky rather than self-clearing:
   this because `fetchZonesAndRecovery` issues two GETs concurrently.
   `ZonaKit`'s generic `TokenRefresher` actor caches the in-flight `Task` so later
   callers join it — **the cache is assigned before the first suspension point**,
-  which is the whole fix. WHOOP uses it; `StravaService` has the same exposure
-  but one call site today, so adopt it there rather than rewriting the logic.
+  which is the whole fix. Both services now route their refresh through it —
+  extend it rather than hand-rolling a second refresh in a new provider.
 - **Form bodies must leave RFC 3986's unreserved characters literal.** Encoding
   with `.alphanumerics` looks conservative but is malformed: it sent `grant_type`
   as `refresh%5Ftoken` and corrupted any refresh token containing `-`, `.` or `_`.
