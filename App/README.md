@@ -372,9 +372,9 @@ Shipped since the first cut (all verified on device unless noted):
   letter-by-letter), and a missing value is announced as **"No reading"** rather
   than as punctuation or silence — so an expired crank reading never sounds like
   a zero the rider didn't hold.
-- **Explained summary stats** _(not yet seen in-app)_ — every tile on the ride
-  summary whose meaning isn't obvious from its label shows an info glyph and opens
-  a plain-English explanation on tap. Chiefly **Avg power** vs. **Normalized**
+- **Explained summary stats** — every tile on the ride summary whose meaning isn't
+  obvious from its label shows an info glyph and opens a plain-English explanation
+  on tap. Chiefly **Avg power** vs. **Normalized**
   (and their W/kg counterparts): both are the same trainer watts over the same
   per-ride weight and differ only in how they average, so a steady ERG ride makes
   them read almost alike and only an interval session pulls them apart. The
