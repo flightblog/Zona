@@ -81,18 +81,23 @@ summarized but not charted).
 
 - **Quarq/SRAM as a recorded power source.** ✅ _Shipped (PR #36 display, PR #70
   recording); verified on a physical meter._ A connected SRAM/Quarq shows its live
-  watts and cadence on the ride screen, and its watts are **recorded** per-second
-  alongside the trainer's (`RideSample.powerMeterW` → `RideSampleModel.powerMeterW`),
+  watts, cadence and watts-per-kilo on the ride screen, and its watts are
+  **recorded** per-second alongside the trainer's
+  (`RideSample.powerMeterW` → `RideSampleModel.powerMeterW`),
   summarized into avg/max leg power, and shown as their own summary tiles on rides
   ridden with a meter.
-  Those two live tiles sit on **their own row** beneath W/kg / Speed / Distance
+  Those three live tiles sit on **their own row** beneath W/kg / Speed / Distance
   (PR #111) rather than sharing that line, which had to shrink its font to fit
-  five tiles across a phone. The row is keyed on the meter being *connected*, not
-  on it having a current reading: a quiet crank sends nothing rather than a 0 W
-  frame, so the values expire on a coast and go nil, and keying on the reading
-  made the whole row vanish and shift the layout every time the rider stopped
-  pedalling. Each value falls back independently to "—" — never 0, which would
-  claim watts the rider never held.
+  five tiles across a phone. The leg-power W/kg tile (PR #114) reuses the same
+  pure `PowerPerWeight.wattsPerKg` as the trainer-derived W/kg tile above it,
+  against the same WHOOP-over-manual `effectiveWeightKg` — so the row reads the
+  rider's *leg* output per kilo next to the trainer's, and the two figures differ
+  for the same reason the raw watts do. The row is keyed on the meter being
+  *connected*, not on it having a current reading: a quiet crank sends nothing
+  rather than a 0 W frame, so the values expire on a coast and go nil, and keying
+  on the reading made the whole row vanish and shift the layout every time the
+  rider stopped pedalling. Each value falls back independently to "—" — never 0,
+  which would claim watts the rider never held.
   It stays a **parallel channel, not a replacement**: the trainer's `powerW` is
   still the single source of truth for ERG, zone math, and the TCX/Strava export,
   so leg power can never skew a recorded or uploaded ride. As expected, a real
