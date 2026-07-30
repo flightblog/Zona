@@ -234,13 +234,26 @@ summarized but not charted).
     and `TokenRefresher` collapses concurrent refreshes into one, since an
     `actor` alone does **not** serialize them (isolation is released at every
     `await`, so two callers could each burn the same single-use token). Both new
-    types are generic and shared with Strava, which carried the identical
-    encoder bug. Error banners now show WHOOP's `error_hint` rather than the
+    types are generic, and Strava carried the identical encoder bug. Error
+    banners now show WHOOP's `error_hint` rather than the
     boilerplate `error_description` that is identical for every
     `invalid_request` — that change is what identified the real fault.
     _Note: the classifier is tested against error bodies captured from the live
     endpoint; the full expire → clear → reconnect sequence is covered by unit
     tests rather than by an exercised device run._
+  - **Strava on the shared refresher.** ✅ _Shipped (PR #125)._ `StravaService`
+    now routes its refresh through the same `TokenRefresher`, closing the last
+    hand-rolled read-`await`-save refresh in the app — and correcting a doc
+    comment that claimed its `actor` serialized the refresh, the same false
+    claim WHOOP's carried and probably why the shape survived in two places.
+    Latent rather than a live bug: only one call site issues uploads today, so
+    it never fired, but the hazard is in the shape of the code rather than in
+    how it happens to be called. Strava deliberately does *not* get WHOOP's
+    dead-token classification — that exists only because WHOOP answers
+    `invalid_request` instead of `invalid_grant`, and writing a Strava
+    equivalent without having observed its real failure body would be guessing.
+    _Compile- and unit-verified; the refresh path runs only on an expired token
+    against a connected account, so it has not been exercised on the wire._
 - **Per-ride HR-zone model (WHOOP vs. LTHR).** ✅ _Shipped (PR #61 model, PR #62
   the WHOOP-always-wins rule); verified in-app._ Which HR-zone model a ride is
   scored against is now a **fact about the ride**, not a re-reading of today's
