@@ -365,9 +365,13 @@ Shipped since the first cut (all verified on device unless noted):
   ride's stored HR samples), and a weekly in-zone trend, all rolled up by a pure
   `RideHistoryStats` reducer in `ZonaKit`.
 - **Quarq/SRAM leg power** — a connected SRAM/Quarq power meter shows its live
-  watts and cadence on the ride screen, and its watts are **recorded** per-second
-  as the rider's *leg* power (`RideSample.powerMeterW`), summarized into avg/max
-  leg power on the ride summary. It's a **parallel channel, not a replacement**:
+  watts, cadence and watts-per-kilo on their own row on the ride screen, and its
+  watts are **recorded** per-second as the rider's *leg* power
+  (`RideSample.powerMeterW`), summarized into avg/max leg power on the ride
+  summary. The W/kg tile divides the meter's watts by the same WHOOP-over-manual
+  weight the trainer's W/kg tile uses, via the shared pure `PowerPerWeight` — so
+  the screen shows leg and trainer W/kg side by side, which differ for the same
+  reason the raw watts do (below). It's a **parallel channel, not a replacement**:
   the trainer's `powerW` remains the single source of truth for ERG, the zone
   math, and the TCX/Strava export, so leg power can never skew a recorded or
   uploaded ride. (The meter's *cadence* stays display-only.) Expect it to read a
