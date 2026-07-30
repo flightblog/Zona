@@ -258,9 +258,28 @@ private struct PowerMeterStats: View {
                     Stat(label: "Max leg power", value: "\(maxLeg) W",
                          explanation: Explanation.maxLegPower)
                 }
+                // Both W/kg tiles divide the *meter's* watts by the ride's
+                // stamped weight, so they read a little above the trainer-based
+                // pair in the grid above — same physical gap as the watt tiles
+                // beside them. Gated like the watt tiles, so a ride that
+                // predates weight tracking drops them rather than showing "—"
+                // (the main grid's trainer pair dashes instead; that section
+                // always renders a fixed set of tiles, this one doesn't).
+                if let avgPerKg = ride.avgPowerMeterPerKg {
+                    Stat(label: "Avg leg W/kg", value: formatted(avgPerKg),
+                         explanation: Explanation.avgLegPerKg)
+                }
+                if let npPerKg = ride.normalizedPowerMeterPerKg {
+                    Stat(label: "Normalized leg W/kg", value: formatted(npPerKg),
+                         explanation: Explanation.normalizedLegPerKg)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func formatted(_ wattsPerKg: Double) -> String {
+        String(format: "%.1f W/kg", wattsPerKg)
     }
 }
 
@@ -321,6 +340,18 @@ private enum Explanation {
         The single highest watt reading from your power meter during the ride. \
         Measured at the cranks, so it sits above the trainer's max for the same \
         effort.
+        """
+
+    static let avgLegPerKg = """
+        Avg leg power divided by your weight at the time of this ride. It reads \
+        a little above the Avg W/kg tile further up, for the same reason the \
+        watts do — that one is measured at the flywheel, this one at the cranks.
+        """
+
+    static let normalizedLegPerKg = """
+        Normalized leg power divided by your weight at the time of this ride. \
+        Same effort-weighting as Normalized leg power, so it runs above Avg leg \
+        W/kg on a ride with intervals and matches it closely on a steady one.
         """
 }
 

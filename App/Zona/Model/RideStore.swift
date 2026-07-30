@@ -180,6 +180,20 @@ final class Ride {
     var normalizedPowerPerKg: Double? {
         PowerPerWeight.wattsPerKg(watts: normalizedPowerW, weightKg: weightKg)
     }
+
+    /// Average crank-meter watts per kilogram, or nil when no meter was paired
+    /// (or the ride predates weight tracking). Deliberately the meter's own
+    /// watts rather than the trainer's — it reads a few watts higher by design,
+    /// so this figure sits above `avgPowerPerKg` and is not meant to match it.
+    var avgPowerMeterPerKg: Double? {
+        PowerPerWeight.wattsPerKg(watts: avgPowerMeterW, weightKg: weightKg)
+    }
+
+    /// Normalized crank-meter watts per kilogram — the same relationship to
+    /// `avgPowerMeterPerKg` that `normalizedPowerPerKg` has to `avgPowerPerKg`.
+    var normalizedPowerMeterPerKg: Double? {
+        PowerPerWeight.wattsPerKg(watts: normalizedPowerMeterW, weightKg: weightKg)
+    }
 }
 
 /// One second of a persisted ride. Metrics optional (CloudKit-friendly and true
