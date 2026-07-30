@@ -122,7 +122,8 @@ struct RideView: View {
             HStack(spacing: 16) {
                 Metric(title: "W/kg",
                        value: wattsPerKgText,
-                       unit: "")
+                       unit: "",
+                       spokenLabel: "Watts per kilogram")
                 Metric(title: "Speed",
                        value: controller.metrics.speedKph.map { String(format: "%.1f", $0) } ?? "—",
                        unit: "km/h")
@@ -151,13 +152,16 @@ struct RideView: View {
                 HStack(spacing: 16) {
                     Metric(title: "SRAM",
                            value: controller.metrics.powerMeterW.map { "\($0)" } ?? "—",
-                           unit: "W")
+                           unit: "W",
+                           spokenLabel: "Leg power")
                     Metric(title: "SRAM",
                            value: controller.metrics.powerMeterCadenceRpm.map { "\($0)" } ?? "—",
-                           unit: "RPM")
+                           unit: "RPM",
+                           spokenLabel: "Leg cadence")
                     Metric(title: "SRAM",
                            value: powerMeterWattsPerKgText,
-                           unit: "W/kg")
+                           unit: "W/kg",
+                           spokenLabel: "Leg watts per kilogram")
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -667,6 +671,13 @@ private struct Metric: View {
     let title: String
     let value: String
     let unit: String
+    /// What VoiceOver announces instead of `title`, when the visual caption is
+    /// too terse to stand alone. The row deliberately repeats short titles —
+    /// three tiles read "SRAM" and two read "W/kg" — which works sighted,
+    /// where position and the unit disambiguate at a glance, but leaves
+    /// VoiceOver saying "SRAM" three times with nothing to tell them apart.
+    /// Defaults to `title` for tiles whose caption already reads as a phrase.
+    var spokenLabel: String?
 
     var body: some View {
         VStack {
@@ -686,6 +697,32 @@ private struct Metric: View {
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
+        // Merge the number and its caption into one element: read separately
+        // they arrive as two stops ("3.4", then "SRAM · W/kg"), so a rider
+        // swiping the row hears twice as many stops as there are readings.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel ?? title)
+        .accessibilityValue(accessibilityValue)
+    }
+
+    /// "3.4 watts per kilogram", or "No reading" for the em-dash the tiles show
+    /// when a value is missing — a bare "—" is announced as punctuation (or
+    /// skipped), which tells the rider nothing. Units are spelled out because
+    /// VoiceOver reads "W" as the letter and "RPM" letter-by-letter.
+    private var accessibilityValue: String {
+        guard value != "—" else { return "No reading" }
+        return unit.isEmpty ? value : "\(value) \(spokenUnit)"
+    }
+
+    private var spokenUnit: String {
+        switch unit {
+        case "W":     return "watts"
+        case "RPM":   return "revolutions per minute"
+        case "W/kg":  return "watts per kilogram"
+        case "km/h":  return "kilometres per hour"
+        case "km":    return "kilometres"
+        default:      return unit
+        }
     }
 }
 
