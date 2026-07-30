@@ -14,12 +14,19 @@ enum StravaServiceError: Error {
 /// ZonaKit helpers (`StravaOAuth`, `StravaTokens`, `StravaUploadPoll`); this
 /// actor only does the actual I/O.
 ///
-/// An `actor` so a token refresh is serialized — two concurrent uploads can't
-/// both refresh and clobber each other's rotated refresh token.
+/// An `actor` for the usual reasons, but note that actor isolation alone does
+/// **not** serialize a token refresh — it's released at every `await`, so two
+/// concurrent uploads could each refresh with the same single-use token and the
+/// later `save()` could clobber the rotated one. That's what `ZonaKit`'s
+/// `TokenRefresher` is for; see its doc comment.
 actor StravaService {
     private let config: StravaOAuthConfig
     private let tokens: any TokenStore<StravaTokens>
     private let session: URLSession
+
+    /// Serializes refreshes so concurrent uploads share one round-trip. Built
+    /// lazily because it closes over `self` to perform the POST.
+    private var refresher: TokenRefresher<StravaTokens>?
 
     init(config: StravaOAuthConfig, tokens: any TokenStore<StravaTokens>, session: URLSession = .shared) {
         self.config = config
@@ -46,16 +53,35 @@ actor StravaService {
 
     /// A currently-valid access token, refreshing first if the cached one is at
     /// or near expiry. Persists the rotated refresh token.
+    ///
+    /// Delegates to `TokenRefresher` so concurrent callers share a single
+    /// refresh: Strava's refresh token rotates on every use, so a second
+    /// simultaneous refresh would present an already-invalidated token. Only one
+    /// call site issues uploads today, but the hazard is in the shape of the code
+    /// rather than in how it currently happens to be called.
     func validAccessToken() async throws -> String {
-        guard let current = tokens.loadTokens() else { throw StravaServiceError.notAuthorized }
-        guard current.isExpired() else { return current.accessToken }
+        do {
+            return try await tokenRefresher().validAccessToken()
+        } catch TokenRefreshError.notAuthorized {
+            throw StravaServiceError.notAuthorized
+        }
+    }
 
-        let body = StravaOAuth.refreshBody(refreshToken: current.refreshToken, config: config)
-        let response = try await postForm(StravaOAuth.tokenURL, fields: body, accessToken: nil)
-        let decoded = try decode(StravaTokenResponse.self, from: response)
-        let refreshed = StravaTokens(from: decoded)
-        tokens.save(refreshed)   // refresh token rotated — persisting is mandatory
-        return refreshed.accessToken
+    /// The lazily-built shared refresher. One instance per service, so the
+    /// in-flight refresh is actually shared between callers.
+    private func tokenRefresher() -> TokenRefresher<StravaTokens> {
+        if let refresher { return refresher }
+        let built = TokenRefresher<StravaTokens>(
+            store: tokens,
+            isExpired: { $0.isExpired() },
+            accessToken: { $0.accessToken },
+            refresh: { [config] current in
+                let body = StravaOAuth.refreshBody(refreshToken: current.refreshToken, config: config)
+                let response = try await self.postForm(StravaOAuth.tokenURL, fields: body, accessToken: nil)
+                return StravaTokens(from: try await self.decode(StravaTokenResponse.self, from: response))
+            })
+        refresher = built
+        return built
     }
 
     // MARK: Upload

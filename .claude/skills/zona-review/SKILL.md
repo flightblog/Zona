@@ -166,8 +166,8 @@ sticky:
   the in-flight `Task` **before its first suspension point**. Flag a refresh that
   reads-then-`await`s-then-saves on its own, and flag any comment claiming
   `actor` isolation alone prevents the double refresh — it doesn't, since the
-  actor is released at every `await`. `StravaService` hasn't adopted it yet and
-  should, rather than growing a second implementation.
+  actor is released at every `await`. Both `WhoopService` and `StravaService`
+  route through it; a new provider should too, not a second implementation.
 - Form bodies use `ZonaKit`'s `FormURLEncoding`. Flag a hand-rolled `urlEncode`
   in an app-target service, and specifically flag percent-encoding with
   `.alphanumerics` — RFC 3986 unreserved characters (`- . _ ~`) must stay
