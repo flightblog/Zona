@@ -20,7 +20,8 @@ macOS, along with a SRAM/Quarq power meter and Whoop as additional BLE sources.
    inside its zone) answers the other question: not "am I on my target?" but "which
    zone is this?" — scored against the same model the ride itself is.
 3. **Save & review** — on End ride the session is recorded to **SwiftData** and a
-   summary appears (time-in-HR-zone headline, avg/max HR, power stats, and a
+   summary appears (time-in-HR-zone headline, avg/max HR, power stats — tap any
+   tile's info glyph for a plain-English explanation of what it means — and a
    dual-axis watts/HR-over-time chart with the target HR-zone band shaded — drift
    and trend are a question for after the ride, not during it). The ride
    keeps the HR-zone model it was ridden under — WHOOP or LTHR — so it's always
@@ -371,6 +372,17 @@ Shipped since the first cut (all verified on device unless noted):
   letter-by-letter), and a missing value is announced as **"No reading"** rather
   than as punctuation or silence — so an expired crank reading never sounds like
   a zero the rider didn't hold.
+- **Explained summary stats** _(not yet seen in-app)_ — every tile on the ride
+  summary whose meaning isn't obvious from its label shows an info glyph and opens
+  a plain-English explanation on tap. Chiefly **Avg power** vs. **Normalized**
+  (and their W/kg counterparts): both are the same trainer watts over the same
+  per-ride weight and differ only in how they average, so a steady ERG ride makes
+  them read almost alike and only an interval session pulls them apart. The
+  Power Meter section's leg-power tiles also explain why their watts sit above the
+  trainer's — drivetrain loss, not an error. Each tile stays a single VoiceOver
+  element ("Avg power: 210 W") with the explanation as its hint, matching the ride
+  screen's tiles; the popover is what makes this work on iOS, where `.help()`
+  hover tooltips are invisible.
 - **All-Time Stats** (off the History toolbar) — totals (rides / time / distance),
   personal bests, a **time-in-each-HR-zone** breakdown (Z1–Z5, recomputed from each
   ride's stored HR samples), and a weekly in-zone trend, all rolled up by a pure
