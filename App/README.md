@@ -66,7 +66,7 @@ App/
 │   │   ├── RideSummary.swift      # avg/NP/max power, avg/max HR, time-in-(HR)zone
 │   │   ├── RideHistoryStats.swift # all-time rollup: totals, bests, per-zone time, weekly trend
 │   │   ├── ChartDownsampling.swift # ChartPoint + bucket-average downsampler for the ride charts
-│   │   ├── PowerPerWeight.swift   # watts ÷ kg, shared by the live tile and the summary
+│   │   ├── PowerPerWeight.swift   # watts ÷ kg, the one division behind every live and summary W/kg tile
 │   │   ├── HRV.swift              # R-R intervals → RMSSD
 │   │   ├── TrainerController.swift # app-facing facade over SensorHub
 │   │   ├── Intervals/
@@ -379,11 +379,14 @@ records how far each feature has been verified (hardware, signed build, or tests
   (and their W/kg counterparts): both are the same trainer watts over the same
   per-ride weight and differ only in how they average, so a steady ERG ride makes
   them read almost alike and only an interval session pulls them apart. The
-  Power Meter section's leg-power tiles also explain why their watts sit above the
-  trainer's — drivetrain loss, not an error. Each tile stays a single VoiceOver
-  element ("Avg power: 210 W") with the explanation as its hint, matching the ride
-  screen's tiles; the popover is what makes this work on iOS, where `.help()`
-  hover tooltips are invisible.
+  Power Meter section's tiles — leg power and leg W/kg alike — also explain why
+  their figures sit above the trainer's: drivetrain loss, not an error. Each tile
+  stays a single VoiceOver element ("Avg power: 210 W") with the explanation as
+  its hint, matching the ride screen's tiles; the popover is what makes this work
+  on iOS, where `.help()` hover tooltips are invisible. That section's labels are
+  prefixed "leg" rather than leaning on its heading, which VoiceOver doesn't speak
+  per-tile — a bare "Avg W/kg" would be indistinguishable from the trainer's tile
+  aloud.
 - **All-Time Stats** (off the History toolbar) — totals (rides / time / distance),
   personal bests, a **time-in-each-HR-zone** breakdown (Z1–Z5, recomputed from each
   ride's stored HR samples), and a weekly in-zone trend, all rolled up by a pure
@@ -391,11 +394,14 @@ records how far each feature has been verified (hardware, signed build, or tests
 - **Quarq/SRAM leg power** — a connected SRAM/Quarq power meter shows its live
   watts, cadence and watts-per-kilo on their own row on the ride screen, and its
   watts are **recorded** per-second as the rider's *leg* power
-  (`RideSample.powerMeterW`), summarized into avg/max leg power on the ride
-  summary. The W/kg tile divides the meter's watts by the same WHOOP-over-manual
-  weight the trainer's W/kg tile uses, via the shared pure `PowerPerWeight` — so
-  the screen shows leg and trainer W/kg side by side, which differ for the same
-  reason the raw watts do (below). It's a **parallel channel, not a replacement**:
+  (`RideSample.powerMeterW`), summarized on the ride summary into its own **Power
+  Meter** section: avg, normalized and max leg power, plus **Avg leg W/kg** and
+  **Normalized leg W/kg**. Every W/kg figure — the two live tiles and all four on
+  the summary — comes from the one shared pure `PowerPerWeight`, so they can't
+  drift apart; the leg ones divide the meter's own watts by the same weight the
+  trainer's use (WHOOP-over-manual live, and the per-ride stamped weight on a
+  saved ride). Leg and trainer W/kg therefore sit side by side and differ, for the
+  same reason the raw watts do (below). It's a **parallel channel, not a replacement**:
   the trainer's `powerW` remains the single source of truth for ERG, the zone
   math, and the TCX/Strava export, so leg power can never skew a recorded or
   uploaded ride. (The meter's *cadence* stays display-only.) Expect it to read a

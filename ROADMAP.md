@@ -83,10 +83,17 @@ summarized but not charted).
   recording); verified on a physical meter._ A connected SRAM/Quarq shows its live
   watts, cadence and watts-per-kilo on the ride screen, and its watts are
   **recorded** per-second alongside the trainer's
-  (`RideSample.powerMeterW` → `RideSampleModel.powerMeterW`),
-  summarized into avg/max leg power, and shown as their own summary tiles on rides
-  ridden with a meter.
-  Those three live tiles sit on **their own row** beneath W/kg / Speed / Distance
+  (`RideSample.powerMeterW` → `RideSampleModel.powerMeterW`) and summarized into
+  the ride summary's own **Power Meter** section on rides ridden with a meter:
+  avg, normalized and max leg power, joined by **Avg leg W/kg** and **Normalized
+  leg W/kg** (PR #122, verified in-app). Those two reuse the same pure
+  `PowerPerWeight.wattsPerKg` as every other W/kg figure, but over the ride's
+  *stamped* `weightKg` rather than current settings — so a later weight change or
+  WHOOP re-sync can't retroactively rescore a finished ride. They're computed from
+  columns that already existed, so no new persisted field was needed. Their labels
+  carry the "leg" prefix rather than relying on the section heading, which
+  VoiceOver doesn't speak per-tile.
+  Back on the ride screen, those three live tiles sit on **their own row** beneath W/kg / Speed / Distance
   (PR #111) rather than sharing that line, which had to shrink its font to fit
   five tiles across a phone. The leg-power W/kg tile (PR #114) reuses the same
   pure `PowerPerWeight.wattsPerKg` as the trainer-derived W/kg tile above it,
@@ -172,8 +179,9 @@ summarized but not charted).
   on a steady ERG ride they read almost identically and only visibly diverge after
   an interval session — exactly when the rider wonders why. The Normalized wording
   names the 4th-power effort-weighting and says the gap to Avg measures how spiky
-  the ride was. The **Power Meter** section's three leg-power tiles each also
-  answer the question that section raises first — why its watts sit above the
+  the ride was. The **Power Meter** section's tiles — the three leg-power ones and
+  the two leg W/kg ones added with them (PR #122) — each also
+  answer the question that section raises first — why its figures sit above the
   trainer's — repeating that the gap is drivetrain loss rather than an error and
   that the trainer stays what the ride is scored and uploaded on, wording kept in
   step with the physical explanation on `RideMetrics.powerMeterW`. Two things
