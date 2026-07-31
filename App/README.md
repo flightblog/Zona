@@ -87,7 +87,9 @@ App/
 │   │   │   ├── StravaOAuth.swift   # authorize URL, callback parse, token bodies
 │   │   │   ├── StravaToken.swift   # token decode + expiry
 │   │   │   ├── StravaUpload.swift  # upload-status decode + poll state machine
-│   │   │   └── TokenStore.swift    # token persistence seam (mirrors SensorMemory)
+│   │   │   ├── TokenStore.swift    # token persistence seam (mirrors SensorMemory)
+│   │   │   ├── TokenRefresher.swift # single-flight refresh — generic, shared with WHOOP
+│   │   │   └── FormURLEncoding.swift # RFC 3986 form bodies — generic, shared with WHOOP
 │   │   ├── HRRZones.swift        # HRR/Karvonen HR zones (WHOOP source-of-truth)
 │   │   └── Whoop/                # pure WHOOP OAuth + DTOs (no networking)
 │   │       ├── WhoopOAuth.swift    # authorize URL (state), callback parse, token bodies
@@ -241,6 +243,13 @@ WHOOP never retroactively rescores your old LTHR rides.
 > Auth is **per-device** (like Strava): tokens live in this device's Keychain and
 > don't iCloud-sync, so connect WHOOP separately on each device. The same
 > PKCE-less client-secret caveat as Strava applies.
+
+If a sign-in eventually lapses, the WHOOP section says *"Your WHOOP sign-in has
+expired. Tap Connect WHOOP to sign in again"* and clears the stored tokens, so the
+next attempt starts a fresh authorization rather than replaying a credential that
+can no longer work. Zones and recovery keep showing the last values fetched until
+you reconnect; finished rides are unaffected, since each one already stores the
+zone model it was ridden under.
 
 ## Verifying the core
 
