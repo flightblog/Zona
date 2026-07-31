@@ -61,6 +61,19 @@ required **ZonaKit tests** check before merging (`gh pr checks <n> --watch`); a
 `CLAUDE.md` / `App/README.md` / `ROADMAP.md` the change invalidates. Keep this
 split rather than folding docs into the code PR.
 
+**Branch names are `<type>/<kebab-case-summary>`** — `feat/zone-bar-target-marker`,
+`fix/whoop-concurrent-token-refresh`, `docs/roadmap-oauth-hardening`,
+`tests/coverage-gaps`, `refactor/ride-settings-state`, `a11y/metric-voiceover-labels`.
+Those six types cover everything so far; add another only when none fits. Name the
+change, not the file touched, and keep it short enough to read in `gh pr list`.
+
+Two things you'll see in the history that aren't the convention: bare unprefixed
+names (`interval-step-list`, `sram-own-row`) are the older style, still common up
+to ~#111 and superseded from #104 onward — don't imitate them. And `claude/*`
+branches with a random suffix are generated when work is started from the GitHub
+/ web agent rather than chosen; renaming one isn't worth a force-push, but don't
+create them by hand.
+
 Commit messages and PR bodies here run long by design: they explain *why*, name
 the failure mode a change prevents, and record what was deliberately **not** done
 and on what evidence. Several invariants in this file were recovered from commit
