@@ -373,6 +373,16 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             }
             self.browseProbes.removeAll()
             self.reportedBrowseIDs.removeAll()
+            // Forget the names collected while browsing. The scan is unfiltered, so
+            // this map picked up every advertising device in range — phones,
+            // watches, TVs — not just candidate sensors. Names for peripherals the
+            // ride still holds (or is still dialling) are kept: browsing can run
+            // while connected, and those labels are read on drop and failure paths.
+            // Cleared alongside `reportedBrowseIDs` so a device that gets probed
+            // again after a re-browse can still be labelled.
+            self.advertisedNames = self.advertisedNames.filter { id, _ in
+                self.isAdvertisedNameStillNeeded(id)
+            }
             // Only stop the radio if we're not also mid-connect for a real ride.
             if self.desired.isEmpty { self.central?.stopScan() }
         }
@@ -499,6 +509,7 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
                 if let p = self.central?.retrievePeripherals(withIdentifiers: [id]).first {
                     self.central?.cancelPeripheralConnection(p)
                 }
+                self.forgetAdvertisedNameIfUnused(id)
                 return
             }
 
@@ -520,6 +531,7 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
                 self.pendingByIdentifier[id] = nil
                 self.toOwner { $0.note("Sensor connect timed out, rescanning") }
             }
+            self.forgetAdvertisedNameIfUnused(id)
             self.rescanForMissing()
         }
     }
@@ -630,6 +642,32 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
         return hints.contains { n.contains($0) }
     }
 
+    /// Whether we still have a use for a peripheral's cached advertisement name.
+    ///
+    /// True while the peripheral holds a kind slot, is mid-connect, is an
+    /// unidentified pending connection, or is an in-flight browse probe — every
+    /// path that later reads a name for a log line or a browse row. Anything else
+    /// is a device that merely advertised near us.
+    private func isAdvertisedNameStillNeeded(_ id: UUID) -> Bool {
+        if kindForPeripheral[id] != nil { return true }
+        if pendingByIdentifier[id] != nil { return true }
+        if connectingIdentifiers.contains(id) { return true }
+        if browseProbes.contains(id) { return true }
+        return peripherals.values.contains { $0.identifier == id }
+    }
+
+    /// Drop a cached advertisement name once nothing refers to the peripheral.
+    ///
+    /// The write site in `didDiscover` fires for *every* advertising device in
+    /// range (scans are unfiltered so non-advertising straps are still found), so
+    /// without this the map grows for the whole session — a ride never calls
+    /// `disconnectAll`, which was previously the only thing that cleared it.
+    /// Call this only after any name read on the same path.
+    private func forgetAdvertisedNameIfUnused(_ id: UUID) {
+        guard !isAdvertisedNameStillNeeded(id) else { return }
+        advertisedNames[id] = nil
+    }
+
     /// Resume scanning if any desired kind is still missing. Uses a nil-service
     /// scan (see `beginScan`) so non-advertising straps are still found.
     private func rescanForMissing() {
@@ -680,6 +718,7 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             browseProbes.remove(id)
             pendingByIdentifier[id] = nil
             connectingIdentifiers.remove(id)
+            forgetAdvertisedNameIfUnused(id)
             return
         }
         // A peripheral that dropped before we could identify its kind: forget it
@@ -695,6 +734,10 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
                 toOwner {
                     $0.note("\(name) dropped before it identified itself\(reason.map { ": \($0)" } ?? "")")
                 }
+                // Prune only after the log line above has read the name — clearing
+                // earlier would downgrade this message to "unidentified sensor",
+                // losing exactly the trace this branch exists to leave.
+                forgetAdvertisedNameIfUnused(id)
                 rescanForMissing()
             }
             return
@@ -751,6 +794,9 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             browseProbes.remove(id)
             pendingByIdentifier[id] = nil
             connectingIdentifiers.remove(id)
+            // The `report` above has already taken the name; a probe that didn't
+            // match the browsed kind never needed it. Either way it's spent.
+            forgetAdvertisedNameIfUnused(id)
             central?.cancelPeripheralConnection(peripheral)
             return
         }
