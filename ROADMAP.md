@@ -4,19 +4,19 @@ Possible new features, grouped by value and by how much of the plumbing already
 exists. Zona today holds a Kickr Core 2 at a steady ERG wattage while you aim for
 a target HR zone, records the ride to SwiftData, computes summaries
 (avg/NP/max power, time-in-zone, distance, RMSSD), shows a live HR-zone bar and a
-running Total / In-zone timer pair, charts watts and HR over time post-ride,
-exports TCX, uploads directly to Strava, and syncs
-across devices via iCloud/CloudKit. The `App/` project (the `ZonaKit` package
-plus the SwiftUI target) is now the sole codebase — the retired Phase-0
-`WahooFTMSPrototype` CLI that validated FTMS trainer control before the app
-existed has been removed. The pure-core / app-glue split now extends to the
-settings layer too: the ride-input decision logic (zone-sync, WHOOP-vs-LTHR
-zoning) lives in a unit-tested `RideSettingsState` in `ZonaKit`, with
-`RideSettings` a thin `@Observable` wrapper that just persists it to
-`UserDefaults` (PR #84). Several of the
-items below build on infrastructure that already exists but isn't yet fully
-surfaced (persisted R-R intervals; a Quarq's per-second leg power, recorded and
-summarized but not charted).
+running Total / In-zone timer pair, plays rider-triggered interval sessions that
+steer ERG mid-ride and reviews them per-step afterwards, charts watts and HR over
+time post-ride, rolls the whole history up into an all-time stats screen, exports
+TCX, uploads directly to Strava, and syncs across devices via iCloud/CloudKit.
+Several of the items below build on infrastructure that already exists but isn't
+yet fully surfaced (persisted R-R intervals; a Quarq's per-second leg power,
+recorded and summarized but not charted).
+
+Two sections at the end are as load-bearing as the tiers: **Suggested next steps**
+for where to start, and **Deliberately not planned** for ideas already considered
+and dropped — check the latter before adding a candidate, since several of them
+look like obvious wins from the code alone and were rejected on how the app is
+actually ridden.
 
 ## Tier 1 — Highest value, plumbing largely exists
 
@@ -76,6 +76,19 @@ summarized but not charted).
   data is in SwiftData) via a pure, unit-tested `RideHistoryStats` reducer in
   ZonaKit. Still open as follow-ons: an RMSSD/HRV trend (the R-R data is already
   stored — see the HRV item above) and any further Z2-discipline cuts.
+- **Ride notes / tags / RPE.** A free-text note and a 1–10 perceived-effort rating
+  captured at ride end and stored on the ride, so the history records how a session
+  *felt* and not only what it measured — the one thing about a steady Z2 hour that
+  no sensor on the bike reports. Rides that read identically on watts and HR are
+  routinely different rides, and today that difference is lost the moment the
+  summary closes. Cheap for what it gives: an input on `RideSummaryView` plus new
+  fields on `Ride`, which follow the same rule as `weightKg` and the WHOOP numbers
+  — **optional with no default**, so existing rides lightweight-migrate and the
+  store stays CloudKit-safe. It also feeds the two features that want a subjective
+  signal: the All-Time Stats trends (an RPE-against-power cut says more about
+  fitness drift than either number alone) and any future HRV-guided target
+  suggestion, which currently has only WHOOP's morning reading to go on and nothing
+  about how the last few sessions actually went.
 
 ## Tier 2 — Rounds out the ride experience
 
@@ -272,8 +285,6 @@ summarized but not charted).
 
 ## Tier 4 — Platform polish
 
-- **Apple Watch companion.** Live HR from the watch as an HR source and/or a
-  glanceable ride controller.
 - **Live Activity / Dynamic Island.** Ride timer, current HR/zone on the lock
   screen.
 - **Screen-on / idle management.** ✅ _Shipped (PR #39)._ The display
@@ -305,19 +316,10 @@ summarized but not charted).
 
 Fresh candidates not yet on the tiers above, roughly ordered by value-to-effort.
 
-- **Ride notes / tags / RPE.** A free-text note and a 1–10 perceived-effort rating
-  captured at ride end and stored on the ride, so the history is searchable by how
-  a session *felt*, not just its numbers. Small SwiftData field + a summary-screen
-  input; feeds the trends dashboard and any future HRV-guided suggestions.
 - **Manual pause / resume control.** A user-driven pause button on the ride screen
   (distinct from the proposed auto-pause coasting detection) for bathroom/phone
   breaks, so total vs. in-zone timers and time-in-zone math stay honest. Pairs with
   the recorder's existing 1 Hz tick.
-- **Cadence target range.** The Kickr's cadence is already parsed, recorded, and
-  shown live (`metrics.cadenceRpm`, from Indoor Bike Data). The net-new piece is an
-  optional target-cadence band with a visual/audio cue when you drift out of it, so
-  steady-zone riders can hold a consistent spin, not just a wattage — reusing the
-  same tolerance-window pattern the HR zone bar uses.
 - **Configurable ERG / zone tolerance.** The ±8 W in-zone window and the ERG target
   are fixed constants today. Expose them as preferences (per-rider comfort) so the
   in-zone timer and cues reflect how tightly *you* want to hold the number.
@@ -325,15 +327,9 @@ Fresh candidates not yet on the tiers above, roughly ordered by value-to-effort.
   to Strava only. A generic share-sheet export of the finished ride's TCX/FIT, plus
   writing the workout (duration, avg HR, energy) to Apple Health via HealthKit,
   makes rides portable to TrainingPeaks, intervals.icu, etc.
-- **Apple Health as an HR source.** Beyond exporting, read live HR from HealthKit /
-  a paired Apple Watch as an alternative to a BLE strap — dovetails with the Tier 4
-  Apple Watch companion but is a smaller first step.
 - **Warmup / cooldown auto-segments.** Even without a full workout builder, auto-tag
   the opening and closing minutes as warmup/cooldown and exclude them from
   time-in-zone scoring, so a session's "quality" isn't diluted by ramp-up.
-- **Multiple rider / FTP profiles.** One set of FTP/LTHR numbers today. Named
-  profiles (or a guest mode) would let a second rider use the same install without
-  clobbering the primary rider's settings and history.
 - **Post-ride Strava-upload retry queue.** If the Strava upload fails (offline,
   token expired), the finished ride currently isn't re-attempted automatically.
   A small pending-upload queue that retries on next launch / reconnect would make
@@ -341,10 +337,41 @@ Fresh candidates not yet on the tiers above, roughly ordered by value-to-effort.
 
 ## Suggested next steps
 
-- **Structured workouts** v1 (rider-triggered work/rest block) is done (issue
-  #88); a general step-list model for warmups/ramps/pyramids and workout
-  import/export remain as follow-ons.
-- **HRV chart + SDNN** is the cheapest high-value win — the raw data is already
-  stored.
-- **Quarq** is done: it both displays (PR #36) and records leg power alongside the
-  trainer's (PR #70). L/R balance was considered and dropped — see the item above.
+- **HRV chart + SDNN** is the cheapest high-value win — the raw per-second R-R is
+  already persisted, so it needs no new capture and no re-riding, and the summary
+  already has the dual-axis chart and the downsampler to reuse.
+- **Ride notes / RPE** is the next cheapest, and the only item here that adds a
+  kind of data the app doesn't currently hold at all.
+- **ERG session resiliency** is the one open item that affects a ride in progress
+  rather than the review of it — a mid-ride drop currently leaves the ERG setpoint
+  dependent on unverified Kickr firmware behavior.
+
+## Deliberately not planned
+
+Ideas considered and dropped, recorded so they aren't re-proposed. Zona is a
+personal, single-rider app that runs on a phone or Mac propped in front of the
+trainer, and each of these is a real feature somewhere else that doesn't earn its
+keep here. Reopening one needs a reason that changes the premise, not just a
+restatement of the idea.
+
+- **Apple Watch companion** (was Tier 4) and **Apple Health as an HR source**. Both
+  chase an HR problem that isn't open: a Garmin HRM 200 and a WHOOP both already
+  work as ordinary BLE straps, hardware-verified, and `SensorHub` reconnects them
+  automatically. A watch target would be a second app to sign, build and keep in
+  step with the ride model for a reading Zona already has, and HealthKit live HR
+  would be a third path to the same beat.
+- **Multiple rider / FTP profiles.** The build is single-user by construction — the
+  OAuth client secrets are baked into the binary and the Keychain tokens are
+  per-device — so a second rider would want their own install, not a profile
+  switcher inside this one.
+- **Cadence target range.** The Kickr's cadence is parsed, recorded and shown, so
+  the band itself would be easy; the reason to skip it is the ride, not the code.
+  Holding a zone already gives the rider one number to steer to, and a second
+  simultaneous target competes with it for attention on exactly the sessions meant
+  to be unhurried.
+- **Closed-loop HR→watts.** Built and then deliberately removed. HR lags and drifts
+  too much to close the loop on, which is the whole reason the design holds power
+  steady and lets HR define the target zone. Noted here as well as in `CLAUDE.md`
+  because it's the idea most likely to look like an obvious improvement.
+- **L/R pedal balance.** A tile existed and was removed in PR #52 — see the Quarq
+  item above for why a spider-based meter can only estimate the split.
