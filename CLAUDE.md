@@ -20,6 +20,11 @@ Repo layout:
 brew install xcodegen
 cd App && xcodegen generate      # generates Zona.xcodeproj from project.yml (not committed)
 
+# ZonaKit depends on HealthConnectKit by relative path until that repo is
+# published, so it must be checked out as a sibling of Zona:
+#   ~/Dev/github/{HealthConnectKit, Zona}
+git -C ~/Dev/github clone https://github.com/flightblog/HealthConnectKit.git
+
 # Run the app
 open App/Zona.xcodeproj          # pick the "Zona" scheme, set signing, run
 
@@ -96,8 +101,9 @@ with a signing team set handles this; from the CLI pass
 
 **`ZonaKit` (pure, no UI, unit-tested) vs. the `Zona` app target (I/O + SwiftUI).**
 This split is the main thing to preserve: BLE decoding, zone math, ride
-recording/summarizing, TCX export, HRV (RMSSD), and the pure OAuth/token logic
-for Strava and WHOOP all live in `ZonaKit` and are unit-tested. The app target
+recording/summarizing, TCX export, and HRV (RMSSD) live in `ZonaKit` and are
+unit-tested; the pure OAuth/token logic for Strava and WHOOP lives in the shared
+`HealthConnectKit` package (see below) and is unit-tested there. The app target
 supplies the networking, Keychain, and UI glue around that pure core (e.g.
 `StravaService` wraps `ZonaKit`'s `StravaUpload` state machine with
 `URLSession`; `WhoopService` does the same for WHOOP). When adding a new
@@ -261,8 +267,29 @@ holds real stored properties (`metrics`, connection state) that are
 computed pass-through to `hub.metrics` would register no SwiftUI dependency and
 freeze the UI on stale values — don't reintroduce one.
 
+**The OAuth/token plumbing lives in `HealthConnectKit`, a package shared with
+another app.** `TokenStore`, `TokenRefresher`, `FormURLEncoding`, and the
+Strava/WHOOP OAuth + token/DTO types are not in this repo — they're in
+[HealthConnectKit](https://github.com/flightblog/HealthConnectKit), which Helix
+(a multi-source health aggregator) depends on too. They were already written
+provider-agnostically here, and a second copy would eventually re-inherit the
+refresh and encoding bugs below. `ZonaKit` re-exports the package
+(`SharedOAuth.swift`), so `import ZonaKit` still sees every one of those types
+and no app-target file changed for the move.
+
+Three things follow from that:
+- **A change there is a change to two shipped apps** — build both before
+  merging.
+- **The scope rule is "both apps could use it."** `StravaUpload` and
+  `WhoopReadiness` stayed here because they're Zona ride features, not provider
+  plumbing. Don't push ride logic across, and don't add Helix-shaped aggregation
+  logic to it either.
+- It isn't published yet: `ZonaKit/Package.swift` resolves it by relative path to
+  a sibling checkout, and CI checks it out alongside. A comment marks the swap to
+  a remote URL.
+
 **Two optional OAuth integrations follow the same shape**, each with a pure
-`ZonaKit` half and an app-target I/O half: Strava (upload finished rides) and
+package half and an app-target I/O half: Strava (upload finished rides) and
 WHOOP (use its HR zones, reconstructed from max/resting HR via HRR/Karvonen, as
 the ride target instead of manual LTHR; also surfaces today's recovery as an
 advisory zone suggestion, `WhoopReadiness` — never changes settings; and supplies
@@ -289,16 +316,16 @@ rotated one, making the failure sticky rather than self-clearing:
   across synchronous regions; a refresh that `await`s the network POST releases
   the actor and lets a second caller re-read the still-unrotated token. WHOOP hit
   this because `fetchZonesAndRecovery` issues two GETs concurrently.
-  `ZonaKit`'s generic `TokenRefresher` actor caches the in-flight `Task` so later
-  callers join it — **the cache is assigned before the first suspension point**,
-  which is the whole fix. Both services now route their refresh through it —
+  `HealthConnectKit`'s generic `TokenRefresher` actor caches the in-flight `Task`
+  so later callers join it — **the cache is assigned before the first suspension
+  point**, which is the whole fix. Both services route their refresh through it —
   extend it rather than hand-rolling a second refresh in a new provider.
 - **Form bodies must leave RFC 3986's unreserved characters literal.** Encoding
   with `.alphanumerics` looks conservative but is malformed: it sent `grant_type`
   as `refresh%5Ftoken` and corrupted any refresh token containing `-`, `.` or `_`.
-  One tested `FormURLEncoding` in `ZonaKit` now serves both providers (keys sorted
-  so the body is deterministic and therefore testable) — don't hand-roll a second
-  `urlEncode` in an app-target service.
+  One tested `FormURLEncoding` in `HealthConnectKit` serves both providers (keys
+  sorted so the body is deterministic and therefore testable) — don't hand-roll a
+  second `urlEncode` in an app-target service.
 - **A dead refresh token must clear the stored tokens, not wedge the account.**
   Leaving it in the Keychain keeps `isConnected` true, so every retry replays the
   same dead credential with no way out but a Disconnect the rider has no reason to

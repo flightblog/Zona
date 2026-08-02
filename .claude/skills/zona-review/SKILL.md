@@ -42,6 +42,20 @@ the app target. Flag pure logic added to the app target that could have been
 tested in ZonaKit, and flag `import`s of UIKit/Foundation-networking creeping
 into ZonaKit.
 
+**`HealthConnectKit` is a separate repo shared with another app (Helix).** It
+holds the provider-agnostic OAuth/token plumbing (`TokenStore`,
+`TokenRefresher`, `FormURLEncoding`) and the Strava/WHOOP OAuth + token/DTO
+types; `ZonaKit` re-exports it via `SharedOAuth.swift`.
+- **If the diff touches that package, Zona's suite passing is not enough** —
+  it's a change to two shipped apps. Flag a PR that modifies it without evidence
+  Helix still builds — its package suite lives at
+  `~/Dev/github/Health-apps/Helix/App/HelixKit`.
+- **Scope rule: a file belongs there only if both apps could use it.** Flag ride
+  logic pushed across the boundary — `StravaUpload` and `WhoopReadiness` stayed
+  in ZonaKit precisely because an aggregator has no use for them.
+- Flag a new provider's OAuth/token code added to `ZonaKit` instead of the
+  shared package; that's how the second copy starts.
+
 **HR defines the target zone; power does the controlling.** The trainer holds a
 power setpoint (FTMS ERG from FTP); HR only *defines and displays* the target
 zone. A closed-loop HR→watts mode was built and deliberately removed — flag any
@@ -166,24 +180,27 @@ re-added opt-in flag or any mid-ride model switch.
 
 ## OAuth invariants
 
-Strava and WHOOP each split into a pure ZonaKit half (state machine / token
-logic) and an app-target I/O half. Tokens live in the Keychain **per-device** (no
-iCloud sync of tokens). Both bake the client secret into the binary (no PKCE) —
-acceptable for this personal single-user build; don't flag it as a leak, but do
-flag it if the code moves toward public distribution.
+Strava and WHOOP each split into a pure half (state machine / token logic, in
+`HealthConnectKit`) and an app-target I/O half. `StravaUpload` is the exception
+that stayed in ZonaKit — it's a ride feature, not provider plumbing. Tokens live
+in the Keychain **per-device** (no iCloud sync of tokens). Both bake the client
+secret into the binary (no PKCE) — acceptable for this personal single-user
+build; don't flag it as a leak, but do flag it if the code moves toward public
+distribution.
 
 **Token refresh has three regression-prone rules** (all fixed in #112). Both
 providers rotate the refresh token on every use, so a duplicate refresh burns it
 and a late `save()` can overwrite the good rotated token, making the failure
 sticky:
-- Refreshes go through `ZonaKit`'s single-flight `TokenRefresher`, which caches
-  the in-flight `Task` **before its first suspension point**. Flag a refresh that
-  reads-then-`await`s-then-saves on its own, and flag any comment claiming
-  `actor` isolation alone prevents the double refresh — it doesn't, since the
-  actor is released at every `await`. Both `WhoopService` and `StravaService`
-  route through it; a new provider should too, not a second implementation.
-- Form bodies use `ZonaKit`'s `FormURLEncoding`. Flag a hand-rolled `urlEncode`
-  in an app-target service, and specifically flag percent-encoding with
+- Refreshes go through `HealthConnectKit`'s single-flight `TokenRefresher`,
+  which caches the in-flight `Task` **before its first suspension point**. Flag
+  a refresh that reads-then-`await`s-then-saves on its own, and flag any comment
+  claiming `actor` isolation alone prevents the double refresh — it doesn't,
+  since the actor is released at every `await`. Both `WhoopService` and
+  `StravaService` route through it; a new provider should too, not a second
+  implementation.
+- Form bodies use `HealthConnectKit`'s `FormURLEncoding`. Flag a hand-rolled
+  `urlEncode` in an app-target service, and specifically flag percent-encoding with
   `.alphanumerics` — RFC 3986 unreserved characters (`- . _ ~`) must stay
   literal, or `grant_type` ships as `refresh%5Ftoken` and tokens get corrupted.
 - A refusal the provider won't honour must **clear** the stored tokens. Flag a

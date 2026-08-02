@@ -19,6 +19,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ZonaKit resolves HealthConnectKit by relative path until that package is
+      # published. Check it out as a sibling so the path dependency resolves.
+      # Delete this step and switch Package.swift to the remote URL form once
+      # HealthConnectKit is on GitHub.
+      - name: Check out HealthConnectKit
+        uses: actions/checkout@v4
+        with:
+          repository: flightblog/HealthConnectKit
+          path: HealthConnectKit-checkout
+
+      - name: Position HealthConnectKit as a sibling
+        run: mv HealthConnectKit-checkout ../HealthConnectKit
+
       # Package declares swift-tools-version 6.0, which ships with Xcode 16.
       - name: Select Xcode
         run: sudo xcode-select -switch /Applications/Xcode_16.app
