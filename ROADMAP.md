@@ -284,8 +284,10 @@ actually ridden.
     _Verified: ZonaKit's suite passes (the FormURLEncoding and TokenRefresher
     suites moved with their code and pass in the new package), and the app target
     builds unsigned on both platforms with zero source changes — the real check
-    on the re-export. The package is not yet published, so both repos resolve it
-    by relative path to a sibling checkout and CI checks it out alongside._
+    on the re-export. The package lives at `flightblog/HealthConnectKit`
+    (private), but both repos resolve it by relative path to a sibling checkout
+    rather than by URL; CI checks it out alongside using a PAT, since the default
+    `GITHUB_TOKEN` can't read another private repo._
 - **Per-ride HR-zone model (WHOOP vs. LTHR).** ✅ _Shipped (PR #61 model, PR #62
   the WHOOP-always-wins rule); verified in-app._ Which HR-zone model a ride is
   scored against is now a **fact about the ride**, not a re-reading of today's

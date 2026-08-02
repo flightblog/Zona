@@ -284,9 +284,12 @@ Three things follow from that:
   `WhoopReadiness` stayed here because they're Zona ride features, not provider
   plumbing. Don't push ride logic across, and don't add Helix-shaped aggregation
   logic to it either.
-- It isn't published yet: `ZonaKit/Package.swift` resolves it by relative path to
-  a sibling checkout, and CI checks it out alongside. A comment marks the swap to
-  a remote URL.
+- It lives at `flightblog/HealthConnectKit` (private), but `ZonaKit/Package.swift`
+  still resolves it by **relative path to a sibling checkout**, not by URL — so a
+  fresh clone needs `~/Dev/github/HealthConnectKit` present to build. CI checks it
+  out alongside, using the `HEALTHCONNECTKIT_TOKEN` secret because the default
+  `GITHUB_TOKEN` can't read another private repo. Moving to a versioned URL
+  dependency is a deliberate separate step; a comment in the manifest marks it.
 
 **Two optional OAuth integrations follow the same shape**, each with a pure
 package half and an app-target I/O half: Strava (upload finished rides) and

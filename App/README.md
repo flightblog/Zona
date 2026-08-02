@@ -154,8 +154,8 @@ file needed changing for the move.
 **A change to that package is a change to two shipped apps.** Build both before
 merging one.
 
-It isn't published yet, so `ZonaKit/Package.swift` resolves it by relative path
-and expects a sibling checkout:
+`ZonaKit/Package.swift` resolves it by relative path rather than by URL, so it
+expects a sibling checkout:
 
 ```
 ~/Dev/github/
