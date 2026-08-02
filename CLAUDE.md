@@ -290,6 +290,13 @@ Three things follow from that:
   out alongside, using the `HEALTHCONNECTKIT_TOKEN` secret because the default
   `GITHUB_TOKEN` can't read another private repo. Moving to a versioned URL
   dependency is a deliberate separate step; a comment in the manifest marks it.
+- **That secret is a PAT, and it expires.** When it does, CI here *and* in Helix
+  breaks at once on the `Check out HealthConnectKit` step, with a message naming
+  neither the token nor its expiry — `Input required and not supplied: token`,
+  the same thing it says when the secret is missing entirely. **If the required
+  ZonaKit tests check goes red on that step and the diff doesn't explain it,
+  check the PAT before reading any code.** It reads like a workflow-syntax error
+  and isn't one.
 
 **Two optional OAuth integrations follow the same shape**, each with a pure
 package half and an app-target I/O half: Strava (upload finished rides) and
