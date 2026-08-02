@@ -19,6 +19,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ZonaKit resolves HealthConnectKit by relative path, so it must be checked
+      # out as a sibling for the dependency to resolve.
+      #
+      # The explicit token is required: HealthConnectKit is a *private* repo, and
+      # the default GITHUB_TOKEN is scoped to this repository only — without it
+      # this step fails with a bare `Not Found`, which reads like a typo in the
+      # repository name rather than a permissions problem.
+      # HEALTHCONNECTKIT_TOKEN is a fine-grained PAT with read-only Contents
+      # access to that repo; the same secret exists on flightblog/Helix.
+      - name: Check out HealthConnectKit
+        uses: actions/checkout@v4
+        with:
+          repository: flightblog/HealthConnectKit
+          token: ${{ secrets.HEALTHCONNECTKIT_TOKEN }}
+          path: HealthConnectKit-checkout
+
+      - name: Position HealthConnectKit as a sibling
+        run: mv HealthConnectKit-checkout ../HealthConnectKit
+
       # Package declares swift-tools-version 6.0, which ships with Xcode 16.
       - name: Select Xcode
         run: sudo xcode-select -switch /Applications/Xcode_16.app

@@ -237,7 +237,8 @@ actually ridden.
     that state needs care, because WHOOP answers a dead token with
     `invalid_request` — the *same* code as a genuinely malformed request, not
     the standard `invalid_grant` — so only `error_hint` separates "reconnect"
-    from "our request is wrong"; `WhoopTokenErrorKind` (pure, ZonaKit) matches
+    from "our request is wrong"; `WhoopTokenErrorKind` (pure; it now lives in
+    HealthConnectKit) matches
     the hint and, deliberately, only ever reports a dead token for a
     `refresh_token` grant, so a malformed code exchange can't send the rider
     round a reconnect loop that wouldn't fix it. Alongside it:
@@ -267,6 +268,26 @@ actually ridden.
     equivalent without having observed its real failure body would be guessing.
     _Compile- and unit-verified; the refresh path runs only on an expired token
     against a connected account, so it has not been exercised on the wire._
+  - **The OAuth plumbing extracted to a shared package.** ✅ _Shipped._ A second
+    app (Helix, a multi-source health aggregator) needs the same Strava and WHOOP
+    code, so `TokenStore`, `TokenRefresher`, `FormURLEncoding` and the
+    Strava/WHOOP OAuth + token/DTO types moved to **HealthConnectKit**, a package
+    both depend on. Copying them would have meant two divergent copies of exactly
+    the logic whose bugs cost the most to find — the encoder and the
+    single-flight refresher above. A move, not a redesign: no logic changed, only
+    doc comments naming ZonaKit-internal types. `ZonaKit` re-exports the package
+    (`SharedOAuth.swift`), so no app-target file changed. `StravaUpload` and
+    `WhoopReadiness` stayed — the scope rule is that a file belongs there only
+    if *both* apps could use it, and those are ride features. The consequence to
+    remember: **a change to that package is a change to two shipped apps**, so
+    Zona's suite passing is no longer sufficient evidence on its own.
+    _Verified: ZonaKit's suite passes (the FormURLEncoding and TokenRefresher
+    suites moved with their code and pass in the new package), and the app target
+    builds unsigned on both platforms with zero source changes — the real check
+    on the re-export. The package lives at `flightblog/HealthConnectKit`
+    (private), but both repos resolve it by relative path to a sibling checkout
+    rather than by URL; CI checks it out alongside using a PAT, since the default
+    `GITHUB_TOKEN` can't read another private repo._
 - **Per-ride HR-zone model (WHOOP vs. LTHR).** ✅ _Shipped (PR #61 model, PR #62
   the WHOOP-always-wins rule); verified in-app._ Which HR-zone model a ride is
   scored against is now a **fact about the ride**, not a re-reading of today's

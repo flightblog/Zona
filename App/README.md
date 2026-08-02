@@ -83,18 +83,11 @@ App/
 │   │   │   └── SensorHub.swift             # multi-peripheral BLE manager
 │   │   ├── Export/
 │   │   │   └── TCXExporter.swift  # ride → TCX (TrainingCenterDatabase v2) string
-│   │   ├── Strava/               # pure OAuth/upload logic (no networking)
-│   │   │   ├── StravaOAuth.swift   # authorize URL, callback parse, token bodies
-│   │   │   ├── StravaToken.swift   # token decode + expiry
-│   │   │   ├── StravaUpload.swift  # upload-status decode + poll state machine
-│   │   │   ├── TokenStore.swift    # token persistence seam (mirrors SensorMemory)
-│   │   │   ├── TokenRefresher.swift # single-flight refresh — generic, shared with WHOOP
-│   │   │   └── FormURLEncoding.swift # RFC 3986 form bodies — generic, shared with WHOOP
+│   │   ├── SharedOAuth.swift     # re-exports HealthConnectKit — see note below
+│   │   ├── Strava/               # pure upload logic (no networking)
+│   │   │   └── StravaUpload.swift  # upload-status decode + poll state machine
 │   │   ├── HRRZones.swift        # HRR/Karvonen HR zones (WHOOP source-of-truth)
-│   │   └── Whoop/                # pure WHOOP OAuth + DTOs (no networking)
-│   │       ├── WhoopOAuth.swift    # authorize URL (state), callback parse, token bodies
-│   │       ├── WhoopToken.swift    # token decode + expiry
-│   │       ├── WhoopProfile.swift  # body-measurement + recovery DTOs
+│   │   └── Whoop/
 │   │       └── WhoopReadiness.swift # today's recovery → advisory zone suggestion
 │   └── Tests/ZonaKitTests/  # one test file per source area (see the directory)
 └── Zona/                    # App target
@@ -131,6 +124,44 @@ App/
         ├── Info.plist                # generated — BLE usage, URL scheme, Strava + WHOOP keys
         ├── Zona.macOS.entitlements   # generated — sandbox + bluetooth + network
         └── Assets.xcassets           # AppIcon (iOS 1024 + macOS ladder)
+```
+
+### The shared `HealthConnectKit` package
+
+The provider-agnostic OAuth/token plumbing and the Strava/WHOOP DTOs are **not in
+this repo**. They live in
+[HealthConnectKit](https://github.com/flightblog/HealthConnectKit), a package
+shared with Helix (a multi-source health aggregator):
+
+```
+HealthConnectKit
+  Auth/    TokenStore, TokenRefresher, FormURLEncoding
+  Strava/  StravaOAuth, StravaToken
+  Whoop/   WhoopOAuth, WhoopToken, WhoopProfile
+```
+
+Two apps talk to the same two providers, and the single-flight refresh and the
+RFC 3986 form encoder both exist because of failures that were expensive to
+diagnose — a second copy would eventually re-inherit them. The scope rule is
+strict: a file belongs there only if **both** apps could use it. That's why
+`StravaUpload` and `WhoopReadiness` stayed here — they're Zona's ride features,
+not provider plumbing.
+
+`ZonaKit` re-exports the package (`SharedOAuth.swift`), so `import ZonaKit` still
+sees `TokenStore`, `StravaOAuth`, `WhoopTokens` and the rest — no app-target
+file needed changing for the move.
+
+**A change to that package is a change to two shipped apps.** Build both before
+merging one.
+
+`ZonaKit/Package.swift` resolves it by relative path rather than by URL, so it
+expects a sibling checkout:
+
+```
+~/Dev/github/
+├── HealthConnectKit/
+├── Zona/
+└── Health-apps/Helix/
 ```
 
 ## Build & run
