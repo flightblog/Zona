@@ -297,8 +297,21 @@ struct TCXExportTests {
         let samples = (0...3600).map { TCXSample(secondsFromStart: $0, powerW: 200) }
         let kcal = TCXEnergy.kilocalories(samples: samples, source: .trainer)
         #expect(kcal == 717)
-        // 720 kJ of mechanical work, for reference — within 0.5% of the kcal.
-        #expect(abs(Double(kcal) - 720) / 720 < 0.005)
+    }
+
+    /// The kJ ≈ kcal coincidence, stated against work computed from the inputs
+    /// rather than against the expected answer — so this fails if the efficiency
+    /// constant is ever retuned far enough to break the near-1:1 relationship
+    /// every head unit (and every rider reading the number) assumes.
+    @Test func kilocaloriesTrackKilojoulesOfWork() {
+        for (watts, seconds) in [(200, 3600), (150, 1800), (310, 5400)] {
+            let samples = (0...seconds).map {
+                TCXSample(secondsFromStart: $0, powerW: watts)
+            }
+            let kcal = TCXEnergy.kilocalories(samples: samples, source: .trainer)
+            let kilojoules = Double(watts * seconds) / 1000
+            #expect(abs(Double(kcal) - kilojoules) / kilojoules < 0.05)
+        }
     }
 
     /// Calories come from whichever channel the file exports, so a reader who
