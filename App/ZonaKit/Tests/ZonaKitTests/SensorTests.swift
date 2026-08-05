@@ -206,7 +206,9 @@ struct CyclingPowerMeasurementTests {
 @MainActor
 struct PowerMeterIsolationTests {
     /// A power-meter reading must land in `powerMeterW` and leave the trainer's
-    /// `powerW` untouched, so the meter can't skew ERG/recording/export.
+    /// `powerW` untouched, so the meter can't skew ERG or the zone math. The
+    /// export does read this channel, but by choosing between the two per file
+    /// (`TCXPowerSource`) — which only works while they stay unmerged here.
     @Test func meterReadingDoesNotTouchTrainerPower() {
         let hub = SensorHub()
         hub.applyForTesting(SensorReading(powerW: 200))       // trainer
