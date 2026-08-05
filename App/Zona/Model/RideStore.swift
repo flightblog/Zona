@@ -52,10 +52,13 @@ final class Ride {
 
     // Leg power from a SRAM/Quarq crank meter, when one was paired — recorded
     // alongside the trainer's power columns above, never merged into them: the
-    // trainer stays the source of truth for zone math and the Strava/TCX export,
-    // and the meter's few-watts-higher reading is drivetrain loss, not error (see
-    // `RideMetrics.powerMeterW`). nil on rides ridden without a meter, which is
-    // also what old rides lightweight-migrate to (same pattern as `hrvRMSSDms`).
+    // trainer stays the source of truth for zone math, and the meter's
+    // few-watts-higher reading is drivetrain loss, not error (see
+    // `RideMetrics.powerMeterW`). The Strava/TCX export is the exception — it
+    // ships these watts when the meter covered the ride (see `TCXPowerSource`),
+    // so indoor uploads match how outdoor rides are recorded. nil on rides
+    // ridden without a meter, which is also what old rides lightweight-migrate
+    // to (same pattern as `hrvRMSSDms`).
     var avgPowerMeterW: Int?
     var maxPowerMeterW: Int?
     var normalizedPowerMeterW: Int?

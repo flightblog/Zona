@@ -10,7 +10,7 @@ time post-ride, rolls the whole history up into an all-time stats screen, export
 TCX, uploads directly to Strava, and syncs across devices via iCloud/CloudKit.
 Several of the items below build on infrastructure that already exists but isn't
 yet fully surfaced (persisted R-R intervals; a Quarq's per-second leg power,
-recorded and summarized but not charted).
+recorded, summarized and exported to Strava but not charted).
 
 Two sections at the end are as load-bearing as the tiers: **Suggested next steps**
 for where to start, and **Deliberately not planned** for ideas already considered
@@ -118,9 +118,26 @@ actually ridden.
   on the reading made the whole row vanish and shift the layout every time the
   rider stopped pedalling. Each value falls back independently to "—" — never 0,
   which would claim watts the rider never held.
-  It stays a **parallel channel, not a replacement**: the trainer's `powerW` is
-  still the single source of truth for ERG, zone math, and the TCX/Strava export,
-  so leg power can never skew a recorded or uploaded ride. As expected, a real
+  It stays a **parallel channel, not a replacement** for ride *control*: the
+  trainer's `powerW` is still the single source of truth for ERG and zone math,
+  so leg power can never skew how a ride is held or scored. The **TCX/Strava
+  export now prefers leg power** (PR #136), which is the one place the channel
+  isn't display-only. Outdoor rides are recorded from the crank meter, so
+  uploading the trainer's post-drivetrain-loss estimate left Strava mixing two
+  calibrations depending on where the ride happened. The source is chosen once
+  per file by the pure `TCXPowerSource.resolve` — never per sample, which would
+  alternate scales at every coast — and only when the meter covered ≥80% of the
+  ride's samples; below that floor the whole file reverts to trainer watts,
+  since Strava interpolates missing power and a sparse leg-power track would be
+  mostly invented. Gap seconds omit `<ns3:Watts>` rather than exporting a
+  fabricated 0 W. Two consequences are deliberate and worth knowing: cadence
+  stays trainer-sourced (crank cadence isn't recorded at all, so a trackpoint
+  pairs leg watts with trainer cadence), and the in-app summary still scores on
+  trainer watts, so a metered ride reads higher on Strava than in Zona — the
+  summary captions the trainer-sourced case so an upload's provenance is visible
+  before it happens. _Unit-tested (including the floor's boundary and the
+  gap-omission rule, each mutation-checked) and verified to build signed on
+  macOS._ As expected, a real
   Quarq reads a few watts higher than the Kickr (direct crank torque vs. flywheel
   estimate + drivetrain loss; see the `RideMetrics.powerMeterW` doc comment) — that
   small gap is the two meters working correctly, not a bug to reconcile.

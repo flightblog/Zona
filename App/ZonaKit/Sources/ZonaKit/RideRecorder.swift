@@ -18,10 +18,11 @@ public struct RideSample: Sendable, Equatable {
     /// last-seen wattage stick (see the assignment in `ingest`).
     ///
     /// This is a second, parallel channel: `powerW` remains the ride's source of
-    /// truth (it is what ERG held, what the zone math scores, and what the TCX
-    /// export ships), so nothing downstream of the summary reads this. It exists
-    /// so a ride can be reviewed against true crank power after the fact. The two
-    /// differ by a few watts by design — see `RideMetrics.powerMeterW` for why.
+    /// truth for what ERG held and what the zone math scores. It exists so a ride
+    /// can be reviewed against true crank power after the fact — and so the TCX
+    /// export can ship crank watts when this channel covered the ride, matching
+    /// how the same rider's outdoor rides are recorded (see `TCXPowerSource`).
+    /// The two differ by a few watts by design — see `RideMetrics.powerMeterW`.
     public var powerMeterW: Int?
     /// Every R-R interval (seconds) captured during this second — *accumulated*
     /// across the second's HR notifications (a second can hold 1–3 beats), unlike

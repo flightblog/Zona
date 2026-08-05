@@ -189,9 +189,36 @@ fabricates watts the rider never held.
 `0x180D`, Cycling Power `0x1818`). The trainer is the source of truth for ride
 data; a connected SRAM/Quarq power meter is a **secondary** readout whose watts
 are recorded on their own channel (as the rider's leg power, surfaced on the ride
-summary) but are never merged into the trainer's power, exported, or fed to ERG —
-the trainer alone drives ERG, the zone math, and the Strava/TCX upload. Its
-cadence stays display-only. Unlike the trainer's fields the meter's values are
+summary) but are never merged into the trainer's power or fed to ERG — the
+trainer alone drives ERG and the zone math. Its cadence stays display-only.
+
+**The one thing leg power *does* feed is the TCX export.** A finished ride
+uploads the crank meter's watts when the meter covered at least
+`TCXPowerSource.minimumCoverage` (80%) of the ride's samples, and the trainer's
+otherwise. Outdoor rides are recorded from the crank meter, so exporting the
+trainer's post-drivetrain-loss estimate left a rider's Strava history mixing two
+calibrations depending on where they rode. Two rules keep that honest and are
+easy to regress:
+- **One channel per file, chosen once** (`TCXPowerSource.resolve`), never
+  per-sample. Preferring leg power wherever it happens to be present would swap
+  calibration scale at every coast, producing a track that alternates between two
+  scales — worse for Strava's power curve and NP than either source used
+  consistently.
+- **The coverage floor is what makes that safe.** A bare "was a meter paired?"
+  test would let a meter that dropped after thirty seconds flip the whole file to
+  leg power, leaving most trackpoints with no `<ns3:Watts>` — and Strava
+  *interpolates* missing power rather than recording none, so a nearly-empty
+  track becomes a nearly-invented one. Below the floor the ride reverts entirely
+  to trainer watts, which stream continuously (real 0 W frames included).
+
+Gap seconds inside a qualifying ride omit `<ns3:Watts>` rather than exporting 0.
+Cadence stays trainer-sourced regardless: crank cadence isn't recorded at all
+(`RideSample`/`RideSampleModel` have a single `cadenceRpm`), so an exported
+trackpoint deliberately pairs leg-power watts with trainer-derived cadence.
+Note the consequence — the in-app summary still scores the ride on trainer watts
+while Strava shows the higher figure for that same ride.
+
+Unlike the trainer's fields the meter's values are
 **expired after a few seconds** without a reading (and cleared on disconnect): a
 quiet crank meter sends nothing rather than a 0 W frame, and the 1 Hz recorder
 would otherwise bank a frozen value all ride. Because that expiry must not depend

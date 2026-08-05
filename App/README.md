@@ -388,7 +388,9 @@ records how far each feature has been verified (hardware, signed build, or tests
 - **iCloud/CloudKit** sync — rides sync across iPhone/iPad/Mac.
 - A **device picker** (pin a preferred sensor per kind; hot-swaps live).
 - **HRV/R-R** capture — R-R is parsed, stored per sample, and summarised as RMSSD.
-- **Ride export** to TCX via the Share sheet, with simulated distance.
+- **Ride export** to TCX via the Share sheet, with simulated distance. Uploads
+  carry the crank meter's leg power when one covered the ride, the trainer's
+  estimate otherwise.
 - **Dual-axis ride chart** — watts (left) and heart rate (right) over time on the
   post-ride summary, with the target HR-zone band shaded. Samples are downsampled
   so long rides stay responsive.
@@ -442,10 +444,16 @@ records how far each feature has been verified (hardware, signed build, or tests
   trainer's use (WHOOP-over-manual live, and the per-ride stamped weight on a
   saved ride). Leg and trainer W/kg therefore sit side by side and differ, for the
   same reason the raw watts do (below). It's a **parallel channel, not a replacement**:
-  the trainer's `powerW` remains the single source of truth for ERG, the zone
-  math, and the TCX/Strava export, so leg power can never skew a recorded or
-  uploaded ride. (The meter's *cadence* stays display-only.) Expect it to read a
-  few watts *above* the trainer for the same effort — the Quarq measures crank
+  the trainer's `powerW` remains the single source of truth for ERG and the zone
+  math, so leg power can never skew how a ride is controlled or scored. The
+  **TCX/Strava export is the one exception** — an upload ships the crank meter's
+  watts when the meter covered most of the ride, so indoor uploads match how the
+  same rider's outdoor rides are recorded; a ride without a meter (or with one
+  that dropped early) uploads trainer watts, and the summary says so. The ride's
+  own in-app summary is still scored on trainer watts either way, so a metered
+  ride reads a little higher on Strava than in Zona. (The meter's *cadence* stays
+  display-only, so an exported trackpoint pairs leg watts with trainer cadence.)
+  Expect it to read a few watts *above* the trainer for the same effort — the Quarq measures crank
   torque directly while the Kickr estimates from its flywheel, so a small steady
   gap is the two working correctly, not a fault. Its readings **expire** when the
   crank goes quiet, so a coast doesn't record fabricated watts — see *Sensors &
