@@ -121,8 +121,18 @@ whole file. Don't flag the export reading `powerMeterW`; do flag these:
   80%). Without it a meter that dropped after thirty seconds flips the whole file
   to leg power, and since Strava *interpolates* missing power, a sparse track
   becomes a mostly-invented one.
-- **Defaulting a gap to 0 W** (`powerMeterW ?? 0`). The crank goes quiet on a
-  coast instead of sending a zero frame; the trackpoint must omit `<ns3:Watts>`.
+- **Defaulting a gap to 0 W** (`powerMeterW ?? 0`) *in a trackpoint*. The crank
+  goes quiet on a coast instead of sending a zero frame; the trackpoint must omit
+  `<ns3:Watts>`. Note the deliberate exception: `TCXEnergy` **does** treat a gap
+  as `?? 0`, because an energy total has to account for every second it spans —
+  don't flag that one.
+- **Calories drifting off the exported channel** (PR #145). `<Calories>` is
+  integrated from whichever channel `resolve` picked, reusing the value
+  `makeTCX` already resolved; deriving it from `powerW` unconditionally would
+  state one calibration while the power track carries another. Also flag a
+  coast carrying the previous second's watts forward (banks power never held),
+  and any change letting a gap's *duration* migrate onto a neighbouring
+  reading's watts — that last one is the rule the tests actually pin.
 - **Resolving the source in a computed property.** It walks every sample —
   `RideSummaryView` resolves once into `@State` in its `.task`, the same
   compute-once rule as the chart downsampling and `IntervalReview`'s slicing.

@@ -130,7 +130,12 @@ actually ridden.
   ride's samples; below that floor the whole file reverts to trainer watts,
   since Strava interpolates missing power and a sparse leg-power track would be
   mostly invented. Gap seconds omit `<ns3:Watts>` rather than exporting a
-  fabricated 0 W. Two consequences are deliberate and worth knowing: cadence
+  fabricated 0 W. The file's `<Calories>` is derived from that same chosen
+  channel (`TCXEnergy`, PR #145 — it had been a hard-coded 0, which anything
+  reading the file directly imported as a zero-energy session), so the stated
+  energy can't imply one calibration while the power track carries another;
+  it's mechanical work over time at a 24% gross-efficiency constant, since Zona
+  measures nothing metabolic. Two consequences are deliberate and worth knowing: cadence
   stays trainer-sourced (crank cadence isn't recorded at all, so a trackpoint
   pairs leg watts with trainer cadence), and the in-app summary still scores on
   trainer watts, so a metered ride reads higher on Strava than in Zona — the

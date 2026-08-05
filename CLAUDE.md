@@ -218,6 +218,28 @@ trackpoint deliberately pairs leg-power watts with trainer-derived cadence.
 Note the consequence — the in-app summary still scores the ride on trainer watts
 while Strava shows the higher figure for that same ride.
 
+**`<Calories>` is derived from that same chosen channel** (`TCXEnergy`, pure and
+in `ZonaKit`), so a file's stated energy can't imply one calibration while its
+power track carries another — and a reader deriving kJ from the trackpoints
+lands where `<Calories>` already sits. Zona measures nothing metabolic: the
+figure is mechanical work integrated over time, divided by a 24% gross
+efficiency constant, which is why kJ ≈ kcal here as in every head unit. The
+element read a hard-coded 0 until #145, which anything reading the file directly
+(TrainingPeaks, intervals.icu) imported as a zero-energy session. Two rules,
+both easy to regress:
+- **A coasted second is zero work, never the previous second's watts carried
+  forward** — the crank meter goes quiet instead of sending a 0 W frame, so
+  carrying forward banks power the rider never held. (Counting that second as
+  zero and skipping it are arithmetically the same, since intervals span adjacent
+  *samples* rather than adjacent readings; don't add a test claiming otherwise.)
+- **A gap's duration stays put** rather than migrating onto a neighbouring
+  reading's watts. That's the rule with teeth, and what the tests actually pin.
+
+`<TotalTimeSeconds>` is separate and already correct: it uses the ride's true
+`durationSec`, deliberately *not* the last sample's index, since samples can lag
+the stop by a second or more and Strava's imported duration must match what Zona
+shows.
+
 Unlike the trainer's fields the meter's values are
 **expired after a few seconds** without a reading (and cleared on disconnect): a
 quiet crank meter sends nothing rather than a 0 W frame, and the 1 Hz recorder

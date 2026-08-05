@@ -82,7 +82,8 @@ App/
 │   │   │   ├── CyclingPowerMeasurement.swift # 0x2A63 decode (SRAM/Quarq)
 │   │   │   └── SensorHub.swift             # multi-peripheral BLE manager
 │   │   ├── Export/
-│   │   │   └── TCXExporter.swift  # ride → TCX (TrainingCenterDatabase v2) string
+│   │   │   └── TCXExporter.swift  # ride → TCX string; + TCXPowerSource (which
+│   │   │                          #   watts channel) and TCXEnergy (calories)
 │   │   ├── SharedOAuth.swift     # re-exports HealthConnectKit — see note below
 │   │   ├── Strava/               # pure upload logic (no networking)
 │   │   │   └── StravaUpload.swift  # upload-status decode + poll state machine
