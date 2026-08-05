@@ -12,6 +12,9 @@ struct RideSummaryView: View {
     @State private var exportURL: URL?
     @State private var strava: StravaUploadModel?
     @State private var showDeleteConfirmation = false
+    /// Which power channel this ride's TCX carries, resolved once when the
+    /// summary opens (see the `.task` below). nil until then.
+    @State private var powerSource: TCXPowerSource?
 
     /// The ride's stored samples bridged to `ZonaKit`'s pure `RideSample`, so the
     /// interval review can slice them per step. Only built when a run exists —
@@ -24,6 +27,24 @@ struct RideSummaryView: View {
                        heartRateBpm: $0.heartRateBpm,
                        powerMeterW: $0.powerMeterW)
         }
+    }
+
+    /// Whether to caption this ride's export as trainer-sourced. Only when an
+    /// upload is still ahead of the rider *and* the file would carry the
+    /// trainer's estimate: hidden without Strava credentials, hidden once the
+    /// ride is already on Strava (nothing left to inform), and hidden when the
+    /// crank meter covered the ride, since then the export needs no caveat.
+    ///
+    /// Reads the resolved-once `powerSource` rather than recomputing it — that
+    /// resolution walks every sample in the ride, and this is evaluated on each
+    /// re-render (the same long-ride stall the chart's downsampling fixed).
+    private var showsTrainerPowerExportNote: Bool {
+        guard let strava, let powerSource else { return false }
+        switch strava.state {
+        case .unavailable, .uploaded, .duplicate: return false
+        case .idle, .authorizing, .uploading, .failed: break
+        }
+        return powerSource == .trainer
     }
 
     var body: some View {
@@ -77,6 +98,17 @@ struct RideSummaryView: View {
                         .padding(.horizontal)
                 }
 
+                // Names the export's power source, but only on the fallback
+                // case: an upload carrying the trainer's estimate rather than
+                // crank watts is the one a rider can't tell from the summary
+                // otherwise. Silent on a leg-power export, so the note stays
+                // meaningful instead of becoming furniture. Strava-only —
+                // the Share/TCX path is a deliberate manual act.
+                if showsTrainerPowerExportNote {
+                    ExportPowerSourceNote()
+                        .padding(.horizontal)
+                }
+
                 // Interval review — only for rides that actually ran a session.
                 if !ride.intervalRuns.isEmpty {
                     IntervalReview(runs: ride.intervalRuns,
@@ -119,8 +151,11 @@ struct RideSummaryView: View {
             }
         }
         // Write the .tcx once when the summary opens, not on every re-render.
+        // The export's power source is resolved here for the same reason — it
+        // walks every sample, so it must not sit in a computed property.
         .task(id: ride.id) {
             exportURL = try? ride.writeTCXTempFile()
+            powerSource = ride.tcxPowerSource
             if strava == nil { strava = StravaUploadModel(ride: ride) }
         }
         .alert("Delete this ride?", isPresented: $showDeleteConfirmation) {
@@ -189,6 +224,27 @@ private struct TimeInZoneHeadline: View {
 
     private func formatted(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// Passive caption naming the trainer as this ride's export power source.
+/// Shown only on the fallback case (see `showsTrainerPowerExportNote`) — a
+/// caption rather than a confirmation dialog, since uploading is an action the
+/// rider chose deliberately and shouldn't have to defend. Reuses the same
+/// drivetrain-loss vocabulary as the leg-power tiles' explanations.
+private struct ExportPowerSourceNote: View {
+    var body: some View {
+        Label {
+            Text("This ride uploads with the trainer's estimated power. "
+                 + "Rides recorded with the crank meter connected upload its "
+                 + "measured leg power instead, which reads a few watts higher.")
+        } icon: {
+            Image(systemName: "info.circle")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 
