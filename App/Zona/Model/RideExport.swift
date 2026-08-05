@@ -5,19 +5,34 @@ import ZonaKit
 /// intervals.icu, …) import TCX directly, so this is the onward-sync path without
 /// any accounts or OAuth.
 extension Ride {
+    /// This ride's samples bridged to the exporter's pure value type. Carries
+    /// both power channels; `TCXExporter` decides which one the file uses.
+    private var tcxSamples: [TCXSample] {
+        (samples ?? [])
+            .sorted { $0.secondsFromStart < $1.secondsFromStart }
+            .map {
+                TCXSample(
+                    secondsFromStart: $0.secondsFromStart,
+                    powerW: $0.powerW,
+                    cadenceRpm: $0.cadenceRpm,
+                    speedKph: $0.speedKph,
+                    heartRateBpm: $0.heartRateBpm,
+                    powerMeterW: $0.powerMeterW
+                )
+            }
+    }
+
+    /// Which power channel this ride's TCX exports — leg power when a crank
+    /// meter covered enough of the ride, the trainer's estimate otherwise. The
+    /// summary reads this to caption the fallback case, so a rider knows when an
+    /// upload carries trainer watts rather than crank watts.
+    var tcxPowerSource: TCXPowerSource {
+        TCXPowerSource.resolve(samples: tcxSamples)
+    }
+
     /// The ride as a TCX (TrainingCenterDatabase v2) XML string.
     func tcxString() -> String {
-        let ordered = (samples ?? []).sorted { $0.secondsFromStart < $1.secondsFromStart }
-        let tcxSamples = ordered.map {
-            TCXSample(
-                secondsFromStart: $0.secondsFromStart,
-                powerW: $0.powerW,
-                cadenceRpm: $0.cadenceRpm,
-                speedKph: $0.speedKph,
-                heartRateBpm: $0.heartRateBpm
-            )
-        }
-        return TCXExporter.makeTCX(start: date, samples: tcxSamples, durationSeconds: durationSec)
+        TCXExporter.makeTCX(start: date, samples: tcxSamples, durationSeconds: durationSec)
     }
 
     /// The Strava activity title for this ride, e.g. `Zona Z2 Endurance`.
