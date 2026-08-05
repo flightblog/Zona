@@ -178,7 +178,11 @@ struct RideView: View {
                                      sessionName: session.name,
                                      onCancel: cancelCountdown)
             } else if let state = currentIntervalState, let session = playback.runningSession {
-                IntervalHUD(state: state, sessionName: session.name, onStop: endInterval)
+                IntervalHUD(state: state,
+                            sessionName: session.name,
+                            offsetW: playback.offsetW,
+                            onTrim: trimInterval,
+                            onStop: endInterval)
             } else {
                 TargetAdjuster()
             }
@@ -295,6 +299,17 @@ struct RideView: View {
     /// `Action`s. The HUD's step state is a pure read mirrored out afterwards.
     private func tickIntervals() {
         apply(playback.tick(elapsed: recorder.elapsed(), ftp: settings.ftp))
+        currentIntervalState = playback.currentState(elapsed: recorder.elapsed(), ftp: settings.ftp)
+    }
+
+    /// Trim the running block's ERG target by `deltaW` from the HUD. The offset
+    /// is applied to every remaining step by `IntervalPlayback`, not written to
+    /// the trainer directly — a direct write would be stomped at the next step
+    /// boundary, which is exactly why the manual `TargetAdjuster` is hidden while
+    /// a block runs. The HUD's step state is re-mirrored so the trimmed target
+    /// shows immediately rather than a second later on the next tick.
+    private func trimInterval(_ deltaW: Int) {
+        apply(playback.trim(byW: deltaW, elapsed: recorder.elapsed(), ftp: settings.ftp))
         currentIntervalState = playback.currentState(elapsed: recorder.elapsed(), ftp: settings.ftp)
     }
 
@@ -762,7 +777,20 @@ private struct TargetAdjuster: View {
 private struct IntervalHUD: View {
     let state: IntervalTargetState
     let sessionName: String
+    /// The rider's current trim, for the "+10 W" chip. 0 means untrimmed and the
+    /// chip is hidden — an always-present "0 W" would read as a reading rather
+    /// than as an adjustment they made.
+    let offsetW: Int
+    let onTrim: (Int) -> Void
     let onStop: () -> Void
+
+    /// Same ±5 W step the manual `TargetAdjuster` uses, so trimming feels the
+    /// same whether or not a block is running.
+    private let trimStepW = 5
+
+    private var offsetText: String {
+        offsetW > 0 ? "+\(offsetW) W" : "\(offsetW) W"
+    }
 
     /// One short line, read at a glance mid-effort.
     private var line: String {
@@ -792,6 +820,44 @@ private struct IntervalHUD: View {
                 .font(.title3.weight(.bold).monospacedDigit())
                 .foregroundStyle(tint)
                 .contentTransition(.numericText())
+
+            // Mid-block trim. The scheduler still owns the setpoint — this feeds
+            // it an offset that carries to every remaining step, so the next step
+            // boundary doesn't stomp the correction. The target shown is the
+            // trimmed one, i.e. what ERG is actually holding.
+            HStack(spacing: 16) {
+                Button { onTrim(-trimStepW) } label: {
+                    Image(systemName: "minus.circle.fill")
+                }
+                .accessibilityLabel("Decrease interval target by \(trimStepW) watts")
+
+                VStack(spacing: 2) {
+                    Text("\(state.targetWatts) W")
+                        .font(.headline.monospacedDigit())
+                        .contentTransition(.numericText())
+                    if offsetW != 0 {
+                        Text(offsetText)
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(minWidth: 74)
+                // One VoiceOver stop for the readout, with the trim spelled out
+                // rather than left as a bare signed number beside it.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Interval target")
+                .accessibilityValue(offsetW == 0
+                                    ? "\(state.targetWatts) watts"
+                                    : "\(state.targetWatts) watts, trimmed \(offsetText)")
+
+                Button { onTrim(trimStepW) } label: {
+                    Image(systemName: "plus.circle.fill")
+                }
+                .accessibilityLabel("Increase interval target by \(trimStepW) watts")
+            }
+            .font(.title2)
+            .buttonStyle(.plain)
+
             Button(role: .destructive, action: onStop) {
                 Text("Stop intervals")
             }

@@ -32,6 +32,20 @@ public struct IntervalTargetState: Sendable, Equatable {
             self.isWork = isWork
         }
     }
+
+    public init(stepIndex: Int,
+                totalSteps: Int,
+                zone: PowerZone,
+                secondsRemainingInStep: Int,
+                targetWatts: Int,
+                repetition: RepeatPosition?) {
+        self.stepIndex = stepIndex
+        self.totalSteps = totalSteps
+        self.zone = zone
+        self.secondsRemainingInStep = secondsRemainingInStep
+        self.targetWatts = targetWatts
+        self.repetition = repetition
+    }
 }
 
 /// Steps an `IntervalSession` through time. Stateless and pure, like
