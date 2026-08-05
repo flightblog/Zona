@@ -115,7 +115,13 @@ public enum TCXEnergy {
     /// that reaches the pedals. Measured values sit in the 20–25% band across
     /// trained and untrained riders; 24% is the middle of the range cycling
     /// software conventionally assumes, and the value that makes kJ ≈ kcal.
-    public static let grossEfficiency = 0.24
+    ///
+    /// Internal alongside `kilojoulesPerKilocalorie`: both are implementation
+    /// detail of `kilocalories(samples:source:)`, which is the whole public
+    /// surface. Nothing outside the module reads either, and exposing a tunable
+    /// constant invites a second call site deriving its own figure — the drift
+    /// this type exists to prevent. Widen it when something concrete needs it.
+    static let grossEfficiency = 0.24
 
     /// Kilojoules per kilocalorie (thermochemical).
     static let kilojoulesPerKilocalorie = 4.184
