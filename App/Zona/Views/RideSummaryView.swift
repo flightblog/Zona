@@ -381,8 +381,9 @@ private enum Explanation {
         The plain average of your power meter's watts over the whole ride. Your \
         meter measures at the cranks, so it reads a few watts above the \
         trainer — that gap is drivetrain loss between the cranks and the \
-        flywheel, not an error. The trainer stays the number the ride is scored \
-        and uploaded on.
+        flywheel, not an error. Zona scores this ride on the trainer's watts, \
+        but uploads your meter's when it covered the ride — the same way your \
+        outdoor rides are recorded.
         """
 
     static let normalizedLegPower = """

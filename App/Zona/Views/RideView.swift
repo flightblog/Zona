@@ -136,8 +136,9 @@ struct RideView: View {
             // The SRAM/Quarq readout (power + cadence) gets its own row below —
             // it's a separate sensor from the trainer, and keeping it off the
             // line above means neither row has to squeeze. The meter's watts are
-            // recorded as leg power on their own channel (its cadence stays
-            // display-only), but neither is exported or fed to ERG — the trainer
+            // recorded as leg power on their own channel, and a finished ride
+            // can export them (see `TCXPowerSource`); its cadence stays
+            // display-only. Neither feeds ERG or the zone math — the trainer
             // drives those (see `RideMetrics.powerMeterW`).
             //
             // The row is keyed on the meter being *connected*, not on it having

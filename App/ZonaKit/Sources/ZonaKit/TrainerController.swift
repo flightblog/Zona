@@ -118,8 +118,9 @@ public final class TrainerController {
     /// required. The power meter is always scanned for but never required — it
     /// connects silently if present and is simply absent otherwise (same pattern
     /// as an HR strap when HR isn't required). It feeds the ride screen's
-    /// secondary readout and records leg power on its own channel, but never
-    /// drives ERG or the zone math; the ride starts on the trainer alone.
+    /// secondary readout, records leg power on its own channel, and can supply
+    /// the TCX export's watts (see `TCXPowerSource`), but never drives ERG or
+    /// the zone math; the ride starts on the trainer alone.
     public func connect() {
         var kinds: Set<SensorKind> = [.trainer, .powerMeter]
         if requiresHeartRate { kinds.insert(.heartRate) }

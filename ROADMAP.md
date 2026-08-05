@@ -213,8 +213,10 @@ actually ridden.
   the two leg W/kg ones added with them (PR #122) — each also
   answer the question that section raises first — why its figures sit above the
   trainer's — repeating that the gap is drivetrain loss rather than an error and
-  that the trainer stays what the ride is scored and uploaded on, wording kept in
-  step with the physical explanation on `RideMetrics.powerMeterW`. Two things
+  that the trainer stays what the ride is *scored* on, while the upload prefers
+  the meter's watts when it covered the ride (PR #136 narrowed this blurb, which
+  until then also claimed the trainer was what the ride uploaded on), wording
+  kept in step with the physical explanation on `RideMetrics.powerMeterW`. Two things
   worth not undoing: it's a **popover, not `.help()` alone** (`.help` is a
   macOS-only hover affordance and would be invisible on iOS, where a summary is
   most likely to be read — it's kept alongside so macOS still gets hover); and the
