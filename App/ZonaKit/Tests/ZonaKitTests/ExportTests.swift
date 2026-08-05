@@ -106,6 +106,50 @@ struct TCXExportTests {
         #expect(tcx.components(separatedBy: "<ns3:Watts>").count - 1 == 10)
     }
 
+    /// `resolve` is a pure function of the samples: repeated calls return the
+    /// same answer, and it holds no state that a second call could disturb.
+    ///
+    /// This is what makes the caller's compute-once rule *safe*. The app
+    /// resolves the source once per ride into `@State`
+    /// (`RideSummaryView.task(id:)`) rather than from a view body, because
+    /// `Ride.tcxPowerSource` sorts and materializes an entire `[TCXSample]` from
+    /// SwiftData on every read — the same long-ride stall the chart's
+    /// downsampling fixed. Caching a value is only correct if recomputing it
+    /// would agree; this pins that. It can't reach the app-target call site
+    /// itself (no app test target — CI runs ZonaKit only), so a body-level
+    /// `ride.tcxPowerSource` stays a review-time catch.
+    @Test func resolveIsPureAcrossRepeatedCalls() {
+        let samples = (0..<10).map {
+            TCXSample(secondsFromStart: $0, powerW: 200,
+                      powerMeterW: $0 < 9 ? 210 : nil)   // 90%, over the floor
+        }
+        let first = TCXPowerSource.resolve(samples: samples)
+        #expect(first == .powerMeter)
+        // Resolving again — as a re-render would — must not drift.
+        for _ in 0..<5 {
+            #expect(TCXPowerSource.resolve(samples: samples) == first)
+        }
+        // And the exported file agrees with the cached answer, so a caption
+        // driven by the stored value can't contradict the bytes uploaded.
+        let tcx = TCXExporter.makeTCX(start: start, samples: samples)
+        #expect(tcx.contains("<ns3:Watts>210</ns3:Watts>"))
+    }
+
+    /// Coverage is a property of the whole sample set, not of its order, so the
+    /// caller may sort before or after resolving without changing the file's
+    /// power source. `Ride.tcxPowerSource` and `tcxString()` both build from the
+    /// same sorted `tcxSamples`; this pins that they can't disagree if that
+    /// bridging is ever reordered or memoized.
+    @Test func resolveIgnoresSampleOrder() {
+        let ordered = (0..<10).map {
+            TCXSample(secondsFromStart: $0, powerW: 200,
+                      powerMeterW: $0 < 8 ? 210 : nil)   // exactly at the floor
+        }
+        #expect(TCXPowerSource.resolve(samples: ordered) == .powerMeter)
+        #expect(TCXPowerSource.resolve(samples: ordered.reversed()) == .powerMeter)
+        #expect(TCXPowerSource.resolve(samples: ordered.shuffled()) == .powerMeter)
+    }
+
     /// Coverage exactly at the floor still qualifies (the comparison is `>=`),
     /// and one step below it does not — pinning the boundary so a later tweak
     /// to the constant can't silently move it.
