@@ -95,6 +95,67 @@ public enum TCXPowerSource: Sendable, Equatable {
     }
 }
 
+/// Energy expended over a ride, for the TCX `<Calories>` element.
+///
+/// Zona measures no metabolic data, so this is derived from mechanical work, the
+/// standard cycling convention: integrate watts over time for kilojoules, then
+/// divide by gross metabolic efficiency to get the kilocalories the rider
+/// actually burned producing them. The two conversions very nearly cancel (1 kcal
+/// = 4.184 kJ, and cyclists convert food energy to pedal work at roughly 24%), so
+/// burned kcal ends up within a few percent of work in kJ — the coincidence every
+/// head unit relies on.
+///
+/// This is an *estimate labelled as a measurement* by the file format, which is
+/// why it integrates the same channel `TCXPowerSource` chose for `<ns3:Watts>`:
+/// a file whose power track says one thing and whose calorie total implies
+/// another is worse than either figure alone, and a reader deriving kJ from the
+/// trackpoints should land where `<Calories>` already sits.
+public enum TCXEnergy {
+    /// Gross metabolic efficiency of cycling — the fraction of metabolic energy
+    /// that reaches the pedals. Measured values sit in the 20–25% band across
+    /// trained and untrained riders; 24% is the middle of the range cycling
+    /// software conventionally assumes, and the value that makes kJ ≈ kcal.
+    public static let grossEfficiency = 0.24
+
+    /// Kilojoules per kilocalorie (thermochemical).
+    static let kilojoulesPerKilocalorie = 4.184
+
+    /// Estimated kilocalories burned over `samples`, integrating `source`'s
+    /// channel. Returns 0 for a ride with no power on that channel at all.
+    ///
+    /// Each sample's watts are held over the gap to the *next* sample (step
+    /// integration), matching how `makeTCX` integrates speed into distance and
+    /// how `RideRecording.distanceMeters` works — trainers report stepwise, and a
+    /// gap from a dropped second shouldn't be interpolated across. The final
+    /// sample has no "next" and so contributes nothing: a ≤1 s tail.
+    ///
+    /// A second with no reading on the chosen channel contributes **zero
+    /// energy**. A quiet crank meter means the rider was coasting, so no work
+    /// was done — the alternative, carrying the previous second's watts across
+    /// the gap, would bank power never held. (Note this is the opposite
+    /// treatment from a trackpoint, where the same nil omits `<ns3:Watts>`
+    /// entirely rather than writing 0: declining to state an instantaneous
+    /// reading is honest, but a total has to account for every second it spans.)
+    ///
+    /// Because intervals run between adjacent *samples* rather than adjacent
+    /// readings, a zero-valued second and an omitted one come to the same total
+    /// — what matters is that the gap's duration stays put instead of migrating
+    /// onto a neighbouring reading's watts.
+    public static func kilocalories(samples: [TCXSample], source: TCXPowerSource) -> Int {
+        let ordered = samples.sorted { $0.secondsFromStart < $1.secondsFromStart }
+        var joules = 0.0
+        for i in ordered.indices {
+            guard i + 1 < ordered.count else { break }
+            let dt = ordered[i + 1].secondsFromStart - ordered[i].secondsFromStart
+            guard dt > 0 else { continue }
+            let watts = source.watts(for: ordered[i]) ?? 0
+            joules += Double(watts) * Double(dt)   // W × s = J
+        }
+        let kilojoules = joules / 1000
+        return Int((kilojoules / kilojoulesPerKilocalorie / grossEfficiency).rounded())
+    }
+}
+
 /// Encodes a ride as a Garmin TrainingCenterDatabase v2 (TCX) document — plain
 /// XML that Strava, TrainingPeaks, intervals.icu, etc. import directly. Pure:
 /// takes values in, returns a `String`; no file I/O, no SwiftData. Power lives
@@ -103,9 +164,11 @@ public enum TCXPowerSource: Sendable, Equatable {
 ///
 /// Which power channel fills `<ns3:Watts>` is decided per file by
 /// `TCXPowerSource.resolve` — leg power when a crank meter covered the ride,
-/// the trainer otherwise. Cadence is always the trainer's: crank cadence isn't
-/// recorded per sample at all, so an exported trackpoint can pair leg-power
-/// watts with trainer-derived cadence.
+/// the trainer otherwise. `<Calories>` is derived from that same channel (see
+/// `TCXEnergy`) so the file's stated energy agrees with its own power track.
+/// Cadence is always the trainer's: crank cadence isn't recorded per sample at
+/// all, so an exported trackpoint can pair leg-power watts with trainer-derived
+/// cadence.
 public enum TCXExporter {
     /// Build a TCX document. `start` is the activity start; each sample's time is
     /// `start + secondsFromStart`. `sport` is the TCX Sport attribute.
@@ -148,6 +211,9 @@ public enum TCXExporter {
             cumulative[i] = running
         }
         let totalDistance = cumulative.last ?? 0
+        // Derived from the same channel that fills <ns3:Watts> above, so the
+        // file's power track and its calorie total agree. See `TCXEnergy`.
+        let calories = TCXEnergy.kilocalories(samples: ordered, source: powerSource)
 
         var xml = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -165,7 +231,7 @@ public enum TCXExporter {
               <Lap StartTime="\(startId)">
                 <TotalTimeSeconds>\(totalSeconds)</TotalTimeSeconds>
                 <DistanceMeters>\(format(totalDistance))</DistanceMeters>
-                <Calories>0</Calories>
+                <Calories>\(calories)</Calories>
                 <Intensity>Active</Intensity>
                 <TriggerMethod>Manual</TriggerMethod>
                 <Track>
