@@ -101,7 +101,7 @@ struct SetupView: View {
             } header: {
                 Text("Sensors")
             } footer: {
-                Text("A power meter (SRAM/Quarq) is optional — connect one to see its watts alongside the trainer during a ride, and to record your leg power on the ride summary. The trainer still drives the workout: it's what sets the ERG target, the zones, and what gets uploaded.")
+                Text("A power meter (SRAM/Quarq) is optional — connect one to see its watts alongside the trainer during a ride, and to record your leg power on the ride summary. The trainer still drives the workout: it's what sets the ERG target and the zones, and what the ride is scored on. Rides you record with the meter connected upload its measured leg power, matching how your outdoor rides are recorded.")
             }
 
             Section {
