@@ -1,6 +1,6 @@
 ---
 name: zona-review
-description: Review a Zona diff or PR with the project's load-bearing invariants front-loaded — the ZonaKit/app-target split, power-meter expiry, HR-zone classification, ERG/HR design, and concurrency rules. Use before pushing a branch or when reviewing Zona code.
+description: Review a Zona diff or PR with the project's load-bearing invariants front-loaded — the ZonaKit/app-target split, power-meter expiry and leg-power TCX export, HR-zone classification, ERG/HR design, and concurrency rules. Use before pushing a branch or when reviewing Zona code.
 allowed-tools: Read, Grep, Bash
 ---
 
@@ -130,6 +130,23 @@ whole file. Don't flag the export reading `powerMeterW`; do flag these:
 Cadence stays trainer-sourced: crank cadence isn't recorded at all, so exporting
 it needs a new per-ride field and a CloudKit-safe migration, not a one-line
 change.
+
+**The in-app summary still scores on trainer watts while Strava shows leg
+power.** That asymmetry is deliberate, not a bug — flag an attempt to "reconcile"
+the two figures, and flag any doc or UI string that describes the trainer as what
+the ride is *uploaded* on (it's what the ride is *scored* on).
+
+**When this rule changes, sweep the docs by identifier, not by phrasing.** #136
+changed the export and needed three follow-up PRs (#137, #138, #139) to catch
+stale text, because each sweep grepped the previous wording. Two of the misses
+were rider-facing strings that shared no vocabulary with the code — the summary's
+Avg-leg-power popover and the Setup sensors footer, the latter read at the moment
+a rider decides whether to pair a meter. On any diff that changes this behaviour,
+check `grep -rn powerMeterW --include="*.swift" --include="*.md"` including
+**tests and SwiftUI `Text(...)` strings**, and flag a PR that updates the
+behaviour without them. Note `RideMetrics.powerMeterW` is the canonical
+explanation five other comments defer to with "see `RideMetrics.powerMeterW`" —
+fix it first, or the referring sites silently go stale.
 
 **The Quarq reading a few watts ABOVE the Kickr is correct** (direct crank torque
 vs. flywheel estimate + drivetrain loss) — never "fix" that gap.
@@ -266,6 +283,13 @@ that went stale within a PR or two:
   level is worth recording precisely here because Zona drives real hardware — a
   passing suite and a held ERG session are different claims. Per-feature
   verification lives in `ROADMAP.md`; `App/README.md` defers to it.
+- **A behaviour change must sweep the text that describes it, by identifier.**
+  The prose docs are only half of it: code comments and rider-facing SwiftUI
+  strings state the same rules in different vocabularies, so a phrase-based grep
+  misses them (see the leg-power export above, which took three follow-up PRs).
+  Flag a behaviour change that leaves a `Text(...)` telling the rider something
+  the code no longer does — a wrong user-facing string outranks a wrong comment,
+  since the rider can't read the code to correct it.
 
 ## Output
 
