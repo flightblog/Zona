@@ -152,6 +152,10 @@ struct RideView: View {
             if controller.sensorState(.powerMeter).isConnected {
                 HStack(spacing: 16) {
                     Metric(title: "SRAM",
+                           value: powerMeterWattsPerKgText,
+                           unit: "W/kg",
+                           spokenLabel: "Leg watts per kilogram")
+                    Metric(title: "SRAM",
                            value: controller.metrics.powerMeterW.map { "\($0)" } ?? "—",
                            unit: "W",
                            spokenLabel: "Leg power")
@@ -159,10 +163,6 @@ struct RideView: View {
                            value: controller.metrics.powerMeterCadenceRpm.map { "\($0)" } ?? "—",
                            unit: "RPM",
                            spokenLabel: "Leg cadence")
-                    Metric(title: "SRAM",
-                           value: powerMeterWattsPerKgText,
-                           unit: "W/kg",
-                           spokenLabel: "Leg watts per kilogram")
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -706,7 +706,7 @@ private struct Metric: View {
                 .font(.system(size: valueSize, weight: .semibold, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText())
                 // Up to three of these share one line — the W/kg/Speed/Distance
-                // row, and the SRAM row (W, RPM, W/kg) when a meter is
+                // row, and the SRAM row (W/kg, W, RPM) when a meter is
                 // connected; scale the number down (never wrap) so the row stays
                 // on a single line on a narrow phone.
                 .minimumScaleFactor(0.5)
