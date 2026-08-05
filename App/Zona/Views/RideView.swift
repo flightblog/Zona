@@ -695,10 +695,15 @@ private struct Metric: View {
     /// Defaults to `title` for tiles whose caption already reads as a phrase.
     var spokenLabel: String?
 
+    /// The value text's designed point size. Pinned as the tile's fixed height
+    /// too, so the number only ever scales down to fit its row's *width* — see
+    /// below.
+    private let valueSize: CGFloat = 34
+
     var body: some View {
         VStack {
             Text(value)
-                .font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
+                .font(.system(size: valueSize, weight: .semibold, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText())
                 // Up to three of these share one line — the W/kg/Speed/Distance
                 // row, and the SRAM row (W, RPM, W/kg) when a meter is
@@ -706,6 +711,16 @@ private struct Metric: View {
                 // on a single line on a narrow phone.
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
+                // Width is the only pressure that may shrink the number. Without
+                // a fixed height these tiles are the most compressible thing in
+                // the ride column, so they were the first to give when something
+                // taller appeared *below* them: starting an interval session
+                // swaps the one-line `TargetAdjuster` for the much taller
+                // `IntervalHUD`, and all six readings visibly shrank for the rest
+                // of the session — exactly when the rider is working hardest and
+                // least able to read them. The height reservation makes the
+                // surrounding `Spacer`s absorb that instead.
+                .frame(height: valueSize)
             Text(unit.isEmpty ? title : "\(title) · \(unit)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
