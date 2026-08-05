@@ -106,10 +106,30 @@ non-optional or defaulted new property.
 
 ## Sensor / recorder invariants
 
-**The trainer is the source of truth.** A SRAM/Quarq power meter is a
+**The trainer is the source of truth for control.** A SRAM/Quarq power meter is a
 **secondary, display+leg-power** readout on its own `powerMeterW` channel. It is
 never merged into the trainer's `powerW`, never fed to ERG, and never part of the
-zone math or Strava/TCX export. Flag any merge of meter watts into trainer power.
+zone math. Flag any merge of meter watts into trainer power.
+
+**The TCX export is the one consumer that prefers leg power** (PR #136) — the
+channels are still never *merged*, but `TCXPowerSource.resolve` picks one for the
+whole file. Don't flag the export reading `powerMeterW`; do flag these:
+- **Per-sample source selection.** Choosing per trackpoint (e.g. `powerMeterW ??
+  powerW`) alternates calibration scale at every coast and dropout. The source is
+  resolved once per file.
+- **Dropping or loosening the coverage floor** (`TCXPowerSource.minimumCoverage`,
+  80%). Without it a meter that dropped after thirty seconds flips the whole file
+  to leg power, and since Strava *interpolates* missing power, a sparse track
+  becomes a mostly-invented one.
+- **Defaulting a gap to 0 W** (`powerMeterW ?? 0`). The crank goes quiet on a
+  coast instead of sending a zero frame; the trackpoint must omit `<ns3:Watts>`.
+- **Resolving the source in a computed property.** It walks every sample —
+  `RideSummaryView` resolves once into `@State` in its `.task`, the same
+  compute-once rule as the chart downsampling and `IntervalReview`'s slicing.
+
+Cadence stays trainer-sourced: crank cadence isn't recorded at all, so exporting
+it needs a new per-ride field and a CloudKit-safe migration, not a one-line
+change.
 
 **The Quarq reading a few watts ABOVE the Kickr is correct** (direct crank torque
 vs. flywheel estimate + drivetrain loss) — never "fix" that gap.

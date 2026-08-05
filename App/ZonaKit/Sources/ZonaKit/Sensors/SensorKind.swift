@@ -92,9 +92,11 @@ public struct SensorReading: Sendable, Equatable {
     public var heartRateBpm: Int?
     /// Power (W) from a standalone cycling power meter (SRAM/Quarq), kept
     /// deliberately SEPARATE from `powerW`. `powerW` is the trainer's own power —
-    /// it drives ERG, zone math, and the Strava export. The meter's watts are
-    /// shown on the ride screen and recorded on their own channel (as leg power),
-    /// but they never merge into `powerW`, so they can't contaminate any of that.
+    /// it drives ERG and the zone math. The meter's watts are shown on the ride
+    /// screen and recorded on their own channel (as leg power), but they never
+    /// merge into `powerW`, so they can't contaminate either of those. The TCX
+    /// export is the one consumer that prefers this channel, choosing between
+    /// the two per file rather than merging them (see `TCXPowerSource`).
     public var powerMeterW: Int?
     /// Cadence (rpm) derived from the power meter's crank-revolution data. Like
     /// `powerMeterW`, separate from the trainer's `cadenceRpm` — and display-only
