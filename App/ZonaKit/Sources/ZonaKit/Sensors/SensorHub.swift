@@ -203,8 +203,10 @@ public final class SensorHub {
         if let hr = reading.heartRateBpm { metrics.heartRateBpm = hr }
         // Power-meter values (watts, cadence) are tracked separately from the
         // trainer's (see `powerMeterW`): they're shown as the ride screen's
-        // secondary readout and recorded on their own channel, but never exported
-        // or fed to ERG — the trainer stays the source of truth.
+        // secondary readout and recorded on their own channel, but never fed to
+        // ERG or the zone math — the trainer stays the source of truth for those.
+        // The watts do reach the TCX export, which picks one channel per file
+        // (see `TCXPowerSource`); they still never merge into `metrics.powerW`.
         if let pm = reading.powerMeterW {
             metrics.powerMeterW = pm
             lastPowerMeterAt = now
@@ -949,8 +951,11 @@ private final class MultiBLEManager: NSObject, CBCentralManagerDelegate, CBPerip
             guard let p = CyclingPowerMeasurement(data) else { return }
             // Route to `powerMeterW`/cadence, NOT the trainer fields: the meter is
             // a secondary readout (recorded as leg power on its own channel) and
-            // must not overwrite the trainer's power, which drives ERG, the zone
-            // math, and the Strava export. The meter's watts read differently from
+            // must not overwrite the trainer's power, which drives ERG and the
+            // zone math. Keeping the channels apart is also what lets the TCX
+            // export choose between them per file rather than merging two
+            // calibrations (see `TCXPowerSource`). The meter's watts read
+            // differently from
             // the trainer's by design — see `RideMetrics.powerMeterW` for why
             // (direct crank torque vs. the trainer's flywheel estimate; the
             // drivetrain loss between them).

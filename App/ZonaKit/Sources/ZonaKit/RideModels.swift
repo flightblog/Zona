@@ -35,9 +35,16 @@ public struct RideMetrics: Equatable, Sendable {
     /// Live watts from a connected SRAM/Quarq power meter, shown on the ride
     /// screen as a secondary readout and recorded as the rider's *leg* power on
     /// its own channel (`RideSample.powerMeterW`). It is NOT what the ride is
-    /// scored on: the TCX/Strava export, ERG, and every zone calculation read only
-    /// `powerW` (the trainer). Keeping it separate (never merged into `powerW`) is
-    /// what guarantees the meter can't skew exported data or the zone math.
+    /// scored on: ERG and every zone calculation read only `powerW` (the
+    /// trainer). Keeping it separate (never merged into `powerW`) is what
+    /// guarantees the meter can't skew the zone math.
+    ///
+    /// The TCX/Strava export is the one consumer that *prefers* this channel: a
+    /// finished ride uploads leg power when the meter covered enough of the ride
+    /// (`TCXPowerSource`), so an indoor upload matches how the same rider's
+    /// outdoor rides are recorded. That's a choice between the two channels made
+    /// once per file — still never a merge, and it doesn't change what the
+    /// in-app summary scores, which stays trainer watts.
     ///
     /// **Not sticky the way the trainer's fields are.** A crank meter that goes
     /// quiet — the rider is coasting, or it dropped — sends *nothing*, unlike the
@@ -66,12 +73,15 @@ public struct RideMetrics: Equatable, Sendable {
     /// cranks and the flywheel, plus the trainer's estimate carries its own error
     /// band and averaging window. A small steady-state gap is the drivetrain
     /// loss, not a bug — which is exactly why the trainer stays the source of
-    /// truth and the meter is display-only.
+    /// truth for ERG and the zone math, and why the export deliberately picks
+    /// one scale for the whole file instead of mixing them.
     public var powerMeterW: Int?
 
-    /// Cadence (rpm) from the SRAM/Quarq's crank-revolution data. Display-only,
-    /// like `powerMeterW` — separate from the trainer-derived `cadenceRpm` that
-    /// drives the cadence dial, and never recorded or exported.
+    /// Cadence (rpm) from the SRAM/Quarq's crank-revolution data. Separate from
+    /// the trainer-derived `cadenceRpm` that drives the cadence dial, and —
+    /// unlike `powerMeterW`, which the export can prefer — genuinely
+    /// display-only: crank cadence is never recorded or exported, so an exported
+    /// trackpoint pairs leg-power watts with trainer-derived cadence.
     public var powerMeterCadenceRpm: Int?
 
     /// The ERG watt target currently commanded (nil before a ride starts).
