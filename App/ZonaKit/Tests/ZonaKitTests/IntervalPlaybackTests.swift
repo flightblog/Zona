@@ -239,6 +239,102 @@ struct IntervalPlaybackTests {
         #expect(playback.currentState(elapsed: 0, ftp: ftp) == nil)
     }
 
+    // MARK: Mid-block trim
+
+    @Test func trimAppliesImmediatelyRatherThanWaitingForTheNextStep() {
+        var playback = IntervalPlayback()
+        _ = playback.start(session(), atElapsed: 0, preTargetW: 150, ftp: ftp)
+        // Rider is 10s into the work step and it's running hot.
+        #expect(playback.trim(byW: -5, elapsed: 10, ftp: ftp) == [.setWatts(workWatts() - 5)])
+        #expect(playback.offsetW == -5)
+    }
+
+    @Test func trimCarriesToEveryRemainingStep() {
+        // The whole point of an offset rather than an absolute setpoint: the
+        // correction survives the step boundary that would stomp a direct write.
+        var playback = IntervalPlayback()
+        _ = playback.start(session(), atElapsed: 0, preTargetW: 150, ftp: ftp)
+        _ = playback.trim(byW: -10, elapsed: 5, ftp: ftp)
+        // Boundary into the rest step at 30s: still trimmed.
+        #expect(playback.tick(elapsed: 30, ftp: ftp) == [.setWatts(restWatts() - 10)])
+        // And back into the second work rep at 60s.
+        #expect(playback.tick(elapsed: 60, ftp: ftp) == [.setWatts(workWatts() - 10)])
+    }
+
+    @Test func trimsAccumulate() {
+        var playback = IntervalPlayback()
+        _ = playback.start(session(), atElapsed: 0, preTargetW: 150, ftp: ftp)
+        _ = playback.trim(byW: 5, elapsed: 5, ftp: ftp)
+        _ = playback.trim(byW: 5, elapsed: 6, ftp: ftp)
+        #expect(playback.offsetW == 10)
+    }
+
+    @Test func trimIsClampedAndAbsorbedDeltaWritesNothing() {
+        var playback = IntervalPlayback()
+        _ = playback.start(session(), atElapsed: 0, preTargetW: 150, ftp: ftp)
+        for second in 1...12 { _ = playback.trim(byW: 5, elapsed: second, ftp: ftp) }
+        #expect(playback.offsetW == IntervalPlayback.offsetRange.upperBound)
+        // At the bound the delta is fully absorbed: no further ERG write.
+        #expect(playback.trim(byW: 5, elapsed: 13, ftp: ftp) == [])
+        #expect(playback.offsetW == IntervalPlayback.offsetRange.upperBound)
+    }
+
+    @Test func trimNeverAsksForNegativeWatts() {
+        // A deep negative trim on a low recovery step floors at 0 rather than
+        // sending the trainer a negative setpoint.
+        // At FTP 60 the Z1 rest step resolves to 17 W, so a -50 trim would ask
+        // for -33 W without the floor.
+        var playback = IntervalPlayback()
+        _ = playback.start(session(restZone: .z1Recovery), atElapsed: 0, preTargetW: 150, ftp: 60)
+        for second in 1...10 { _ = playback.trim(byW: -5, elapsed: second, ftp: 60) }
+        #expect(playback.offsetW == IntervalPlayback.offsetRange.lowerBound)
+        #expect(playback.tick(elapsed: 30, ftp: 60) == [.setWatts(0)]) // into the rest step
+        #expect(playback.currentState(elapsed: 30, ftp: 60)?.targetWatts == 0)
+    }
+
+    @Test func trimPastTheLastStepBanksNothing() {
+        // The block is over but the tick that ends it hasn't run yet. Committing
+        // the offset here would move state no `setWatts` ever carried.
+        var playback = IntervalPlayback()
+        _ = playback.start(session(repeats: 1), atElapsed: 0, preTargetW: 150, ftp: ftp)
+        #expect(playback.trim(byW: -10, elapsed: 999, ftp: ftp) == [])
+        #expect(playback.offsetW == 0)
+    }
+
+    @Test func trimOutsideARunningBlockIsANoOp() {
+        var playback = IntervalPlayback()
+        // Idle.
+        #expect(playback.trim(byW: -5, elapsed: 0, ftp: ftp) == [])
+        #expect(playback.offsetW == 0)
+        // Counting down — the manual TargetAdjuster still owns the target here.
+        playback.beginCountdown(session(), seconds: 15, preTargetW: 165)
+        #expect(playback.trim(byW: -5, elapsed: 1, ftp: ftp) == [])
+        #expect(playback.offsetW == 0)
+    }
+
+    @Test func trimDoesNotLeakIntoTheRevertOrTheNextBlock() {
+        var playback = IntervalPlayback()
+        _ = playback.start(session(repeats: 1), atElapsed: 0, preTargetW: 140, ftp: ftp)
+        _ = playback.trim(byW: -15, elapsed: 5, ftp: ftp)
+        // Ending reverts to the pre-block target *untrimmed*.
+        #expect(playback.tick(elapsed: 60, ftp: ftp).contains(.revert(toWatts: 140)))
+        #expect(playback.offsetW == 0)
+        // A new block starts clean rather than inheriting the last correction.
+        let actions = playback.start(session(), atElapsed: 100, preTargetW: 140, ftp: ftp)
+        #expect(actions == [.setWatts(workWatts())])
+        #expect(playback.offsetW == 0)
+    }
+
+    @Test func currentStateReportsTheTrimmedTargetButKeepsTheStepsZone() {
+        var playback = IntervalPlayback()
+        _ = playback.start(session(), atElapsed: 0, preTargetW: 150, ftp: ftp)
+        _ = playback.trim(byW: -10, elapsed: 5, ftp: ftp)
+        let state = playback.currentState(elapsed: 5, ftp: ftp)
+        #expect(state?.targetWatts == workWatts() - 10)
+        // The zone names what the step *is*; a trim doesn't relabel the rep.
+        #expect(state?.zone == .z5VO2Max)
+    }
+
     // MARK: Degenerate sessions (editor prevents these; guard anyway)
 
     @Test func startingAZeroRepeatSessionEndsImmediatelyAndReverts() {

@@ -64,9 +64,32 @@ public struct IntervalPlayback: Sendable, Equatable {
     /// no block is running (reset on start and on end).
     public private(set) var lastCommandedWatts: Int?
 
+    /// A rider-applied trim, in watts, added to *every* step's resolved target
+    /// for the rest of the block. This is how mid-block adjustment works: the
+    /// scheduler still owns the setpoint, and the trim is an input to it, rather
+    /// than the view writing ERG directly behind the scheduler's back. A direct
+    /// write would be stomped at the next step boundary with nothing on screen
+    /// explaining why, which is why the manual `TargetAdjuster` is hidden while a
+    /// block runs.
+    ///
+    /// It is deliberately an *offset*, not an absolute setpoint: a session's
+    /// steps span different zones, so the rider trimming 10 W off a VO2 rep means
+    /// "this session is running hot", which should carry to the next rep — not
+    /// "pin every remaining step, work and rest alike, to one wattage".
+    ///
+    /// Reset to 0 on start and on end, so it never leaks into the next block, and
+    /// excluded from the revert: `preTargetW` restores the pre-block target as-is.
+    public private(set) var offsetW: Int = 0
+
+    /// Bounds on the trim, so a stuck button or a long press can't drive ERG to
+    /// something unrideable (or to 0/negative watts on a recovery step, which
+    /// FTMS would clamp anyway and which reads as a fault to the rider).
+    public static let offsetRange = -50...50
+
     public init() {
         phase = .idle
         lastCommandedWatts = nil
+        offsetW = 0
     }
 
     /// True while a block is actively steering ERG — the ride screen shows the
@@ -126,6 +149,46 @@ public struct IntervalPlayback: Sendable, Equatable {
         phase = .idle
     }
 
+    // MARK: Trim
+
+    /// Adjust the running block's trim by `deltaW` (typically ±5 from the HUD's
+    /// buttons), clamped to `offsetRange`, and return the ERG write that puts it
+    /// into effect immediately — the rider pressed a button, so the trainer must
+    /// respond now rather than at the next step boundary.
+    ///
+    /// No-op (and no action) outside a running block: during a countdown or when
+    /// idle the manual `TargetAdjuster` is on screen and owns the target directly,
+    /// so there is nothing here to trim.
+    ///
+    /// Returns `[]` when the clamp absorbed the whole delta (already at a bound)
+    /// or when the trimmed target is unchanged, keeping the "only write on a real
+    /// change" property that `tick` has.
+    public mutating func trim(byW deltaW: Int, elapsed: Int, ftp: Int) -> [Action] {
+        guard case let .running(session, startedAtSecond, _) = phase else { return [] }
+        let clamped = min(max(offsetW + deltaW, Self.offsetRange.lowerBound),
+                          Self.offsetRange.upperBound)
+        guard clamped != offsetW else { return [] }
+
+        // Resolve the step *before* committing the trim. The block can already be
+        // past its last step here (the tick that ends it hasn't run yet), and
+        // banking an offset that no `setWatts` ever carried would leave the rider
+        // having pressed a button that moved nothing — then `end` clears it anyway.
+        let scheduler = IntervalScheduler(session: session, ftp: ftp)
+        guard let state = scheduler.target(atSecond: elapsed - startedAtSecond) else { return [] }
+        offsetW = clamped
+
+        let watts = trimmed(state.targetWatts)
+        guard watts != lastCommandedWatts else { return [] }
+        lastCommandedWatts = watts
+        return [.setWatts(watts)]
+    }
+
+    /// The scheduler's watts plus the rider's trim, floored at 0 so a deep
+    /// negative trim on a recovery step can't ask the trainer for negative watts.
+    private func trimmed(_ watts: Int) -> Int {
+        max(0, watts + offsetW)
+    }
+
     // MARK: Tick
 
     /// Advance playback by one 1 Hz tick. `elapsed` is the recorder's current
@@ -164,19 +227,34 @@ public struct IntervalPlayback: Sendable, Equatable {
                            preTargetW: preTargetW,
                            finishedAtElapsed: elapsed)
             }
-            guard state.targetWatts != lastCommandedWatts else { return [] }
-            lastCommandedWatts = state.targetWatts
-            return [.setWatts(state.targetWatts)]
+            let watts = trimmed(state.targetWatts)
+            guard watts != lastCommandedWatts else { return [] }
+            lastCommandedWatts = watts
+            return [.setWatts(watts)]
         }
     }
 
     /// The scheduler state for the running block at `elapsed`, or nil when no
     /// block is running (or it has just finished). The ride screen mirrors this
     /// into its HUD each tick. Pure read — does not mutate playback.
+    ///
+    /// `targetWatts` carries the rider's trim, so the HUD reports the wattage ERG
+    /// is actually holding rather than the untrimmed prescription. The step's
+    /// `zone` is left alone: it names what the step *is* (the session's structure,
+    /// which a trim doesn't rewrite), and re-deriving a zone from trimmed watts
+    /// would relabel a rep mid-effort when a trim crossed a band edge.
     public func currentState(elapsed: Int, ftp: Int) -> IntervalTargetState? {
         guard case let .running(session, startedAtSecond, _) = phase else { return nil }
-        return IntervalScheduler(session: session, ftp: ftp)
-            .target(atSecond: elapsed - startedAtSecond)
+        guard let state = IntervalScheduler(session: session, ftp: ftp)
+            .target(atSecond: elapsed - startedAtSecond) else { return nil }
+        guard offsetW != 0 else { return state }
+        return IntervalTargetState(
+            stepIndex: state.stepIndex,
+            totalSteps: state.totalSteps,
+            zone: state.zone,
+            secondsRemainingInStep: state.secondsRemainingInStep,
+            targetWatts: trimmed(state.targetWatts),
+            repetition: state.repetition)
     }
 
     // MARK: Start / stop
@@ -200,6 +278,9 @@ public struct IntervalPlayback: Sendable, Equatable {
         let captured = preTargetW ?? firstStepWatts ?? 0
         phase = .running(session: session, startedAtSecond: elapsed, preTargetW: captured)
         lastCommandedWatts = nil
+        // A trim belongs to the block the rider applied it during; starting a new
+        // one begins untrimmed rather than inheriting the last block's correction.
+        offsetW = 0
 
         // Apply the first step now rather than waiting a tick.
         guard let state = scheduler.target(atSecond: 0) else {
@@ -239,6 +320,9 @@ public struct IntervalPlayback: Sendable, Equatable {
                               finishedAtElapsed: Int) -> [Action] {
         phase = .idle
         lastCommandedWatts = nil
+        // The trim dies with the block: `preTargetW` below restores the pre-block
+        // target untrimmed, and the manual `TargetAdjuster` takes over from there.
+        offsetW = 0
         let actualSeconds = max(0, finishedAtElapsed - startedAtSecond)
         return [
             .recordRun(session: session,
