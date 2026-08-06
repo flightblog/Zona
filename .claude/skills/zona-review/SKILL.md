@@ -208,12 +208,15 @@ and `RideHRZoning.zone(forHR:)` is the single classifier. Live in-zone time uses
 `RideHRZoning.secondsInZone` so the live timer agrees with the summary.
 
 **"On target" comes from the shared `ZoneState(bpm:target:zoning:)`**, pure and
-in `ZonaKit` since #148. The BPM dial's PUSH/HOLD/EASE chip, the zone bar's
+in `ZonaKit` since #148. The BPM dial's tint, the zone bar's
 outlined target segment, its tinted handle, and its VoiceOver phrase all derive
 from that one value. Flag a parallel below/on/above comparison (e.g.
 `activeZone == target`, or a fresh `bpmRange` containment check) — it can
-disagree with the chip at a band edge, which is the beat-for-beat agreement #76
-and #107 established. The handle also needs its contrast stroke to stay legible
+disagree with the dial at a band edge, which is the beat-for-beat agreement #76
+and #107 established. (The dials' PUSH/HOLD/EASE chip and `ZoneState.cue` were
+removed in #158 — the state is shown as tint now. A diff re-adding a text cue to
+`ZoneGauge` isn't wrong, but it should read the shared state, not a new
+comparison.) The handle also needs its contrast stroke to stay legible
 when it sits on a same-coloured segment.
 
 Unlike the export's compute-once rule, this one is now **tested, not just

@@ -197,7 +197,7 @@ actually ridden.
   the **target zone** marked by an outlined segment, a below/on/above-tinted handle,
   and a bolded label — so the bar now answers both "which zone am I in *right now*?"
   and "am I where I'm meant to be?" that previously needed the `ZoneGauge` dials.
-  That on-target state comes from the same `ZoneState` the dials' PUSH/HOLD/EASE cue
+  That on-target state comes from the same `ZoneState` the dials' tint
   reads, never a parallel comparison, so the two can't disagree at a band edge.
   `ZoneState` moved into `ZonaKit` in #148 and is unit-tested there, so that
   agreement is now pinned by the suite rather than by review alone.
