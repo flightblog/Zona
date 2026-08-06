@@ -543,50 +543,20 @@ private struct HRZoneBar: View {
     }
 }
 
-/// Where a live reading sits relative to its target band, and the correction it
-/// implies. Drives color, arrow, and word so the cue survives a quick glance
-/// and doesn't depend on color perception alone.
-private enum ZoneState {
-    case noData, below, inZone, above
-
-    init(value: Int?, band: ClosedRange<Int>) {
-        guard let value else { self = .noData; return }
-        if value < band.lowerBound { self = .below }
-        else if value > band.upperBound { self = .above }
-        else { self = .inZone }
-    }
-
-    /// HR variant: judge in/below/above by which *zone* the reading classifies
-    /// into, not by whether it falls inside the rounded target band. The two can
-    /// disagree by a beat at every band edge because `bpmRange` rounds each edge
-    /// independently while `zone(forHR:)` compares the raw fraction — and it's
-    /// `zone(forHR:)` the ride is actually scored on. Routing the BPM dial's green
-    /// state through the classifier keeps it, the Z1–Z5 zone bar, and the summary's
-    /// time-in-zone in exact agreement (see `RideHRZoning.zone(forHR:)`).
-    init(bpm: Int?, target: HRZone, zoning: RideHRZoning) {
-        guard let bpm else { self = .noData; return }
-        let zone = zoning.zone(forHR: bpm)
-        if zone.rawValue < target.rawValue { self = .below }
-        else if zone.rawValue > target.rawValue { self = .above }
-        else { self = .inZone }
-    }
-
+/// How an on-target state is painted. The state itself — and its `cue` string —
+/// is pure and unit-tested in `ZonaKit`; only the colour lives here.
+///
+/// Deliberately app-target, the same split as `HRZone.color`: routing every
+/// on-target decision through one `ZoneState` is what keeps the dial, the zone
+/// bar and the summary agreeing beat-for-beat, and that decision is worth
+/// testing without SwiftUI in the way. How it's tinted isn't.
+extension ZoneState {
     var tint: Color {
         switch self {
         case .noData: return .gray
         case .below:  return .blue    // too easy
         case .inZone: return .green
         case .above:  return .orange  // too hard
-        }
-    }
-
-    /// Short verb + arrow telling the rider how to correct.
-    var cue: String {
-        switch self {
-        case .noData: return "—"
-        case .below:  return "↑ PUSH"
-        case .inZone: return "✓ HOLD"
-        case .above:  return "↓ EASE"
         }
     }
 }
