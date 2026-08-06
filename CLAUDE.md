@@ -25,6 +25,12 @@ cd App && xcodegen generate      # generates Zona.xcodeproj from project.yml (no
 #   ~/Dev/github/{HealthConnectKit, Zona}
 git -C ~/Dev/github clone https://github.com/flightblog/HealthConnectKit.git
 
+# That relative path is why `git worktree` needs one extra step: a worktree
+# created outside ~/Dev/github can't see the sibling, and `swift test` fails
+# with "the package at '…/HealthConnectKit' cannot be accessed" — a path
+# error, not a broken dependency. Symlink it next to the worktree:
+#   ln -s ~/Dev/github/HealthConnectKit <worktree-parent>/HealthConnectKit
+
 # Run the app
 open App/Zona.xcodeproj          # pick the "Zona" scheme, set signing, run
 
@@ -58,13 +64,38 @@ before chasing it.
 Work lands on a branch via PR, never directly on `main`. Squash-merge and delete
 the branch (`gh pr merge <n> --squash --delete-branch`), then `git fetch --prune`
 — the repo is kept main-only with no lingering merged branches. Wait for the
-required **ZonaKit tests** check before merging (`gh pr checks <n> --watch`); a
-`BLOCKED` merge state usually just means it's still running.
+required **ZonaKit tests** check before merging (`gh pr checks <n> --watch`).
+
+**A green check is not the same as mergeable — read `mergeStateStatus`.** Branch
+protection here is `strict`, so a branch must also be *up to date with `main`*.
+`gh pr checks` can report `pass` while the merge is refused, and the refusal
+reads `Required status check "ZonaKit tests" is expected` — which looks like a CI
+or workflow-syntax failure and isn't one. The real signal:
+
+```sh
+gh pr view <n> --json mergeStateStatus -q .mergeStateStatus
+# CLEAN → merge. BEHIND → gh pr update-branch <n>, then wait for CI on the new head.
+# BLOCKED → usually CI still running; re-check before assuming anything else.
+```
 
 **Code and docs ship as separate PRs**, code first, docs immediately after
 (#122→#123, #118→#119, #116→#117, #114→#115). The docs PR updates whichever of
 `CLAUDE.md` / `App/README.md` / `ROADMAP.md` the change invalidates. Keep this
 split rather than folding docs into the code PR.
+
+That split has one recurring cost worth planning for: **the docs PR is always
+stale by the time its code half merges**, and in two different ways. If it
+branched off `main`, it comes back `BEHIND` (see above). If it branched off the
+*code branch* so it could describe the finished behaviour, the squash-merge
+leaves it carrying a duplicate of code already on `main` — `gh pr diff <n>
+--name-only` still lists the code files. Fix that by rebasing onto the merged
+main and force-pushing, then confirm it's docs-only before merging:
+
+```sh
+git rebase --onto main <code-branch-sha>   # drops the already-merged commit
+git diff main...HEAD --stat                # must show docs files only
+git push --force-with-lease
+```
 
 **Branch names are `<type>/<kebab-case-summary>`** — `feat/zone-bar-target-marker`,
 `fix/whoop-concurrent-token-refresh`, `docs/roadmap-oauth-hardening`,
