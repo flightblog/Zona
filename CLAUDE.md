@@ -284,6 +284,16 @@ parallel `activeZone == target` comparison anywhere: the whole point is that the
 dial, the zone bar, the live "In zone" timer, and the summary's time-in-zone
 agree beat-for-beat.
 
+`ZoneState` is **pure and in `ZonaKit`** (#148), so that agreement is unit-tested
+rather than review-enforced: its HR init is checked against `zone(forHR:)` at
+every BPM across all five targets, since this failure is always a single boundary
+beat. It lived as a `private enum` inside `RideView.swift` until then, which left
+the rule real but unenforceable — and unreachable from the summary, which agrees
+by calling `RideHRZoning.zone(forHR:)` directly. Only `ZoneState.tint` stays in
+the app target, as an extension: it returns a SwiftUI `Color`, the same
+pure-math/app-paints split `HRZone.color` uses. Don't move `tint` into the
+package to reunite them — SwiftUI in `ZonaKit` is what the split exists to avoid.
+
 **A stat tile is one VoiceOver stop, and units are spelled out.** The ride
 screen's `Metric` tiles and the summary's stat tiles both merge into a single
 accessibility element with a spoken label and value ("Avg power: 210 W"), because

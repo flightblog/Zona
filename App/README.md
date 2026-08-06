@@ -60,6 +60,8 @@ App/
 │   │   ├── Zones.swift            # FTP → Coggan power zones
 │   │   ├── HeartRateZones.swift   # LTHR → HR zones (HRZone / HRZoneEngine), the manual fallback
 │   │   ├── RideHRZoning.swift     # which model a ride is scored against: .lthr / .whoopHRR
+│   │   ├── ZoneState.swift        # below/on/above target — the one on-target decision
+│   │   │                          #   (its .tint stays app-side, see HRZoneColor.swift)
 │   │   ├── RideSettingsState.swift # pure ride-input state + logic (zone-sync, zoning); app persists it
 │   │   ├── RideModels.swift       # ConnectionState, RideMetrics
 │   │   ├── RideRecorder.swift     # 1 Hz sample capture during a ride
@@ -402,9 +404,9 @@ records how far each feature has been verified (hardware, signed build, or tests
   be?" without a glance at the gauges. It classifies through the same
   `RideHRZoning.zone(forHR:)` the ride's own scoring uses (so it can't name a zone
   the ride wouldn't record), and takes its on-target state from the same
-  `ZoneState` the BPM dial's PUSH/HOLD/EASE cue reads, so the two can't disagree
-  at a band edge. (It replaced the live chart on this screen: mid-ride you're
-  steering to a zone, not reading a trend.)
+  `ZoneState` the BPM dial's PUSH/HOLD/EASE cue reads — pure and unit-tested in
+  `ZonaKit`, so the two can't disagree at a band edge. (It replaced the live chart
+  on this screen: mid-ride you're steering to a zone, not reading a trend.)
 - **VoiceOver on the ride screen's readouts** — the zone bar and the six small
   metric tiles are each one accessibility element with a spoken label and value,
   instead of the separate number/caption stops SwiftUI produces by default.
