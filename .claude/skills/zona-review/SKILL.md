@@ -26,12 +26,26 @@ another provider would encode a guess as a rule.
 
 ## First: mechanical checks
 
+- **Check what you're actually testing before you test it.** When reviewing a
+  PR, the local checkout is often on some *other* branch — the follow-on docs
+  branch, or whatever was last worked on. `git log --oneline -1` against the
+  PR's head settles it. If they differ, review the PR's code, not the working
+  tree: `git worktree add <scratch>/pr<N> origin/<head-branch>`. Running the
+  suite on the wrong branch produces a confident, worthless green.
+  - A worktree outside `~/Dev/github` can't resolve ZonaKit's relative-path
+    `HealthConnectKit` dependency and fails with "the package at
+    '…/HealthConnectKit' cannot be accessed". That's a path problem, not a code
+    problem — symlink the sibling next to the worktree and re-run.
 - Run `cd App/ZonaKit && swift test` and report failures. The **ZonaKit tests**
   check is required to merge; a red suite is the top-priority finding.
 - If `App/project.yml` changed, note that `xcodegen generate` must be re-run and
   that files under `Zona/Resources/` are generated — hand-edits there are a bug.
 - Scope the read to the actual diff (`git diff main...HEAD --stat`) before
   reading whole files, to keep the pass fast.
+- **SourceKit diagnostics are not build failures.** `No such module 'ZonaKit'`
+  and `Cannot find type 'X' in scope` on a type that plainly exists are stale-index
+  artifacts, especially right after adding a file to the package. Confirm with a
+  real `swift build` before reporting either as a finding.
 
 ## Architecture invariants
 
@@ -279,6 +293,19 @@ there. State the mutation and its failure message when reporting new coverage. I
 a mutation "survives", first suspect the run was invalid (didn't compile, crashed
 before asserting) rather than concluding the code is untested. Note `--filter`
 matches the **type** name, not the `@Suite` display name.
+
+**`--filter` to the test you're validating whenever the mutation touches shared
+state** — a constant, an enum case, a helper every sibling assertion also reads.
+Mutating `TCXEnergy.grossEfficiency` in #147 turned the suite red through the
+*existing* exact-value tests, which made the aggregate output look like the new
+test had bitten when it hadn't. Isolating it was what showed the difference.
+
+**An assertion that can't fail on its own isn't coverage** (#147). A second
+`#expect` on a value already pinned by an exact-value check above it can never go
+red independently — it restates the answer and advertises coverage that isn't
+there. Flag the shape; the fix is to compute the comparison side from the test's
+own *inputs* rather than from the expected result, so it pins the relationship it
+claims to.
 
 **Don't add a test that restates one that exists.** A 2026-07-25 audit
 (#104–#106) reviewed the suite for duplicates and removed none, so near-identical
