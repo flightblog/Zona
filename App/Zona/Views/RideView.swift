@@ -21,6 +21,11 @@ struct RideView: View {
     @State private var savedRide: Ride?
     /// Drives the "End ride?" confirmation so a stray tap can't discard a ride.
     @State private var confirmingEnd = false
+    /// Drives the "Stop intervals?" confirmation. The HUD's stop button sits where
+    /// the trim buttons are, within thumb reach mid-effort, and stopping a block
+    /// is not undoable — it banks the run and reverts ERG — so it gets the same
+    /// guard as End ride rather than firing on the first tap.
+    @State private var confirmingStopIntervals = false
     /// Drives the sheet listing the saved interval library.
     @State private var showingIntervalPicker = false
     /// The interval-session playback lifecycle (`idle → countdown → running →
@@ -182,7 +187,7 @@ struct RideView: View {
                             sessionName: session.name,
                             offsetW: playback.offsetW,
                             onTrim: trimInterval,
-                            onStop: endInterval)
+                            onStop: { confirmingStopIntervals = true })
             } else {
                 TargetAdjuster()
             }
@@ -228,6 +233,16 @@ struct RideView: View {
             Button("Keep riding", role: .cancel) {}
         } message: {
             Text("This stops recording and saves your ride.")
+        }
+        // Same guard as End ride, and for the same reason: the tap that stops a
+        // block is easy to make by accident and impossible to take back. Keeping
+        // it dismissible ("Keep going" is the cancel role) means a stray tap
+        // costs a dismissal, not the rest of the session.
+        .alert("Stop intervals?", isPresented: $confirmingStopIntervals) {
+            Button("Stop intervals", role: .destructive, action: endInterval)
+            Button("Keep going", role: .cancel) {}
+        } message: {
+            Text("This ends the interval session and returns to your steady target. The ride keeps recording.")
         }
         .onAppear {
             // Enter ERG at the configured steady target and start recording, and
@@ -300,6 +315,10 @@ struct RideView: View {
     private func tickIntervals() {
         apply(playback.tick(elapsed: recorder.elapsed(), ftp: settings.ftp))
         currentIntervalState = playback.currentState(elapsed: recorder.elapsed(), ftp: settings.ftp)
+        // A session can finish on its own while the stop confirmation is up.
+        // `stop` is a no-op once idle, so confirming would be harmless — but the
+        // rider would be answering a question about a block that already ended.
+        if !playback.isRunning { confirmingStopIntervals = false }
     }
 
     /// Trim the running block's ERG target by `deltaW` from the HUD. The offset
