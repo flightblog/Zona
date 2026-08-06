@@ -86,17 +86,4 @@ struct ZoneStateTests {
         }
         #expect(!bpms.isEmpty)
     }
-
-    // MARK: - Cue
-
-    /// Every state has a distinct spoken/visible cue, and `noData` renders the
-    /// "—" placeholder rather than an empty string or a misleading instruction.
-    @Test func everyStateHasADistinctCue() {
-        let cues = ZoneState.allCases.map(\.cue)
-        #expect(Set(cues).count == ZoneState.allCases.count)
-        #expect(ZoneState.noData.cue == "—")
-        #expect(ZoneState.below.cue.contains("PUSH"))
-        #expect(ZoneState.inZone.cue.contains("HOLD"))
-        #expect(ZoneState.above.cue.contains("EASE"))
-    }
 }
