@@ -28,15 +28,15 @@ actually ridden.
   typically near the end of a Z2 session; choosing one opens a short 15s "get
   ready" countdown (cancelable) before the first block drives ERG, then
   `IntervalScheduler` steps the ERG target through it via the ride screen's
-  existing 1 Hz `.task` loop, only calling `setTargetPower` at a step boundary. A running block can be stopped
-  early from a HUD that replaces the manual `TargetAdjuster` while it's active;
-  ending (naturally or via Stop) reverts to the **pre-block** target — the one in
-  force when the block started, so a mid-ride `TargetAdjuster` trim survives the
-  interval — not to `settings.target`. Both ways out of a session early — Stop,
-  and the countdown's Cancel — confirm first (PRs #151/#152, verified in the
-  app), since neither is undoable from the ride screen. Stop moved out of the HUD
-  and into the bottom row's "Add intervals" slot, in orange, while a block runs
-  (PR #154, signed-build compiled; that placement is not yet ridden). Cancelling
+  existing 1 Hz `.task` loop, only calling `setTargetPower` at a step boundary. A
+  HUD replaces the manual `TargetAdjuster` while a block is active, and the block
+  can be stopped early; ending (naturally or via Stop) reverts to the
+  **pre-block** target — the one in force when the block started, so a mid-ride
+  `TargetAdjuster` trim survives the interval — not to `settings.target`. Both
+  ways out of a session early — Stop, and the countdown's Cancel — confirm first
+  (PRs #151/#152, verified in the app), since neither is undoable from the ride
+  screen. Stop moved out of the HUD and into the bottom row's "Add intervals"
+  slot, in orange, while a block runs (PR #154, verified in the app). Cancelling
   in the countdown's last
   seconds is best-effort: the count keeps running under the alert, so a late
   answer gets the block anyway and the Stop confirmation is the backstop.
