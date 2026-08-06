@@ -5,12 +5,11 @@ import ZonaKit
 /// Live ride screen. BPM is the target the rider is chasing and watts is the
 /// lever (ERG) they pull to get there; cadence is form. All three get an equal,
 /// glanceable arc gauge side by side: each fills to show where the live value
-/// sits within its band and shows a color + word + arrow cue (PUSH / HOLD /
-/// EASE) so you know at a glance whether you're in target and which way to
-/// correct — without relying on color alone. W/kg, speed and distance stay small
-/// below, with the SRAM/Quarq readout on its own row under them; End ride
-/// at the bottom. When the view appears we push the ERG target and start
-/// recording; on End ride we save the ride to SwiftData and show its summary.
+/// sits within its band and tints itself by whether you're below / on / above
+/// target. W/kg, speed and distance stay small below, with the SRAM/Quarq
+/// readout on its own row under them; End ride at the bottom. When the view
+/// appears we push the ERG target and start recording; on End ride we save the
+/// ride to SwiftData and show its summary.
 struct RideView: View {
     @Environment(TrainerController.self) private var controller
     @Environment(RideSettings.self) private var settings
@@ -102,9 +101,9 @@ struct RideView: View {
                     // HR is the target the rider chases, so give the center dial a
                     // couple extra points over Watts/RPM to draw the eye.
                     ringSize: 120,
-                    // Green/push/ease from the zone classifier (not the rounded
-                    // band), so this dial and the Z1–Z5 bar below never name a
-                    // different zone for the same beat.
+                    // Tinted from the zone classifier (not the rounded band), so
+                    // this dial and the Z1–Z5 bar below never name a different
+                    // zone for the same beat.
                     stateOverride: ZoneState(bpm: controller.metrics.heartRateBpm,
                                              target: settings.hrZone,
                                              zoning: rideZoning)
@@ -113,7 +112,7 @@ struct RideView: View {
                     value: controller.metrics.cadenceRpm,
                     band: cadenceBand,
                     label: "rpm",
-                    caption: "cadence",
+                    caption: "Cadence",
                     icon: "arrow.trianglehead.clockwise"
                 )
             }
@@ -484,7 +483,7 @@ struct RideView: View {
 
     /// Cadence isn't a target the app holds, so there's no configured setting for
     /// it — this is a fixed endurance-comfortable window (~80–100 rpm) so the dial
-    /// gives the same in-zone/push/ease cue as BPM and Watts.
+    /// tints below/on/above the same way BPM and Watts do.
     private var cadenceBand: ClosedRange<Int> { 80...100 }
 
 }
@@ -496,7 +495,7 @@ struct RideView: View {
 /// ride is being scored against?".
 ///
 /// Deliberately shows no BPM number of its own: the BPM `ZoneGauge` already gives
-/// the live figure with its in-zone/push/ease colouring, so a second copy here
+/// the live figure with its below/on/above colouring, so a second copy here
 /// was just noise competing with it. This is the *zone* readout; the gauge is the
 /// *number* readout.
 ///
@@ -531,9 +530,9 @@ private struct HRZoneBar: View {
         let active = bpm.map { zoning.zone(forHR: $0) }
         let handleFraction = bpm.map { fraction(of: $0, in: zoning.bpmRange(for: zoning.zone(forHR: $0))) }
         // Below / on / above target, from the SAME classifier the BPM dial's
-        // PUSH/HOLD/EASE chip uses — so the bar's handle and that chip can never
-        // disagree about whether the rider is on target. `.noData` when there's no
-        // reading, which leaves the handle hidden anyway.
+        // tint uses — so the bar's handle and that dial can never disagree about
+        // whether the rider is on target. `.noData` when there's no reading,
+        // which leaves the handle hidden anyway.
         let state = ZoneState(bpm: bpm, target: target, zoning: zoning)
 
         VStack(alignment: .leading, spacing: 10) {
@@ -591,8 +590,8 @@ private struct HRZoneBar: View {
     }
 
     /// Spoken as "148 beats per minute, Z2 Endurance, on target" — the on/below/
-    /// above phrase mirrors the dial's PUSH/HOLD/EASE cue so VoiceOver users get
-    /// the same three-way state sighted users read from the handle's colour.
+    /// above phrase mirrors the dial's tint so VoiceOver users get the same
+    /// three-way state sighted users read from the handle's colour.
     private var accessibilityValue: String {
         guard let bpm else { return "No reading" }
         let zone = zoning.zone(forHR: bpm)
@@ -625,9 +624,9 @@ extension ZoneState {
     }
 }
 
-/// One circular gauge: big number in the center, ring showing where the live
-/// value sits across the band (padded so you can see how far past either edge
-/// you are), and a color-coded state chip beneath. Used identically for BPM,
+/// One circular gauge: big number in the center and a ring showing where the
+/// live value sits across the band (padded so you can see how far past either
+/// edge you are), tinted by the below/on/above state. Used identically for BPM,
 /// watts, and cadence so the three read as one system. The ring sizes itself to
 /// the column it's given so three fit across a phone; text scales to match.
 private struct ZoneGauge: View {
@@ -642,8 +641,8 @@ private struct ZoneGauge: View {
     /// center HR dial actually render a couple points larger than Watts/RPM.
     var ringSize: CGFloat = 104
     /// Optional pre-computed state. The HR dial passes one derived from the zone
-    /// *classifier* so its green/push/ease cue agrees to the beat with the zone
-    /// bar; watts and cadence leave this nil and fall back to band membership.
+    /// *classifier* so its tint agrees to the beat with the zone bar; watts and
+    /// cadence leave this nil and fall back to band membership.
     var stateOverride: ZoneState?
 
     private var state: ZoneState { stateOverride ?? ZoneState(value: value, band: band) }
@@ -691,14 +690,6 @@ private struct ZoneGauge: View {
             // three fit across a narrow phone with a gap between the strokes.
             .frame(width: ringSize, height: ringSize)
             .padding(.horizontal, 4)
-
-            // State chip: color + word + arrow. Redundant cues on purpose.
-            Text(state.cue)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(state.tint)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .background(state.tint.opacity(0.15), in: Capsule())
 
             // Caption and band range on separate lines: at a phone's per-column
             // width the two together overflow and ellipsize ("Z2 Endurance · 13…"),

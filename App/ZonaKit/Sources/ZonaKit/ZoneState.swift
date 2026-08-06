@@ -3,8 +3,8 @@ import Foundation
 /// Where a live reading sits relative to its target, and the correction it
 /// implies — below (push harder), in zone (hold), above (ease off), or no data.
 ///
-/// **This is the single on-target decision.** The BPM dial's PUSH/HOLD/EASE chip,
-/// the Z1–Z5 zone bar's outlined target segment and tinted handle, and that bar's
+/// **This is the single on-target decision.** The BPM dial's tint, the Z1–Z5 zone
+/// bar's outlined target segment and tinted handle, and that bar's
 /// VoiceOver phrase all read this one value rather than each comparing a reading
 /// to a target themselves. A parallel `activeZone == target` check anywhere would
 /// be free to disagree at a band edge, which is exactly the beat-for-beat
@@ -42,16 +42,5 @@ public enum ZoneState: Sendable, Equatable, CaseIterable {
         if zone.rawValue < target.rawValue { self = .below }
         else if zone.rawValue > target.rawValue { self = .above }
         else { self = .inZone }
-    }
-
-    /// Short verb + arrow telling the rider how to correct. Glanceable mid-ride
-    /// and readable without relying on colour perception alone.
-    public var cue: String {
-        switch self {
-        case .noData: return "—"
-        case .below:  return "↑ PUSH"
-        case .inZone: return "✓ HOLD"
-        case .above:  return "↓ EASE"
-        }
     }
 }
