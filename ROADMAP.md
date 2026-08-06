@@ -32,7 +32,13 @@ actually ridden.
   early from a HUD that replaces the manual `TargetAdjuster` while it's active;
   ending (naturally or via Stop) reverts to the **pre-block** target — the one in
   force when the block started, so a mid-ride `TargetAdjuster` trim survives the
-  interval — not to `settings.target`. Sessions that ran
+  interval — not to `settings.target`. Both buttons that end a session early —
+  Stop, and the countdown's Cancel — confirm first (PRs #151/#152, verified in
+  the app), since they share a screen slot with the HUD's trim buttons and
+  neither is undoable from the ride screen. Cancelling in the countdown's last
+  seconds is best-effort: the count keeps running under the alert, so a late
+  answer gets the block anyway and the Stop confirmation is the backstop.
+  Sessions that ran
   are now recorded (`IntervalRun` — the session as ridden, its start second, and
   actual vs. planned length) and reviewed on the summary; the ride is still
   *scored* end-to-end as one block, and the interval only steers watts (no TCX
