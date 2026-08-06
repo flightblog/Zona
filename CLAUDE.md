@@ -202,7 +202,32 @@ order**. Two rules are encoded there and are easy to regress:
   finished run banks against the right state.
 
 Choosing a session arms a cancelable 15s "get ready" countdown before the first
-block drives ERG. Runs that happened are persisted per-ride (`IntervalRun`, a
+block drives ERG.
+
+**Both interval HUD buttons confirm before firing, and the flags live in
+`RideView`.** "Stop intervals" and the countdown's "Cancel" occupy the same slot
+as each other, directly under the ±5 W trim buttons — one mid-effort thumb finds
+all three — so each raises an alert rather than acting on the first tap, the same
+guard End ride has. Their wording distinguishes them from End ride ("The ride
+keeps recording" / "Your steady target is unchanged"). Three things there are
+easy to regress:
+- `endInterval` stays the **single path** into `playback.stop`; the HUD callback
+  only raises a flag. `endRide` calls `endInterval()` directly to bank an
+  in-flight block before `finish()` locks the recording, and must not be routed
+  through a confirmation the rider has already answered.
+- The stale-flag check is **per-phase — two tests, not one**: `!isRunning`
+  lowers the stop flag, `!isCounting` the countdown flag. A single `!isRunning`
+  would clear the countdown flag on the very tick that raised it, since playback
+  isn't running *during* a countdown.
+- **The countdown confirmation races a clock and deliberately doesn't win.** The
+  countdown keeps ticking while the alert is up and `cancelCountdown` guards on
+  `.countdown`, so a Cancel tapped at 0:03 and answered four seconds later gets
+  the block anyway. Don't "fix" that by pausing the countdown — an unanswered
+  alert would then stall a session indefinitely, which is worse. The tick just
+  dismisses the alert when the countdown fires, so it never sits over a block
+  that is already driving ERG; the stop confirmation is the backstop.
+
+Runs that happened are persisted per-ride (`IntervalRun`, a
 JSON blob in `Ride.intervalRunsData`) and reviewed on the summary — display only;
 the ride is still scored as one block. That review shows both the prescription
 and what was *achieved*: `IntervalAchievement.perStep` (pure, `ZonaKit`) slices

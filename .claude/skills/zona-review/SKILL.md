@@ -85,6 +85,20 @@ in `IntervalPlayback` and are easy to regress:
   apply a returned `[Action]` **in order**. Flag a caller that reorders or
   filters them.
 
+Both HUD buttons that end a session early (Stop, and Cancel during the countdown)
+go through a confirmation whose flag lives in `RideView`. Three regressions to
+watch for:
+- A HUD callback wired straight back to `playback.stop`/`cancelCountdown`.
+  `endInterval` must stay the single path into `stop`, because `endRide` calls it
+  directly to bank an in-flight block before `finish()` locks the recording — a
+  confirmation in that path re-asks a rider who already answered.
+- The stale-flag check collapsed into one test. It is per-phase (`!isRunning` for
+  the stop flag, `!isCounting` for the countdown flag); a single `!isRunning`
+  clears the countdown flag on the tick that raised it.
+- A "fix" that pauses the countdown while its alert is up. Cancelling late is
+  best-effort by design — pausing would let an unanswered alert stall a session
+  indefinitely.
+
 Interval step watts resolve from `PowerZone` via `ZoneEngine` at scheduling time
 — flag raw watts stored on a step, which would stop sessions tracking FTP. The
 ride is still scored end-to-end as one block (no TCX laps, no `RideSummary`
