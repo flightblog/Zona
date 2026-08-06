@@ -21,10 +21,11 @@ struct RideView: View {
     @State private var savedRide: Ride?
     /// Drives the "End ride?" confirmation so a stray tap can't discard a ride.
     @State private var confirmingEnd = false
-    /// Drives the "Stop intervals?" confirmation. The HUD's stop button sits where
-    /// the trim buttons are, within thumb reach mid-effort, and stopping a block
-    /// is not undoable — it banks the run and reverts ERG — so it gets the same
-    /// guard as End ride rather than firing on the first tap.
+    /// Drives the "Stop intervals?" confirmation. The stop button takes the
+    /// "Add intervals" slot in the bottom row while a block runs — directly beside
+    /// End ride — and stopping a block is not undoable (it banks the run and
+    /// reverts ERG), so it gets the same guard as End ride rather than firing on
+    /// the first tap.
     @State private var confirmingStopIntervals = false
     /// Drives the "Cancel countdown?" confirmation, in the same spot as the stop
     /// button and equally easy to hit by mistake. Unlike the other two this one
@@ -183,8 +184,10 @@ struct RideView: View {
 
             // The scheduler owns the target while a block is running, so the
             // manual adjuster (which would fight it) is swapped for a compact
-            // HUD showing progress and a way to stop early. Before that, a chosen
-            // session sits in a "get ready" countdown with its own HUD.
+            // HUD showing progress and the block's trim. Stopping early is in the
+            // bottom button row, not here. Before that, a chosen session sits in a
+            // "get ready" countdown with its own HUD (whose Cancel *is* in the HUD,
+            // since the bottom row still offers Add intervals during a countdown).
             if let remaining = playback.countdownRemaining, let session = playback.countingSession {
                 IntervalCountdownHUD(secondsRemaining: remaining,
                                      sessionName: session.name,
@@ -193,33 +196,52 @@ struct RideView: View {
                 IntervalHUD(state: state,
                             sessionName: session.name,
                             offsetW: playback.offsetW,
-                            onTrim: trimInterval,
-                            onStop: { confirmingStopIntervals = true })
+                            onTrim: trimInterval)
             } else {
                 TargetAdjuster()
             }
 
             Spacer()
 
-            // Add intervals (blue) and End ride (red) share one line, equal
+            // The interval button (blue) and End ride (red) share one line, equal
             // width. Intervals are only offered on a Zone 2 ride — Zone 1 is
             // recovery-steady and has no interval mode — so on a Zone 1 ride the
-            // button is hidden entirely and End ride spans the row on its own.
-            // When shown, the interval picker is only reachable outside a
-            // running/pending block, so the button is disabled while one is
-            // active (or when the library is empty).
+            // slot is empty and End ride spans the row on its own.
+            //
+            // While a block runs the slot becomes an orange "Stop intervals"
+            // rather than a greyed-out "Add intervals": the disabled state gave
+            // the biggest control on screen to a button that did nothing, and the
+            // only thing the rider wants from that slot mid-block is the way out.
+            // Orange separates it from both neighbours — it is not the ride-ending
+            // red, and not the idle blue whose place it takes. It raises the same
+            // `confirmingStopIntervals` alert the HUD's stop button does, so
+            // `endInterval` stays the single path into `playback.stop`.
+            //
+            // A *countdown* keeps showing the disabled Add intervals: its own
+            // Cancel lives in the HUD above, and a second control that reads
+            // "Stop intervals" for a session that hasn't started yet would ask
+            // the rider to tell two similar-sounding outs apart mid-effort.
             HStack(spacing: 12) {
                 if settings.zone == .z2Endurance {
-                    Button {
-                        showingIntervalPicker = true
-                    } label: {
-                        Label("Add intervals", systemImage: "timer").frame(maxWidth: .infinity)
+                    if playback.isRunning {
+                        Button {
+                            confirmingStopIntervals = true
+                        } label: {
+                            Label("Stop intervals", systemImage: "stop.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                    } else {
+                        Button {
+                            showingIntervalPicker = true
+                        } label: {
+                            Label("Add intervals", systemImage: "timer").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        .disabled(intervalLibrary.sessions.isEmpty || playback.isCounting)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.blue)
-                    .disabled(intervalLibrary.sessions.isEmpty
-                              || playback.isRunning
-                              || playback.isCounting)
                 }
 
                 Button(role: .destructive) { confirmingEnd = true } label: {
@@ -791,8 +813,10 @@ private struct TargetAdjuster: View {
 }
 
 /// Compact HUD shown in place of `TargetAdjuster` while an interval block owns
-/// the ERG target: which step, its zone, and time left in it, plus a way to end
-/// the block early without ending the ride.
+/// the ERG target: which step, its zone, and time left in it, plus the ±5 W trim.
+/// Stopping the block early lives in the ride screen's bottom button row, where
+/// it takes over the "Add intervals" slot — the HUD carried a duplicate of it
+/// until then.
 ///
 /// For the common uniform session it counts **reps** ("Rep 3 of 4 · REST"),
 /// because mid-set the question is "how many hard efforts left?" and a raw step
@@ -809,7 +833,6 @@ private struct IntervalHUD: View {
     /// than as an adjustment they made.
     let offsetW: Int
     let onTrim: (Int) -> Void
-    let onStop: () -> Void
 
     /// Same ±5 W step the manual `TargetAdjuster` uses, so trimming feels the
     /// same whether or not a block is running.
@@ -884,11 +907,6 @@ private struct IntervalHUD: View {
             }
             .font(.title2)
             .buttonStyle(.plain)
-
-            Button(role: .destructive, action: onStop) {
-                Text("Stop intervals")
-            }
-            .buttonStyle(.bordered)
         }
     }
 
