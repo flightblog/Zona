@@ -489,10 +489,11 @@ records how far each feature has been verified (hardware, signed build, or tests
   `setWatts`/`revert`/`recordRun` intents for `RideView` to apply in order —
   keeping it unit-testable and the ordering rules explicit. Ending — naturally or
   via Stop — reverts to the target that was in force when the block *started*, so
-  a mid-ride `TargetAdjuster` trim survives the interval. Both HUD buttons that
-  end a session early — Stop while a block runs, Cancel during the countdown —
-  ask for confirmation first, since they sit under the trim buttons the rider is
-  already reaching for and neither is undoable from the ride screen.
+  a mid-ride `TargetAdjuster` trim survives the interval. Both ways out of a
+  session early ask for confirmation first, since neither is undoable from the
+  ride screen: while a block runs, an orange **Stop intervals** takes over the
+  bottom row's "Add intervals" slot next to End ride; during the countdown,
+  **Cancel** stays in the countdown HUD.
   Sessions that ran are recorded per-ride (`IntervalRun`: the session as ridden,
   its start second, and actual-vs-planned length, persisted as a JSON blob on
   the `Ride`) and shown in an "Intervals" review on the ride summary. That review
