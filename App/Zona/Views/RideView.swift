@@ -26,6 +26,13 @@ struct RideView: View {
     /// is not undoable — it banks the run and reverts ERG — so it gets the same
     /// guard as End ride rather than firing on the first tap.
     @State private var confirmingStopIntervals = false
+    /// Drives the "Cancel countdown?" confirmation, in the same spot as the stop
+    /// button and equally easy to hit by mistake. Unlike the other two this one
+    /// races a clock: the countdown keeps ticking while the alert is up, and
+    /// `cancelCountdown` is a no-op once it fires. `tickIntervals` therefore
+    /// lowers the flag when the countdown ends, so the alert can't sit over a
+    /// block that has already started.
+    @State private var confirmingCancelCountdown = false
     /// Drives the sheet listing the saved interval library.
     @State private var showingIntervalPicker = false
     /// The interval-session playback lifecycle (`idle → countdown → running →
@@ -181,7 +188,7 @@ struct RideView: View {
             if let remaining = playback.countdownRemaining, let session = playback.countingSession {
                 IntervalCountdownHUD(secondsRemaining: remaining,
                                      sessionName: session.name,
-                                     onCancel: cancelCountdown)
+                                     onCancel: { confirmingCancelCountdown = true })
             } else if let state = currentIntervalState, let session = playback.runningSession {
                 IntervalHUD(state: state,
                             sessionName: session.name,
@@ -243,6 +250,17 @@ struct RideView: View {
             Button("Keep going", role: .cancel) {}
         } message: {
             Text("This ends the interval session and returns to your steady target. The ride keeps recording.")
+        }
+        // The countdown's Cancel gets the same guard, in the same spot on screen.
+        // Nothing is destroyed by cancelling — no run to record, the steady target
+        // was never left — but the cost of a stray tap is asymmetric: it silently
+        // drops a session the rider queued and was waiting on, and the countdown
+        // gives no second chance to notice.
+        .alert("Cancel countdown?", isPresented: $confirmingCancelCountdown) {
+            Button("Cancel countdown", role: .destructive, action: cancelCountdown)
+            Button("Keep counting", role: .cancel) {}
+        } message: {
+            Text("The interval session won't start. Your steady target is unchanged.")
         }
         .onAppear {
             // Enter ERG at the configured steady target and start recording, and
@@ -315,10 +333,15 @@ struct RideView: View {
     private func tickIntervals() {
         apply(playback.tick(elapsed: recorder.elapsed(), ftp: settings.ftp))
         currentIntervalState = playback.currentState(elapsed: recorder.elapsed(), ftp: settings.ftp)
-        // A session can finish on its own while the stop confirmation is up.
-        // `stop` is a no-op once idle, so confirming would be harmless — but the
-        // rider would be answering a question about a block that already ended.
+        // Both confirmations can be outlived by the state they're asking about:
+        // a session can finish on its own, and a countdown always fires on its
+        // own if left alone. Confirming either would be harmless (`stop` and
+        // `cancelCountdown` both guard on their phase and return no actions
+        // otherwise), but the rider would be answering a stale question — and in
+        // the countdown's case a misleading one, since the block it offered to
+        // prevent is by then already driving ERG.
         if !playback.isRunning { confirmingStopIntervals = false }
+        if !playback.isCounting { confirmingCancelCountdown = false }
     }
 
     /// Trim the running block's ERG target by `deltaW` from the HUD. The offset
