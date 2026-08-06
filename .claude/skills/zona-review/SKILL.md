@@ -178,13 +178,25 @@ DISPLAY only — including positioning the zone bar's handle *within* its segmen
 and `RideHRZoning.zone(forHR:)` is the single classifier. Live in-zone time uses
 `RideHRZoning.secondsInZone` so the live timer agrees with the summary.
 
-**"On target" comes from the shared `ZoneState(bpm:target:zoning:)`.** The BPM
-dial's PUSH/HOLD/EASE chip, the zone bar's outlined target segment, its tinted
-handle, and its VoiceOver phrase all derive from that one value. Flag a parallel
-below/on/above comparison (e.g. `activeZone == target`, or a fresh `bpmRange`
-containment check) — it can disagree with the chip at a band edge, which is the
-beat-for-beat agreement #76 and #107 established. The handle also needs its
-contrast stroke to stay legible when it sits on a same-coloured segment.
+**"On target" comes from the shared `ZoneState(bpm:target:zoning:)`**, pure and
+in `ZonaKit` since #148. The BPM dial's PUSH/HOLD/EASE chip, the zone bar's
+outlined target segment, its tinted handle, and its VoiceOver phrase all derive
+from that one value. Flag a parallel below/on/above comparison (e.g.
+`activeZone == target`, or a fresh `bpmRange` containment check) — it can
+disagree with the chip at a band edge, which is the beat-for-beat agreement #76
+and #107 established. The handle also needs its contrast stroke to stay legible
+when it sits on a same-coloured segment.
+
+Unlike the export's compute-once rule, this one is now **tested, not just
+reviewed**: `ZoneStateTests` pins the HR init against `zone(forHR:)` at every BPM
+across all five targets, so a regression inside `ZoneState` fails CI. What still
+needs your eyes is a *new* on-target comparison written somewhere else, which no
+test can see. Two shapes to flag specifically:
+- **Logic added to `ZoneState.tint`** (the app-target extension). Only the colour
+  mapping belongs there; a decision made in `tint` is invisible to the suite.
+- **A `ZoneState` re-declared privately in a view**, which is exactly where it
+  used to live. The type is `public` — a local copy silently opts out of every
+  test above.
 
 **Scans are unfiltered (`services: nil`)** because some sensors (Garmin HRM 200)
 don't advertise their service UUID; devices are classified after connecting. Flag

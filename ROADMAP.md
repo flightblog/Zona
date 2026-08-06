@@ -191,6 +191,8 @@ actually ridden.
   and "am I where I'm meant to be?" that previously needed the `ZoneGauge` dials.
   That on-target state comes from the same `ZoneState` the dials' PUSH/HOLD/EASE cue
   reads, never a parallel comparison, so the two can't disagree at a band edge.
+  `ZoneState` moved into `ZonaKit` in #148 and is unit-tested there, so that
+  agreement is now pinned by the suite rather than by review alone.
   It classifies through `RideHRZoning.zone(forHR:)`, i.e. the exact
   classifier the ride's own time-in-zone scoring uses, so the bar can never name a
   different zone than the ride records for the same beat. **Don't classify a reading
