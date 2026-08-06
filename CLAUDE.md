@@ -204,17 +204,31 @@ order**. Two rules are encoded there and are easy to regress:
 Choosing a session arms a cancelable 15s "get ready" countdown before the first
 block drives ERG.
 
-**Both interval HUD buttons confirm before firing, and the flags live in
-`RideView`.** "Stop intervals" and the countdown's "Cancel" occupy the same slot
-as each other, directly under the ±5 W trim buttons — one mid-effort thumb finds
-all three — so each raises an alert rather than acting on the first tap, the same
-guard End ride has. Their wording distinguishes them from End ride ("The ride
-keeps recording" / "Your steady target is unchanged"). Three things there are
-easy to regress:
-- `endInterval` stays the **single path** into `playback.stop`; the HUD callback
-  only raises a flag. `endRide` calls `endInterval()` directly to bank an
-  in-flight block before `finish()` locks the recording, and must not be routed
-  through a confirmation the rider has already answered.
+**Both ways out of an interval session confirm before firing, and the flags live
+in `RideView`.** Neither is undoable from the ride screen, so each raises an
+alert rather than acting on the first tap, the same guard End ride has. Their
+wording distinguishes them from End ride ("The ride keeps recording" / "Your
+steady target is unchanged").
+
+They sit in **different places, by phase.** While a block runs, "Stop intervals"
+takes over the bottom row's "Add intervals" slot (#154) — orange, beside the red
+End ride: that slot's button was otherwise a greyed-out "Add intervals", giving
+the widest control on the screen to something that did nothing, when the only
+thing wanted from it mid-block is the way out. Orange because both neighbours are
+spoken for — it's not the ride-ending red, nor the idle blue whose place it takes
+— and the label and `stop.fill` icon change too, so colour isn't carrying the
+distinction alone. During a *countdown* the bottom row keeps showing the disabled
+"Add intervals" and Cancel stays in the HUD: a second control reading "Stop
+intervals" for a session that hasn't started would ask the rider to tell two
+similar-sounding outs apart mid-effort. The HUD had its own duplicate stop button
+until #154; it was removed rather than left alongside the new one, since both
+raised the same alert.
+
+Three things here are easy to regress:
+- `endInterval` stays the **single path** into `playback.stop`; the button
+  callback only raises a flag. `endRide` calls `endInterval()` directly to bank
+  an in-flight block before `finish()` locks the recording, and must not be
+  routed through a confirmation the rider has already answered.
 - The stale-flag check is **per-phase — two tests, not one**: `!isRunning`
   lowers the stop flag, `!isCounting` the countdown flag. A single `!isRunning`
   would clear the countdown flag on the very tick that raised it, since playback
