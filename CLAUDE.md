@@ -348,7 +348,7 @@ zone — `bpmRange` is for display and for positioning the zone bar's handle
 and Friel Z1's floor is 0, so scanning them to classify misreads every rounded
 band edge (a past bug lit Z5 at the LTHR boundary). Likewise, whether the rider
 is below/on/above target comes from the shared `ZoneState(bpm:target:zoning:)` —
-the BPM dial's PUSH/HOLD/EASE chip, the zone bar's outlined target segment and
+the BPM dial's tint, the zone bar's outlined target segment and
 tinted handle, and its VoiceOver phrase all read that one value. Don't add a
 parallel `activeZone == target` comparison anywhere: the whole point is that the
 dial, the zone bar, the live "In zone" timer, and the summary's time-in-zone
@@ -363,6 +363,22 @@ by calling `RideHRZoning.zone(forHR:)` directly. Only `ZoneState.tint` stays in
 the app target, as an extension: it returns a SwiftUI `Color`, the same
 pure-math/app-paints split `HRZone.color` uses. Don't move `tint` into the
 package to reunite them — SwiftUI in `ZonaKit` is what the split exists to avoid.
+
+**The gauges show that state as tint only — the PUSH/HOLD/EASE chip is gone**
+(#158). Each `ZoneGauge` carried a tinted capsule reading "↑ PUSH" / "✓ HOLD" /
+"↓ EASE" beneath it until then; it repeated what the ring above it already said,
+three times across the row, and mid-effort the rider is reading the numbers. It
+was never a control — a common misreading, since "chip" and "button" look alike
+in a screenshot — so removing it took no action away. `ZoneState.cue` was
+deleted with it rather than left as dead `public` API.
+
+Worth knowing before restoring anything there: that chip was the gauges' only
+non-colour cue. The zone bar still has two (the target segment's outline, the
+active zone's bolded label) and the bar's VoiceOver value still speaks the
+relation ("on target" / "below target Z2"), so nothing regressed for a screen
+reader — but a rider reading only the dials now has tint alone. If that needs
+answering, the answer is a glyph inside the ring, not a fourth row of text under
+it; the row's vertical budget is what the removal bought.
 
 **A stat tile is one VoiceOver stop, and units are spelled out.** The ride
 screen's `Metric` tiles and the summary's stat tiles both merge into a single

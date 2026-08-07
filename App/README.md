@@ -404,7 +404,7 @@ records how far each feature has been verified (hardware, signed build, or tests
   be?" without a glance at the gauges. It classifies through the same
   `RideHRZoning.zone(forHR:)` the ride's own scoring uses (so it can't name a zone
   the ride wouldn't record), and takes its on-target state from the same
-  `ZoneState` the BPM dial's PUSH/HOLD/EASE cue reads — pure and unit-tested in
+  `ZoneState` the BPM dial's tint reads — pure and unit-tested in
   `ZonaKit`, so the two can't disagree at a band edge. (It replaced the live chart
   on this screen: mid-ride you're steering to a zone, not reading a trend.)
 - **VoiceOver on the ride screen's readouts** — the zone bar and the six small
