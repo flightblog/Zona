@@ -701,7 +701,7 @@ private struct ZoneGauge: View {
                 Text("\(band.lowerBound)–\(band.upperBound)")
                     .lineLimit(1)
             }
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -747,7 +747,7 @@ private struct Metric: View {
                 // surrounding `Spacer`s absorb that instead.
                 .frame(height: valueSize)
             Text(unit.isEmpty ? title : "\(title) · \(unit)")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
