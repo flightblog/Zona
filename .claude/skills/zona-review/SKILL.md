@@ -38,6 +38,15 @@ another provider would encode a guess as a rule.
     problem — symlink the sibling next to the worktree and re-run.
 - Run `cd App/ZonaKit && swift test` and report failures. The **ZonaKit tests**
   check is required to merge; a red suite is the top-priority finding.
+  - That check is enforced server-side, so **a change can only land through a
+    PR** — `git push origin main` is refused outright with `GH006: Protected
+    branch update failed`, whether or not the work is committed locally. Note the
+    refusal reads `Required status check "ZonaKit tests" is expected`, the same
+    misleading phrasing a `BEHIND` branch produces; here it means no check ever
+    ran for that commit, not that CI failed or the workflow is malformed. If a
+    commit is already sitting on local `main`, recover it with `git branch
+    <type>/<summary>` then `git reset --hard origin/main` — the commit is safe on
+    the branch — and PR it from there.
 - If `App/project.yml` changed, note that `xcodegen generate` must be re-run and
   that files under `Zona/Resources/` are generated — hand-edits there are a bug.
 - Scope the read to the actual diff (`git diff main...HEAD --stat`) before
