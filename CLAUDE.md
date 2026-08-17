@@ -66,6 +66,13 @@ the branch (`gh pr merge <n> --squash --delete-branch`), then `git fetch --prune
 — the repo is kept main-only with no lingering merged branches. Wait for the
 required **ZonaKit tests** check before merging (`gh pr checks <n> --watch`).
 
+**That's enforced, not just convention.** `git push origin main` is refused
+server-side — `GH006: Protected branch update failed`, because the required
+check can only run against a PR head — so committing locally first doesn't help;
+it just moves where the push fails. To recover a commit already sitting on local
+`main`: `git branch <type>/<summary>` to save it, `git reset --hard origin/main`,
+then push the branch and PR it as usual.
+
 **A green check is not the same as mergeable — read `mergeStateStatus`.** Branch
 protection here is `strict`, so a branch must also be *up to date with `main`*.
 `gh pr checks` can report `pass` while the merge is refused, and the refusal
