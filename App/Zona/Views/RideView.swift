@@ -606,8 +606,8 @@ private struct HRZoneBar: View {
     }
 }
 
-/// How an on-target state is painted. The state itself — and its `cue` string —
-/// is pure and unit-tested in `ZonaKit`; only the colour lives here.
+/// How an on-target state is painted. The state itself is pure and unit-tested
+/// in `ZonaKit`; only the colour lives here.
 ///
 /// Deliberately app-target, the same split as `HRZone.color`: routing every
 /// on-target decision through one `ZoneState` is what keeps the dial, the zone
