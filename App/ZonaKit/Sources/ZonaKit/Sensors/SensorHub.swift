@@ -22,6 +22,8 @@ public final class SensorHub {
     /// Latest merged live values across all connected sensors.
     public private(set) var metrics = RideMetrics()
     /// Whether the trainer has completed the FTMS handshake and accepts ERG.
+    /// Cleared when the trainer's link drops, since a reconnect re-runs the
+    /// handshake (see `requestedTargetW`).
     public private(set) var trainerReady = false
     public private(set) var log: [String] = []
 
@@ -40,6 +42,17 @@ public final class SensorHub {
     /// Called (on the main actor) after the browse `discovered` list changes, so
     /// an owner can republish it as its own observed state for SwiftUI.
     @ObservationIgnored public var onDiscoveryChange: (([DiscoveredSensor]) -> Void)?
+
+    /// The ERG target most recently asked for via `setTargetPower`, kept so it
+    /// can be re-sent when the trainer comes back. A mid-ride drop loses the
+    /// control point, and the reconnect re-runs the FTMS handshake (Request
+    /// Control → Start) — but nothing in that handshake carries a target, so
+    /// without this the trainer resumed with whatever (if anything) it still
+    /// held while the screen showed `metrics.targetW`. A target set *during* the
+    /// drop (an interval step, a revert, a ±5 W trim) lands here too and is
+    /// applied on reconnect instead of vanishing into a write with no control
+    /// point to receive it. Cleared by `stop`.
+    @ObservationIgnored private var requestedTargetW: Int?
 
     @ObservationIgnored private let memory: SensorMemory
     @ObservationIgnored private lazy var ble = MultiBLEManager(owner: self, memory: memory)
@@ -133,22 +146,29 @@ public final class SensorHub {
         ble.applyPreferredChange(identifier, for: kind)
     }
 
-    /// ERG: command the trainer to hold `watts`. No-op until the trainer is ready.
+    /// ERG: command the trainer to hold `watts`. While the trainer isn't ready
+    /// (mid-ride drop, handshake still running) the target is held and sent once
+    /// the handshake completes — see `requestedTargetW`.
     public func setTargetPower(_ watts: Int) {
-        guard trainerReady else { return }
+        requestedTargetW = watts
         metrics.targetW = watts
         onMetricsChange?(metrics)
+        guard trainerReady else {
+            append("→ Set Target Power: \(watts) W (held until the trainer is ready)")
+            return
+        }
         append("→ Set Target Power: \(watts) W")
-        ble.writeToTrainer(FTMS.setTargetPowerCommand(watts: watts))
+        writeToTrainer(FTMS.setTargetPowerCommand(watts: watts))
     }
 
     /// Stop the ERG session and disconnect all sensors. Fully resets to idle so
     /// the UI returns to setup and stays there (no auto-rescan / auto-restart).
     public func stop() {
         append("→ Stop")
-        ble.writeToTrainer(FTMS.stopCommand())
+        writeToTrainer(FTMS.stopCommand())
         ble.disconnectAll()
         trainerReady = false
+        requestedTargetW = nil
         metrics = RideMetrics()
         // Clear desiredKinds so `connection` reports `.idle` — otherwise a
         // lingering desired set makes it report `.scanning`, dropping the user
@@ -161,6 +181,12 @@ public final class SensorHub {
 
     fileprivate func setState(_ state: SensorConnectionState, for kind: SensorKind) {
         states[kind] = state
+        // Any trainer state short of connected means its link is gone and the
+        // FTMS handshake must run again before ERG writes can land. Leaving
+        // `trainerReady` set through the drop let `setTargetPower` "send" to a
+        // trainer with no control point — the write was silently discarded
+        // while the screen showed the new target.
+        if kind == .trainer, !state.isConnected { trainerReady = false }
         switch state {
         case .connecting(let name): append("\(kind.displayName): connecting to \(name)…")
         case .connected(let name):  append("\(kind.displayName): connected (\(name))")
@@ -181,6 +207,7 @@ public final class SensorHub {
     fileprivate func setUnavailable(_ reason: String) {
         append("⚠️ \(reason)")
         for kind in desiredKinds { states[kind] = .disconnected }
+        trainerReady = false   // no radio, no control point — same as a drop
     }
 
     /// A browse scan found (or re-found) a device. Dedupe by identifier and keep
@@ -249,7 +276,22 @@ public final class SensorHub {
     fileprivate func setTrainerReady() {
         trainerReady = true
         append("✓ Trainer in control (ERG ready)")
+        // A reconnect: put the trainer back on the target the ride is holding.
+        // On the first handshake this is nil — the ride screen sets the steady
+        // target itself when it appears.
+        if let watts = requestedTargetW {
+            append("→ Set Target Power: \(watts) W (restored after reconnect)")
+            writeToTrainer(FTMS.setTargetPowerCommand(watts: watts))
+        }
         onStateChange?()
+    }
+
+    /// The one path for control-point writes, so tests can see what was sent.
+    private func writeToTrainer(_ data: Data) {
+        #if DEBUG
+        trainerWritesForTesting.append(data)
+        #endif
+        ble.writeToTrainer(data)
     }
 
     /// Append a line to the ride event log. `fileprivate` callers (BLE shim) and
@@ -282,6 +324,10 @@ public final class SensorHub {
     /// Test seam: mark the trainer's FTMS handshake complete, without
     /// CoreBluetooth. Drives `onStateChange`.
     func setTrainerReadyForTesting() { setTrainerReady() }
+
+    /// Test seam: every control-point command the hub has issued, in order.
+    /// Recorded whether or not a trainer is attached to receive it.
+    @ObservationIgnored private(set) var trainerWritesForTesting: [Data] = []
     #endif
 
     private func append(_ line: String) {

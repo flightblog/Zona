@@ -115,4 +115,85 @@ struct TrainerControllerTests {
         #expect(controller.metrics.powerW == nil)
         #expect(controller.sensorState(.trainer) == .disconnected)
     }
+
+    // MARK: - ERG target across a trainer drop
+
+    private static func targetCommand(_ watts: Int) -> Data {
+        FTMS.setTargetPowerCommand(watts: watts)
+    }
+
+    /// A controller mid-ride: trainer connected, handshake done, latched.
+    private static func ridingController() -> (TrainerController, SensorHub) {
+        let controller = TrainerController()
+        controller.requiresHeartRate = false
+        let hub = controller.hubForTesting
+        hub.setDesiredKindsForTesting([.trainer])
+        hub.setStateForTesting(.connected(name: "Kickr Core 2"), for: .trainer)
+        hub.setTrainerReadyForTesting()
+        return (controller, hub)
+    }
+
+    /// The handshake carries no target, so a reconnect must re-send the one
+    /// the ride was holding — otherwise ERG resumes on whatever the trainer kept.
+    @Test func reconnectRestoresTheTargetTheRideWasHolding() {
+        let (controller, hub) = Self.ridingController()
+        controller.setTargetPower(180)
+
+        hub.setStateForTesting(.scanning, for: .trainer)
+        hub.setStateForTesting(.connected(name: "Kickr Core 2"), for: .trainer)
+        hub.setTrainerReadyForTesting()
+
+        #expect(hub.trainerWritesForTesting == [Self.targetCommand(180), Self.targetCommand(180)])
+    }
+
+    /// A target set while the trainer is gone (an interval step, a revert, a
+    /// trim) must reach the trainer on reconnect, not vanish into a write with
+    /// no control point — and nothing may be "sent" while it's down.
+    @Test func targetSetDuringDropIsHeldThenAppliedOnReconnect() {
+        let (controller, hub) = Self.ridingController()
+        controller.setTargetPower(180)
+        hub.setStateForTesting(.scanning, for: .trainer)
+        #expect(hub.trainerReady == false)
+
+        controller.setTargetPower(250)
+        #expect(controller.metrics.targetW == 250)
+        #expect(hub.trainerWritesForTesting == [Self.targetCommand(180)])
+
+        hub.setStateForTesting(.connected(name: "Kickr Core 2"), for: .trainer)
+        #expect(hub.trainerWritesForTesting == [Self.targetCommand(180)])  // still handshaking
+        hub.setTrainerReadyForTesting()
+        #expect(hub.trainerWritesForTesting == [Self.targetCommand(180), Self.targetCommand(250)])
+    }
+
+    /// The drop clears readiness but must not eject the rider from the ride.
+    @Test func trainerDropClearsReadinessButKeepsTheRideLatched() {
+        let (controller, hub) = Self.ridingController()
+        hub.setStateForTesting(.connecting(name: "Kickr Core 2"), for: .trainer)
+        #expect(hub.trainerReady == false)
+        #expect(controller.sessionLatched == true)
+        // Still the ride screen (the name falls back while the link is down).
+        guard case .ready = controller.connection else {
+            Issue.record("expected .ready, got \(controller.connection)")
+            return
+        }
+    }
+
+    /// The first handshake has no target to restore — the ride screen sets it.
+    @Test func firstHandshakeSendsNoTarget() {
+        let (_, hub) = Self.ridingController()
+        #expect(hub.trainerWritesForTesting.isEmpty)
+    }
+
+    /// `stop` forgets the target, so the next ride's handshake doesn't replay
+    /// the previous ride's watts before its own screen sets one.
+    @Test func stopForgetsTheTarget() {
+        let (controller, hub) = Self.ridingController()
+        controller.setTargetPower(180)
+        controller.stop()
+
+        hub.setDesiredKindsForTesting([.trainer])
+        hub.setStateForTesting(.connected(name: "Kickr Core 2"), for: .trainer)
+        hub.setTrainerReadyForTesting()
+        #expect(hub.trainerWritesForTesting == [Self.targetCommand(180), FTMS.stopCommand()])
+    }
 }
