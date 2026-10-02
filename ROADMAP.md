@@ -166,16 +166,18 @@ actually ridden.
 - **Auto-pause / coasting detection.** When you stop pedaling (watts=0) the timer
   keeps running; detect a coast/stop and auto-pause the recorder to clean up
   summaries and time-in-zone math.
-- **ERG session resiliency (Machine Status + reconnect resend).** `SensorHub`
-  subscribes to Fitness Machine Status (`2ADA`, the Kickr Core 2 requires it before
-  it will answer control-point commands) but never parses its notifications, so an
-  external stop/pause, a safety-key pull, or another app taking the control point
-  goes undetected. Separately, a mid-ride BLE reconnect reruns the Request Control →
-  Start handshake and flips `trainerReady` back to true, but never re-sends the last
-  commanded watts — ERG target state after a drop currently depends on unverified
-  Kickr firmware behavior. Needs `2ADA` frame decoding in `didUpdateValueFor` plus
-  resending `metrics.targetW` whenever `trainerReady` transitions to true, not just
-  on the initial connect.
+- **ERG session resiliency (Machine Status).** `SensorHub` subscribes to Fitness
+  Machine Status (`2ADA`, the Kickr Core 2 requires it before it will answer
+  control-point commands) but never parses its notifications, so an external
+  stop/pause, a safety-key pull, or another app taking the control point goes
+  undetected. Needs `2ADA` frame decoding in `didUpdateValueFor`.
+  - **Reconnect resend.** ✅ _Shipped (PR #163); unit-tested, compile-verified on
+    macOS._ A mid-ride reconnect re-runs the Request Control → Start handshake,
+    which carries no target; `SensorHub` now holds the last requested watts and
+    re-sends them when the handshake completes. A drop also clears
+    `trainerReady`, which used to survive it, so a target set mid-drop is held
+    and applied on reconnect instead of being written to a nil control point and
+    discarded.
 - **Ride charts.** ✅ _Shipped (PR #47); verified on device._ The post-ride summary
   plots a dual-axis watts/BPM time-series (trainer watts on the left axis, HR on the
   right, target HR band shaded) so you can see drift and trend across the finished
@@ -398,8 +400,9 @@ Fresh candidates not yet on the tiers above, roughly ordered by value-to-effort.
 - **Ride notes / RPE** is the next cheapest, and the only item here that adds a
   kind of data the app doesn't currently hold at all.
 - **ERG session resiliency** is the one open item that affects a ride in progress
-  rather than the review of it — a mid-ride drop currently leaves the ERG setpoint
-  dependent on unverified Kickr firmware behavior.
+  rather than the review of it — an external stop/pause or a lost control point
+  currently goes unnoticed. (The setpoint is restored after a trainer reconnect
+  since #163.)
 
 ## Deliberately not planned
 

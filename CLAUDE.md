@@ -336,6 +336,15 @@ Notable behaviors baked into it, worth knowing before touching connection logic:
 - Sensors auto-reconnect on drop (HR straps disconnect on idle to save battery)
   and the first-seen device of each kind is remembered (`SensorMemoryStore`) for
   next session.
+- **A trainer reconnect restores the ERG target** (#163). The reconnect re-runs
+  the Request Control → Start handshake, which carries no target, so
+  `SensorHub` holds the last requested watts (`requestedTargetW`) and re-sends
+  them when the handshake completes. Two rules keep that honest: any trainer
+  state short of `.connected` clears `trainerReady` (it used to survive the
+  drop, so a `setTargetPower` mid-drop updated the screen and then wrote to a nil
+  control point, silently discarded), and `stop()` clears the held target so the
+  next ride's handshake can't replay the last ride's watts. A target set *during*
+  a drop — an interval step, a revert, a trim — is held and applied on reconnect.
 - A ride won't *start* without both the trainer (in ERG) and an HR strap
   connected, but once started the session latches — a transient mid-ride sensor
   drop doesn't eject back to setup.

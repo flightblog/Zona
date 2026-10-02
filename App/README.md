@@ -336,7 +336,10 @@ new plumbing.
   UI as one patient "Connecting…", hiding the very failure the watchdog exists to
   catch.
 - **Auto-reconnect.** HR straps disconnect on idle to save battery; a dropped
-  still-wanted sensor is transparently reconnected rather than abandoned.
+  still-wanted sensor is transparently reconnected rather than abandoned. When
+  the trainer comes back mid-ride, its ERG target is re-sent once the FTMS
+  handshake completes — including any target set while it was gone (an interval
+  step, a revert, a ±5 W trim), which is held rather than lost.
 - **The power meter's values expire; the trainer's don't.** A crank meter that
   goes quiet (coasting, slept, dropped) sends *nothing*, where the trainer's FTMS
   stream keeps pushing a real 0 W. Since the ride screen re-ingests metrics once a
@@ -520,8 +523,9 @@ Still open / optional:
 - Direct **Strava OAuth upload** if the manual TCX Share export proves too clunky.
 - Further **HRV** follow-ons now that R-R is stored — SDNN, and an HRV time-series
   chart (which can reuse the dual-axis chart + downsampler already shipped).
-- **ERG session resiliency** — recover the ERG setpoint after a mid-ride trainer
-  drop/reconnect.
+- **ERG session resiliency** — parse Fitness Machine Status so an external
+  stop/pause or a lost control point is noticed. (Restoring the setpoint after a
+  trainer reconnect shipped in #163.)
 
 Note: **closed-loop HR→watts** (auto-adjust ERG to hold an HR zone) was built and
 then deliberately removed — the app stays open-loop (power holds the ERG setpoint,
