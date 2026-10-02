@@ -250,6 +250,14 @@ lets the trainer steal that slot and, via `SensorMemoryStore.remember`,
 permanently lock a real standalone meter out of it. Flag a reordering of
 `SensorKind`'s cases or an iteration over `desired`.
 
+**A trainer reconnect must restore the ERG target** (#163). The handshake carries
+no target, so `SensorHub.setTrainerReady` re-sends the held `requestedTargetW`.
+Flag: a trainer state short of `.connected` that no longer clears `trainerReady`
+(a mid-drop `setTargetPower` then updates the screen and writes to a nil control
+point, silently discarded); `stop()` no longer clearing the held target (the next
+ride replays the last one's watts); or a control-point write that bypasses the
+hub's private `writeToTrainer`, which is what `trainerWritesForTesting` observes.
+
 ## Accessibility invariants
 
 **A stat tile is one VoiceOver stop.** The ride screen's `Metric` tiles and the
